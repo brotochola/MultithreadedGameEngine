@@ -162,7 +162,7 @@ Each `layerId` field is a `Uint8Array` (1 byte per pool slot):
 
 ### Custom Layer Dispatch
 
-`buildCustomLayerQueues()` handles all six renderable types. Each type's dispatch branch mirrors the corresponding branch in `buildRenderQueue()`, writing the same fields (x, y, scaleX, scaleY, rotation, alpha, tint, textureId, anchorX, anchorY) into the per-layer render queue SAB. The pixi_worker reads these fields generically -- it doesn't need to know what type produced them.
+`buildCustomLayerQueues()` handles all six renderable types. Each type's dispatch branch mirrors the corresponding branch in `buildRenderQueue()`, writing the same fields (x, y, scaleX, scaleY, rotation, alpha, tint, textureId, anchorX, anchorY) into the per-layer render queue SAB. Sprite animation for custom-layer entities is advanced in `pre_render_worker` (same as the main ENTITIES queue); `pixi_worker` only reads the resolved `textureId` and does not run per-entity animation logic.
 
 ---
 

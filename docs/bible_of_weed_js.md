@@ -69,6 +69,7 @@ Lifecycle hooks:
 - `onSpawned(spawnConfig)` each spawn
 - `tick(dtRatio, deltaTime, accumulatedTime, frameNumber)` update
 - `onCollisionEnter/Stay/Exit(otherIndex)` -- requires `CollisionListener` component
+- `isCollidingWith(other)` -- requires at least one entity type in the scene to have `CollisionListener` (see Collision Filtering)
 - `onScreenEnter/Exit()` -- requires `CameraInOutListener` component
 - `onDespawned()` before returning to pool
 
@@ -103,16 +104,16 @@ tick() {
 
 Some lifecycle callbacks are expensive to check every frame for every entity. The engine uses **tag components** -- empty components with no data -- to let entity types opt in. Entity types without the tag skip the callback entirely at zero cost.
 
-| Tag Component | Enables | What Gets Skipped |
+| Tag Component | What you get when at least one entity **type** in the scene has this tag | What the engine skips when **no** entity type in the scene has this tag |
 |---|---|---|
-| `CollisionListener` | `onCollisionEnter`, `onCollisionStay`, `onCollisionExit` | Cantor pairing, Set tracking, callback dispatch per collision pair |
-| `CameraInOutListener` | `onScreenEnter`, `onScreenExit` | Visibility state reads/writes and callback dispatch per entity per frame |
+| `CollisionListener` | Collision enter/stay/exit callbacks **and** `isCollidingWith()` queries (see below for who receives callbacks) | The whole `processCollisionCallbacks()` pass — no collision Set, no callbacks, no `isCollidingWith()` |
+| `CameraInOutListener` | `onScreenEnter` / `onScreenExit` on listening types | Per-frame visibility tracking and screen enter/exit callbacks |
 
 ### How it works
 
 Tag components have no `ARRAY_SCHEMA` and allocate no `SharedArrayBuffer`. They exist purely as a declaration in `static components`. The logic worker reads this once at startup and stores per-type flags. The hot loop checks these flags -- not per-entity, but per-type -- so the branch predictor handles it with near-zero overhead.
 
-**Collision:** if no type in the scene has `CollisionListener`, `processCollisionCallbacks()` is skipped entirely (zero Set operations, zero iteration). When some types have it and others don't, each collision pair is checked with two `Uint8Array` reads (`collisionListenerByType[entityType[A/B]]`). Only pairs involving at least one listener type proceed to Cantor key computation, Set tracking, and callback dispatch. Mixed pairs (one listener, one not) only dispatch to the listening entity. `CollisionListener` only gates callbacks; entities still need `Collider` to be detected by the physics system.
+**Collision:** if no type in the scene has `CollisionListener`, `processCollisionCallbacks()` is skipped entirely (zero Set operations, zero iteration — including `isCollidingWith()`). When at least one type has the tag, **every** physics pair is keyed (Cantor `min,max`) and stored in a per-worker Set so `isCollidingWith()` is accurate on all logic workers during `tick()`. **Callback dispatch** is the part that is gated: each pair is checked with two `Uint8Array` reads (`collisionListenerByType[entityType[A/B]]`), and enter/stay/exit fire only when at least one side listens. Mixed pairs (one listener, one not) only dispatch to the listening entity. Callback ownership is partitioned by `minEntity % totalLogicWorkers`; Set population is not. Entities still need `Collider` to appear in `collisionData` from the physics worker.
 
 **Screen visibility:** resolved per-type on the `typeInfo` object. `pre_render_worker` clears `Transform.isItOnScreen` once per visual frame and each entity render pass sets it to `1` when that entity is visible. The logic worker reads that single canonical byte only for entity types that have `CameraInOutListener`, so the callback path does not need to know which render component made the entity visible.
 
@@ -200,6 +201,19 @@ this.collider.collidesWithLayer(4);                      // true
 ```
 
 All `Ray` methods also accept an optional `mask` param (default all layers). See `docs/RAYCASTING.md`.
+
+### Contact queries (`isCollidingWith`)
+
+Poll whether this entity is touching another **this frame** (physics pair present in the logic worker's completed collision set). Requires at least one registered entity type with `CollisionListener` — without it, the collision Set is never built.
+
+```javascript
+// other: entity index or GameObject facade
+if (this.isCollidingWith(playerIndex)) {
+  this.applyDamage(1);
+}
+```
+
+Use collision **callbacks** for edge-triggered logic (enter/exit). Use `isCollidingWith()` inside `tick()` when you need "am I currently overlapping?" without maintaining your own state.
 
 > **Note:** These are *physics* collision layers, completely separate from *rendering* layers (see Layer System below).
 
@@ -525,9 +539,14 @@ if (Mouse.isButton0Pressed) { ... }     // left button just pressed (mousedown e
 if (Mouse.isButton0Released) { ... }    // left button just released (mouseup edge)
 if (Mouse.clicked) { ... }             // alias for isButton0Pressed
 
+// Mouse movement deltas: x - Mouse.prevX (prev values snapshotted at end of frame
+// on main thread and every logic worker via Mouse.snapshotPreviousFrame()).
+
 // Camera
 WEED.Camera.follow(this.x, this.y);
 WEED.Camera.setZoom(1.5);
+// getViewportBounds(out?) — pass a stable object if you need to store bounds;
+// the no-arg form reuses an internal scratch object (consume immediately).
 
 // Particles (layerId optional -- 0 = default ENTITIES layer)
 WEED.ParticleEmitter.emit({
@@ -563,7 +582,21 @@ WEED.SoundManager.play('explosion', 1, 1, 1, 0, 0, x, y);  // spatial (worldX, w
 WEED.SoundManager.stop('engine');
 WEED.SoundManager.setMasterVolume(0.7);
 WEED.SoundManager.setMuted(true);
+// Scene switches call SoundManager.reset() and keep the AudioContext alive.
+// GameEngine.destroy() calls SoundManager.dispose() and closes audio fully.
 ```
+
+---
+
+## Scene and Engine Teardown
+
+**Scene switch** (`game.loadScene(NextScene)`): the previous scene's `destroy()` runs teardown — workers terminated, shared buffers released, `Layer.reset()`, `NavGrid.reset()` (MessageChannel port closed), sprite registries cleared, boot atlases/`ImageBitmap`s closed via `_releaseBootAssets()`. `SoundManager.reset()` clears slots but **does not** close the `AudioContext` (avoids needing a new user gesture for audio on the next scene).
+
+**Engine destroy** (`await game.destroy()`): destroys the active scene, then `SoundManager.dispose()` (closes `AudioContext` and disconnects the worklet), removes the canvas.
+
+Within a single page session, worker scripts are fetched once (`WORKER_CACHE_BUST` in `sceneWorkerBootstrap.js`); scene cycles reuse the browser's compiled-module cache.
+
+Smoke test: `node tests/bench/scene-cycle-smoke.mjs` (Playwright, heap + static leak checks).
 
 ---
 
@@ -637,4 +670,4 @@ scene.getMemoryUsageReport();  // summary + per-component allocation metadata
 - Rendering caps are finite too. One-shot pre-render warnings for visible lights, shadow queues, shadow sprites, and visibility polygon occluders mean the scene is truncating work. Tune `lighting.maxLights`, `lighting.maxShadowCastingLights`, `lighting.maxShadowsPerLight`, `lighting.maxShadowSprites`, or reduce light/occluder density.
 - Sound slots are finite (default 64). One-shot SFX are cheap; don't forget `stop()` on loops.
 - Spatial sound culls anything a full viewport-width outside the camera. Keep that in mind for ambient loops.
-- Only add `CollisionListener` / `CameraInOutListener` to entity types that actually use the callbacks. Without the tag, the engine skips all related per-pair or per-entity work.
+- Only add `CollisionListener` / `CameraInOutListener` to entity types that actually use the callbacks or `isCollidingWith()`. Without `CollisionListener` anywhere in the scene, the engine skips the entire collision callback/query pass.

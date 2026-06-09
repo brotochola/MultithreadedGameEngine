@@ -91,14 +91,17 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 
 1. **(Logic 0 only)** Process `listUpdates` from other logic workers (despawns first, then spawns)
 2. **(Logic 0 only)** Process spawn/despawn messages from main thread
-3. Process impacts from `impactBuffer`
-4. Dispatch collision callbacks (`onCollisionEnter`, `onCollisionStay`, `onCollisionExit`)
+3. Process impacts from `impactBuffer` — gated on batch `seq` (`Atomics.load` on header `[1]`); each batch is handled exactly once even when logic and particle workers run at different frame rates (see `MEMORY_STRUCTURE.md`)
+4. Dispatch collision callbacks (`onCollisionEnter`, `onCollisionStay`, `onCollisionExit`) and populate `frameCollisions` for `isCollidingWith()`
 5. Run `tick(dtRatio)` on owned entity partition
 6. Handle on-screen enter/exit callbacks
+7. `Mouse.snapshotPreviousFrame()` — snapshot position/wheel for next-frame deltas
 
 **Entity partition:** `for (idx = myIndex; idx < count; idx += totalWorkers)` over per-type active lists.
 
-**Collision partition:** `minEntity % totalWorkers === myIndex` (Cantor pairing for enter/stay/exit tracking).
+**Collision Set:** every logic worker records **every** physics pair (Cantor key on normalized `min,max`) into `frameCollisions` so `isCollidingWith()` works during `tick()` on any worker. Skipped entirely when no entity type has `CollisionListener`.
+
+**Collision callback partition:** enter/stay/exit dispatch runs only on the worker where `minEntity % totalWorkers === myIndex`. Listener gating (`collisionListenerByType`) applies to callbacks only, not to Set population.
 
 **Tick decimation:** entities with `tickInterval > 1` use `nextTickData[entityIndex]` countdown. When tick fires, `RigidBody.ax/ay` is scaled by `tickInterval` to compensate for skipped frames.
 
@@ -106,7 +109,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 | ------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------- |
 | All component SABs       | Read/**Write**                       | Entity state (positions, velocities, custom components)                                |
 | `collisionData`          | Read                                 | From physics -- collision pairs                                                        |
-| `impactBuffer`           | Read                                 | From particle -- bullet impacts                                                        |
+| `impactBuffer`           | Read                                 | From particle — `[count, seq, …]`; process when `seq` changes                          |
 | `activeEntitiesData`     | Read/**Write** (logic 0)             | Logic 0 maintains the global active list                                               |
 | `perTypeActiveLists`     | Read/**Write** (logic 0)             | Per-type active lists                                                                  |
 | `nextTickData`           | Read/**Write**                       | Tick decimation countdown per entity                                                   |
@@ -127,7 +130,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 - Receives `listUpdates` from logic workers 1..N
 - Runs `processListUpdates()` before any ticks (despawns first, spawns second)
 - Updates `activeEntitiesData` and per-type active lists, then publishes complete pre-computed active query snapshots
-- All logic workers call `Mouse.updateEdgeFlags()` before entity ticks (per-worker edge detection for `isButton0Pressed` etc.)
+- All logic workers call `Mouse.updateEdgeFlags()` before entity ticks (per-worker edge detection for `isButton0Pressed` etc.) and `Mouse.snapshotPreviousFrame()` after ticks
 
 **Active query snapshots:** pre-computed `queryActiveEntities()` results use complete published snapshots in `queryResultsSAB`. Readers may see a slightly stale active-query result, but they do not observe logic0 shifting the same list in place.
 
@@ -141,7 +144,7 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 
 1. Update particle simulation (lifetime, gravity, ground collision, alpha fade)
 2. Stamp decals onto tile buffers
-3. Tick bullets (movement, trail, screen visibility, impact detection → `impactBuffer`)
+3. Tick bullets (movement, trail, screen visibility, impact detection → `impactBuffer`; publishes `count` then bumps batch `seq` via Atomics so logic workers never double-process a batch)
 4. Update decoration sway
 5. Build compact active + visible lists for particles, decorations, bullets
 6. Compute cell sleeping flags
@@ -176,12 +179,12 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 
 ### Pre-Render Worker (1)
 
-Reads visibility lists, advances animations, builds the render and shadow queues that pixi consumes.
+Reads visibility lists, advances animations, builds the render and shadow queues that pixi consumes. **Sprite animation is owned entirely here** (main ENTITIES queue and custom-layer queues) — `pixi_worker` only consumes resolved `textureId` values from the render queue.
 
 **What it does each frame:**
 
 1. Read compact visible lists (entities, particles, decorations, bullets)
-2. Advance sprite animation frames
+2. Advance sprite animation frames (including custom-layer entities)
 3. Compute interpolated positions, scales, rotations
 4. Collect visible renderables -- entities routed by `SpriteRenderer.layerId`:
    - `layerId === ENTITIES_ID` → main render queue
@@ -221,26 +224,26 @@ Visibility polygon generation uses bounded event/active pools. If those caps ove
 
 ### Pixi Worker (1)
 
-Consumes the render queues and draws to an OffscreenCanvas. Never touches game state.
+Consumes the render queues and draws to an OffscreenCanvas. Never touches game state. **No per-entity sprite animation** — textures and frames are resolved in `pre_render_worker` and written into the queue as `textureId`.
 
 **OffscreenCanvas:** transferred from main thread at init via `canvas.transferControlToOffscreen()`.
 
 **What it does each frame:**
 
-1. `Atomics.load(renderQueueSync, 0)` -- check for new frame
-2. If new: read from `(readyFrame - 1) % 2` buffer
-3. Render main sprites (ENTITIES layer) from main render queue
-4. Render shadows, lights, particles, decorations, bullets
-5. **For each custom layer** (see pipeline below):
-   - Read the layer's double-buffered render queue
-   - Update `ParticleContainer` sprites from the SoA data
-   - If the layer has **no shader**: render the `ParticleContainer` directly to screen at its `zIndex`
-   - If the layer has a **shader**: run the two-RT pipeline (see below)
-6. Check `Atomics.load(uniformDirty, 0)` for each shader layer; if dirty, upload new uniform values to the GPU shader and clear the flag
-7. Upload dirty decal tiles to GPU textures
-8. `Atomics.store(renderQueueSync, 1, readyFrame)` + notify
+1. `Atomics.load(renderQueueSync, 0)` — check for new frame
+2. If new: switch read buffer to `(readyFrame - 1) % 2`, latch `renderQueueCamera`, `Atomics.store(renderQueueSync, 1, readyFrame)` + notify pre_render
+3. **Stale-frame gating:** frame-locked GPU passes (visible lights, lighting/shadow RTs, main + custom sprite queue sync, offscreen lighting mesh) run only when a new queue frame arrived, on resume, or before the first frame. When pixi outpaces pre_render, it skips redundant work that would be pixel-identical. Always-on passes: camera transform, layer alpha dirty poll, decal tile upload (driven by particle_worker dirty flags)
+4. When frame-locked passes run:
+   - Sync main sprites (ENTITIES layer) from main render queue
+   - Update shadows, lights, particles, decorations, bullets
+   - **For each custom layer** (see pipeline below):
+     - Read the layer's double-buffered render queue
+     - Update `ParticleContainer` sprites from the SoA data
+     - If the layer has **no shader**: render the `ParticleContainer` directly to screen at its `zIndex`
+     - If the layer has a **shader**: run the two-RT pipeline (see below)
+   - Check `Atomics.load(uniformDirty, 0)` for each shader layer; if dirty, upload new uniform values to the GPU shader and clear the flag
 
-**It never waits.** If there's no new frame, it skips. Pre-render is the one that waits (if it's too far ahead).
+**It never waits** on pre_render. Pre-render is the worker that may block when it is more than one frame ahead.
 
 #### Two-RT Shader Pipeline (custom shader layers)
 
@@ -494,10 +497,22 @@ Where `N = numberOfSpatialWorkers`, `L = numberOfLogicWorkers`.
 
 ---
 
+## Scene and Engine Teardown
+
+**Scene `destroy()`** (also runs when switching scenes via `loadScene`): terminates all workers, runs `teardownSceneSharedState()` (`Layer.reset()`, pool resets, registry clears), `NavGrid.reset()` (closes the particle-worker MessageChannel port), and `_releaseBootAssets()` (closes transferred `ImageBitmap`s and drops atlas references). `SoundManager.reset()` clears audio slots but keeps the `AudioContext` open.
+
+**`GameEngine.destroy()`**: destroys the active scene, then `SoundManager.dispose()` (closes `AudioContext`, disconnects worklet), removes the canvas.
+
+Worker script URLs use a single per-page cache-bust token (`WORKER_CACHE_BUST` in `sceneWorkerBootstrap.js`) so scene cycles within one session reuse compiled worker modules.
+
+Regression harness: `node tests/bench/scene-cycle-smoke.mjs`.
+
+---
+
 ## Performance Notes
 
 - Workers are asynchronous. There's no global frame barrier. Each worker runs at its own pace.
-- The only Atomics synchronization is between pre_render and pixi (render queue double buffer) and in the free-list stacks (spawn/despawn).
+- Atomics are used where workers share mutable coordination state: render-queue double buffer (pre_render ↔ pixi), Treiber free-list heads (`atomicFreeList.js`), `impactBuffer` batch `seq`, NavGrid slot `status` publication, layer alpha/uniform dirty flags, audio slot CAS, query snapshot versioning, and assorted stats/debug fields. Most component SABs rely on single-writer ownership instead of per-field atomics.
 - Single-writer ownership eliminates the need for locks on frame-critical data.
 - If your game stutters, check `frameRateData` in debug UI to find which worker is the bottleneck.
 - Audio slot writes are lock-free (CAS). The worklet reads the SAB at hardware sample rate with zero postMessage overhead per frame. If you see `droppedCount` rising, increase `maxSlots` or make sure you `stop()` looping sounds when they're no longer needed.
