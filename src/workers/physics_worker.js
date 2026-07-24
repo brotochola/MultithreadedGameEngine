@@ -1383,6 +1383,10 @@ class PhysicsWorker extends AbstractWorker {
                   const s = sinI;
                   cosI = c - s * dTh;
                   sinI = s + c * dTh;
+                  // Step G: renormalize after incremental rotate (kills drift)
+                  const invLen = 1 / Math.sqrt(cosI * cosI + sinI * sinI);
+                  cosI *= invLen;
+                  sinI *= invLen;
                   worldOffXi = cosI * offXi - sinI * offYi;
                   worldOffYi = sinI * offXi + cosI * offYi;
                   obbCos[i] = cosI;
@@ -1400,8 +1404,13 @@ class PhysicsWorker extends AbstractWorker {
                 if (shapeJ === SHAPE_ORIENTED_BOX) {
                   const c = obbCos[j];
                   const s = obbSin[j];
-                  obbCos[j] = c - s * dTh;
-                  obbSin[j] = s + c * dTh;
+                  let cj = c - s * dTh;
+                  let sj = s + c * dTh;
+                  const invLen = 1 / Math.sqrt(cj * cj + sj * sj);
+                  cj *= invLen;
+                  sj *= invLen;
+                  obbCos[j] = cj;
+                  obbSin[j] = sj;
                 }
               } else if (hitStatic) {
                 angularVelocity[j] *= 0.8;
@@ -1469,12 +1478,18 @@ class PhysicsWorker extends AbstractWorker {
                   py[j] -= fdy * wJ;
                 }
 
-                // Spin damp only — no θ move, no ω inject
+                // Step G: angular friction — face-gated + mass-weighted; no θ move
                 if (invII > 0) {
-                  angularVelocity[i] -= (riy * fdx - rix * fdy) * invII;
+                  const absCross = crossI < 0 ? -crossI : crossI;
+                  if (absCross > CROSS_EPS) {
+                    angularVelocity[i] -= (riy * fdx - rix * fdy) * invII * wI;
+                  }
                 }
                 if (invIJ > 0) {
-                  angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ;
+                  const absCross = crossJ < 0 ? -crossJ : crossJ;
+                  if (absCross > CROSS_EPS) {
+                    angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ * wJ;
+                  }
                 }
               }
             }
