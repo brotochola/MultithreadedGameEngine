@@ -990,6 +990,8 @@ class PhysicsWorker extends AbstractWorker {
     const invMass = RigidBody.invMass;
     const invInertia = RigidBody.invInertia;
     const angularVelocity = RigidBody.angularVelocity;
+    const px = RigidBody.px;
+    const py = RigidBody.py;
     const rotation = Transform.rotation;
 
     let pairCount = 0;
@@ -1003,6 +1005,7 @@ class PhysicsWorker extends AbstractWorker {
     const collisionLayer = Collider.collisionLayer;
     const collisionMask = Collider.collisionMask;
     const collisionGroupIndex = Collider.collisionGroupIndex;
+    const contactFriction = Collider.contactFriction;
 
     // OPTIMIZATION: Use pre-built dense list of active colliders that ACTUALLY have collision candidates
     // This perfectly bypasses thousands of empty loop iterations in sub-stepping.
@@ -1025,6 +1028,8 @@ class PhysicsWorker extends AbstractWorker {
 
     // Face lever threshold for angular (hoisted out of per-hit path)
     const CROSS_EPS = 2;
+    // Squared epsilon for tangential relative velocity (skip friction if smaller)
+    const VT_EPS2 = 1e-8;
 
     // Precompute cos/sin for all OrientedBoxes once per resolve (no trig in pair loop)
     this._fillObbOrientationCache(shapeType, rotation);
@@ -1068,6 +1073,7 @@ class PhysicsWorker extends AbstractWorker {
       const iHasRigidBody = rigidBodyActive[i];
       const iStatic = !iHasRigidBody || isStatic[i];
       const iSleeping = iHasRigidBody && sleeping[i];
+      const muI = contactFriction[i];
 
       // Iterate only collision candidates (partitioned by spatial worker)
       // Filter order: cheapest rejects first (dedupe before RB / mask loads)
@@ -1369,12 +1375,13 @@ class PhysicsWorker extends AbstractWorker {
               if (absCross > CROSS_EPS) {
                 const dTh = crossI * invII * lambda;
                 rotation[i] += dTh;
-                angularVelocity[i] += dTh * 0.25;
-                // Mid-pass θ change: refresh OBB basis so later pairs vs i stay correct
+                // Step D: no ω inject from positional Δθ (was bounce/tumble fuel)
+                // Step B: incremental OBB basis (no mid-pair cos/sin)
                 if (shapeI === SHAPE_ORIENTED_BOX) {
-                  const th = rotation[i];
-                  cosI = Math.cos(th);
-                  sinI = Math.sin(th);
+                  const c = cosI;
+                  const s = sinI;
+                  cosI = c - s * dTh;
+                  sinI = s + c * dTh;
                   worldOffXi = cosI * offXi - sinI * offYi;
                   worldOffYi = sinI * offXi + cosI * offYi;
                   obbCos[i] = cosI;
@@ -1389,14 +1396,85 @@ class PhysicsWorker extends AbstractWorker {
               if (absCross > CROSS_EPS) {
                 const dTh = crossJ * invIJ * lambda;
                 rotation[j] += dTh;
-                angularVelocity[j] += dTh * 0.25;
                 if (shapeJ === SHAPE_ORIENTED_BOX) {
-                  const th = rotation[j];
-                  obbCos[j] = Math.cos(th);
-                  obbSin[j] = Math.sin(th);
+                  const c = obbCos[j];
+                  const s = obbSin[j];
+                  obbCos[j] = c - s * dTh;
+                  obbSin[j] = s + c * dTh;
                 }
               } else if (hitStatic) {
                 angularVelocity[j] *= 0.8;
+              }
+            }
+
+            // Contact friction: min combine + Coulomb clamp (μ * correction)
+            const muJ = contactFriction[j];
+            if (muI > 0 && muJ > 0) {
+              const mu = muI < muJ ? muI : muJ;
+
+              let vix = 0;
+              let viy = 0;
+              let vjx = 0;
+              let vjy = 0;
+              if (!iStatic && iHasRigidBody) {
+                vix = localXi - px[i];
+                viy = localYi - py[i];
+                if (invII > 0) {
+                  const wi = angularVelocity[i];
+                  vix += -wi * riy;
+                  viy += wi * rix;
+                }
+              }
+              if (!jStatic && jHasRigidBody) {
+                vjx = x[j] - px[j];
+                vjy = y[j] - py[j];
+                if (invIJ > 0) {
+                  const wj = angularVelocity[j];
+                  vjx += -wj * rjy;
+                  vjy += wj * rjx;
+                }
+              }
+
+              const rvx = vix - vjx;
+              const rvy = viy - vjy;
+              const vn = rvx * nx + rvy * ny;
+              const vtx = rvx - vn * nx;
+              const vty = rvy - vn * ny;
+              const vtLen2 = vtx * vtx + vty * vty;
+
+              if (vtLen2 > VT_EPS2) {
+                const maxSlide = mu * correction;
+                const maxSlide2 = maxSlide * maxSlide;
+                let scale;
+                if (vtLen2 <= maxSlide2) {
+                  scale = 1;
+                } else {
+                  scale = maxSlide / Math.sqrt(vtLen2);
+                }
+
+                const fdx = vtx * scale;
+                const fdy = vty * scale;
+                const invTotal = 1 / totalInvMass;
+                const wI = invMassI * invTotal;
+                const wJ = invMassJ * invTotal;
+
+                // Kill tangent vel via px only (same as scaleVelocity). Moving x invents water-motion.
+                if (!iStatic && iHasRigidBody) {
+                  px[i] += fdx * wI;
+                  py[i] += fdy * wI;
+                }
+                if (!jStatic && jHasRigidBody) {
+                  px[j] -= fdx * wJ;
+                  py[j] -= fdy * wJ;
+                }
+
+                // Spin damp only — no θ move, no ω inject
+                if (invII > 0) {
+                  angularVelocity[i] -= (riy * fdx - rix * fdy) * invII;
+                }
+                if (invIJ > 0) {
+                  angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ;
+                }
               }
             }
           }

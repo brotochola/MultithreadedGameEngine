@@ -11,7 +11,7 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 ## Responsibilities (per frame)
 
 1. **Verlet integration** — advance positions from acceleration, velocity caps, friction, and gravity (config-driven). Also integrates `angularVelocity` into `Transform.rotation` and applies `angularDrag`.
-2. **Collision resolution** — for entities with collision candidates in `neighborData`, resolve overlaps (circles, AABBs, and OrientedBoxes/OBBs; `collisionGroupIndex` then layer/mask filtering; typed-array reads only). Non-trigger contacts use PBD effective mass `ΣinvMass + (r×n)²·invInertia`, impulse `λ = correction / that`, then linear + rotational position corrections. A fraction of `Δθ` is added to `angularVelocity` so spin carries without double-applying the full kick on the next integrate step.
+2. **Collision resolution** — for entities with collision candidates in `neighborData`, resolve overlaps (circles, AABBs, and OrientedBoxes/OBBs; `collisionGroupIndex` then layer/mask filtering; typed-array reads only). Non-trigger contacts use PBD effective mass `ΣinvMass + (r×n)²·invInertia`, impulse `λ = correction / that`, then linear + rotational position corrections. A fraction of `Δθ` is added to `angularVelocity` so spin carries without double-applying the full kick on the next integrate step. When both colliders have `contactFriction > 0`, a tangential Coulomb clamp (`μ = min(μi,μj)`, max slide `μ * correction`) kills relative slide (and optional contact `Δθ`) after the normal solve.
 3. **Distance constraints** (optional) — position-based corrections for active constraints when constraints are enabled in scene config.
 4. **Stats** — write counters and timing into `physicsStats` (see [Worker stats](#worker-stats)).
 

@@ -1790,6 +1790,7 @@ export class GameObject {
       Collider.collisionLayer[i] = 0;
       Collider.collisionMask[i] = 0xFFFFFFFF;
       Collider.collisionGroupIndex[i] = 0;
+      Collider.contactFriction[i] = 0;
     }
 
     if (has.LightEmitter) {

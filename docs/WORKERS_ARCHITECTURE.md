@@ -70,7 +70,7 @@ Integrates rigid bodies and resolves collisions. Reads neighbor data from spatia
 | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------ |
 | Transform (`x`, `y`)               | **Write**      | Position integration                                                                 |
 | RigidBody (`px`, `py`, `vx`, `vy`) | **Write**      | Velocity, previous position                                                          |
-| Collider                           | Read           | Shapes, radii, `collisionLayer` (Uint8 0-31), `collisionMask` (Uint32), `collisionGroupIndex` (Int32) |
+| Collider                           | Read           | Shapes, radii, `contactFriction`, `collisionLayer` (Uint8 0-31), `collisionMask` (Uint32), `collisionGroupIndex` (Int32) |
 | `neighborData`                     | Read           | First `collisionCount` entries per entity                                            |
 | `collisionData`                    | **Write**      | `[pairCount, A0, B0, A1, B1, ...]`                                                   |
 | `constraintData`                   | Read/**Write** | Solve + free constraints                                                             |

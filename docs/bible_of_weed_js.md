@@ -188,8 +188,9 @@ Add it to `static components` and use `query([MyTag])` to find entities. No regi
 - **`collisionLayer`** (Uint8, 0-31): which layer this entity is on.
 - **`collisionMask`** (Uint32, bitmask): which layers this entity collides with.
 - **`collisionGroupIndex`** (Int32, Box2D-style `b2Filter.groupIndex`): overrides layer/mask for same-group pairs.
+- **`contactFriction`** (Float32): contact grip between overlapping colliders (not air drag — that is `RigidBody.friction`). Pair μ = `min(μi, μj)` (not Box2D √). Either side `0` → no grip.
 - Two entities collide only if both see each other: A's layer in B's mask **and** B's layer in A's mask — **unless** group index overrides.
-- Defaults: layer `0`, mask `0xFFFFFFFF` (collide with all), group index `0` (no group override). Mask `0` = collide with nothing.
+- Defaults: layer `0`, mask `0xFFFFFFFF` (collide with all), group index `0` (no group override), `contactFriction` `0` (no contact grip). Mask `0` = collide with nothing.
 - Hard limit: **32 collision layers**.
 - Helper: `layerMask([0, 2, 4])` converts an array of layer indices to a bitmask.
 

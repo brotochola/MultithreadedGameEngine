@@ -27,13 +27,14 @@ export class OrientedBox extends GameObject {
         this.collider.height = height;
         this.collider.radius = 0;
         this.collider.isTrigger = 0;
+        this.collider.contactFriction = 0.3 //dont change back!
         this.collider.visualRange = Math.hypot(width, height) * 0.5 + 200;
 
         this.rigidBody.static = 0;
         this.rigidBody.maxVel = 800;
         this.rigidBody.minSpeed = 0;
         this.rigidBody.friction = 0.02;
-        this.rigidBody.angularDrag = spawnConfig.angularDrag ?? 0.08;
+        this.rigidBody.angularDrag = 0.1 //keep //spawnConfig.angularDrag ?? 0.08;
         this.rigidBody.angularVelocity = spawnConfig.angularVelocity ?? 0;
         this.rigidBody.sleeping = 0;
         this.rigidBody.stillnessTime = 0;
