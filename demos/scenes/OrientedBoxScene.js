@@ -2,6 +2,7 @@
 
 import { OrientedBox } from '/demos/gameObjects/orientedBox.js';
 import { Floor } from '/demos/gameObjects/floor.js';
+import { Ball } from '/demos/gameObjects/ball.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 
@@ -53,11 +54,13 @@ export class OrientedBoxScene extends WEED.Scene {
     static assets = {
         textures: {
             box: '/demos/img/box_100_100.png',
+            ball: '/demos/img/bola.png',
         },
     };
 
     static entities = [
         [OrientedBox, 10000],
+        [Ball, 1000],
         [Floor, 16],
     ];
 
