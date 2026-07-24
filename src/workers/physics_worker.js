@@ -1030,6 +1030,8 @@ class PhysicsWorker extends AbstractWorker {
     const CROSS_EPS = 2;
     // Squared epsilon for tangential relative velocity (skip friction if smaller)
     const VT_EPS2 = 1e-8;
+    // Ignore micro-penetration (stops dense OBB stacks from fighting forever)
+    const PENETRATION_SLOP = 0.75;
 
     // Precompute cos/sin for all OrientedBoxes once per resolve (no trig in pair loop)
     this._fillObbOrientationCache(shapeType, rotation);
@@ -1316,9 +1318,11 @@ class PhysicsWorker extends AbstractWorker {
 
         const eitherIsTrigger = isTrigger[i] || isTrigger[j];
 
-        // SLEEPING OPTIMIZATION: Wake entities on collision
-        // NOTE: Do NOT wake up entities if either is a trigger (triggers are for events only)
+        // Apply physical response if neither is a trigger
+        // Step F: slop — skip micro-overlaps so stacks can settle / sleep (wake only when resolving)
         if (!eitherIsTrigger) {
+          const depthEff = result.depth - PENETRATION_SLOP;
+          if (depthEff > 0) {
           if (iHasRigidBody && iSleeping) {
             sleeping[i] = 0;
             RigidBody.stillnessTime[i] = 0;
@@ -1327,11 +1331,8 @@ class PhysicsWorker extends AbstractWorker {
             sleeping[j] = 0;
             RigidBody.stillnessTime[j] = 0;
           }
-        }
 
-        // Apply physical response if neither is a trigger
-        if (!eitherIsTrigger) {
-          const correction = result.depth * responseStrength;
+          const correction = depthEff * responseStrength;
           const nx = result.nx;
           const ny = result.ny;
           const cx = result.cx;
@@ -1478,6 +1479,7 @@ class PhysicsWorker extends AbstractWorker {
               }
             }
           }
+          } // depthEff > 0
         }
 
         // Track collision count
