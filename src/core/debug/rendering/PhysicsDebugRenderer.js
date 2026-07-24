@@ -108,6 +108,7 @@ export class PhysicsDebugRenderer {
     const height = Collider.height;
     const offsetX = Collider.offsetX;
     const offsetY = Collider.offsetY;
+    const rotation = Transform.rotation;
 
     const viewLeft = camera.x - 100;
     const viewRight = camera.x + canvas.width / zoom + 100;
@@ -123,24 +124,60 @@ export class PhysicsDebugRenderer {
       const onScreen = isOnScreen[i] || (entityX >= viewLeft && entityX <= viewRight && entityY >= viewTop && entityY <= viewBottom);
       if (!onScreen) continue;
 
-      const posX = entityX + (offsetX?.[i] || 0);
-      const posY = entityY + (offsetY?.[i] || 0);
+      const ox = offsetX?.[i] || 0;
+      const oy = offsetY?.[i] || 0;
+      const shape = shapeType[i];
+
+      let posX;
+      let posY;
+      if (shape === 2) {
+        const th = rotation[i];
+        const c = Math.cos(th);
+        const s = Math.sin(th);
+        posX = entityX + c * ox - s * oy;
+        posY = entityY + s * ox + c * oy;
+      } else {
+        posX = entityX + ox;
+        posY = entityY + oy;
+      }
+
       const sx = (posX - camera.x) * zoom;
       const sy = (posY - camera.y) * zoom;
 
       ctx.strokeStyle = isTrigger[i] ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
 
-      if (shapeType[i] === 0) {
+      if (shape === 0) {
         const r = radius[i];
         if (r === 0) continue;
         ctx.beginPath();
         ctx.arc(sx, sy, r * zoom, 0, Math.PI * 2);
         ctx.stroke();
-      } else if (shapeType[i] === 1) {
+      } else if (shape === 1) {
         const w = width[i];
         const h = height[i];
         if (w === 0 || h === 0) continue;
         ctx.strokeRect(sx - (w / 2) * zoom, sy - (h / 2) * zoom, w * zoom, h * zoom);
+      } else if (shape === 2) {
+        const w = width[i];
+        const h = height[i];
+        if (w === 0 || h === 0) continue;
+        const th = rotation[i];
+        const hw = (w / 2) * zoom;
+        const hh = (h / 2) * zoom;
+        const c = Math.cos(th);
+        const s = Math.sin(th);
+        // Corners in local space, rotated to screen
+        const x0 = -hw, y0 = -hh;
+        const x1 = hw, y1 = -hh;
+        const x2 = hw, y2 = hh;
+        const x3 = -hw, y3 = hh;
+        ctx.beginPath();
+        ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
+        ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
+        ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
+        ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
+        ctx.closePath();
+        ctx.stroke();
       }
     }
   }
@@ -274,6 +311,7 @@ export class PhysicsDebugRenderer {
     const height = Collider.height;
     const offsetX = Collider.offsetX;
     const offsetY = Collider.offsetY;
+    const rotation = Transform.rotation;
 
     ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
     ctx.fillStyle = 'rgba(255, 0, 255, 0.2)';
@@ -283,16 +321,30 @@ export class PhysicsDebugRenderer {
       if (!active[i] || !isOnScreen[i]) continue;
       if (!rigidBodyActive[i] || !sleeping[i]) continue;
 
-      const posX = x[i] + (offsetX?.[i] || 0);
-      const posY = y[i] + (offsetY?.[i] || 0);
+      const ox = offsetX?.[i] || 0;
+      const oy = offsetY?.[i] || 0;
+      const shape = shapeType?.[i];
+
+      let posX;
+      let posY;
+      if (shape === 2) {
+        const th = rotation[i];
+        const c = Math.cos(th);
+        const s = Math.sin(th);
+        posX = x[i] + c * ox - s * oy;
+        posY = y[i] + s * ox + c * oy;
+      } else {
+        posX = x[i] + ox;
+        posY = y[i] + oy;
+      }
       const sx = (posX - camera.x) * zoom;
       const sy = (posY - camera.y) * zoom;
 
-      if (shapeType && shapeType[i] === 0) {
+      if (shape === 0) {
         const r = radius?.[i] || 10;
         if (r === 0) continue;
         ctx.beginPath(); ctx.arc(sx, sy, r * zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      } else if (shapeType && shapeType[i] === 1) {
+      } else if (shape === 1) {
         const w = width?.[i] || 20;
         const h = height?.[i] || 20;
         if (w === 0 || h === 0) continue;
@@ -300,6 +352,24 @@ export class PhysicsDebugRenderer {
         const halfH = (h / 2) * zoom;
         ctx.fillRect(sx - halfW, sy - halfH, w * zoom, h * zoom);
         ctx.strokeRect(sx - halfW, sy - halfH, w * zoom, h * zoom);
+      } else if (shape === 2) {
+        const w = width?.[i] || 20;
+        const h = height?.[i] || 20;
+        if (w === 0 || h === 0) continue;
+        const th = rotation[i];
+        const hw = (w / 2) * zoom;
+        const hh = (h / 2) * zoom;
+        const c = Math.cos(th);
+        const s = Math.sin(th);
+        const x0 = -hw, y0 = -hh, x1 = hw, y1 = -hh, x2 = hw, y2 = hh, x3 = -hw, y3 = hh;
+        ctx.beginPath();
+        ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
+        ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
+        ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
+        ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       } else {
         ctx.beginPath(); ctx.arc(sx, sy, 10 * zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }

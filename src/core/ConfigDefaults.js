@@ -15,8 +15,10 @@
 export const ShapeType = Object.freeze({
   /** Circle collider - uses radius property */
   Circle: 0,
-  /** Box/rectangle collider - uses width and height properties */
+  /** Axis-aligned box/rectangle - uses width and height (ignores Transform.rotation) */
   Box: 1,
+  /** Oriented box (OBB) - uses width/height, oriented by Transform.rotation */
+  OrientedBox: 2,
 });
 
 /**

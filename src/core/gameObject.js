@@ -518,6 +518,17 @@ export class GameObject {
     }
   }
 
+  /** Angular velocity (rad per dtRatio unit) — integrated into Transform.rotation by physics */
+  get angularVelocity() {
+    if (!this._hasComponents.RigidBody) return 0;
+    return RigidBody.angularVelocity[this.index];
+  }
+  set angularVelocity(value) {
+    if (this._hasComponents.RigidBody) {
+      RigidBody.angularVelocity[this.index] = value;
+    }
+  }
+
   /** Speed (magnitude of velocity) - read-only, computed by physics worker */
   get speed() {
     if (!this._hasComponents.RigidBody) return 0;
@@ -1778,6 +1789,7 @@ export class GameObject {
       Collider.active[i] = 1;
       Collider.collisionLayer[i] = 0;
       Collider.collisionMask[i] = 0xFFFFFFFF;
+      Collider.collisionGroupIndex[i] = 0;
     }
 
     if (has.LightEmitter) {

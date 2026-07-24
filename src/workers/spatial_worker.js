@@ -376,6 +376,7 @@ class SpatialWorker extends AbstractWorker {
   rebuildOwnedRows() {
     const x = Transform.x;
     const y = Transform.y;
+    const rotation = Transform.rotation;
     const offsetX = Collider.offsetX;
     const offsetY = Collider.offsetY;
     const colliderActive = Collider.active;
@@ -398,6 +399,7 @@ class SpatialWorker extends AbstractWorker {
     const gridEntities = Grid._gridEntities;
 
     const SHAPE_CIRCLE = 0;
+    const SHAPE_ORIENTED_BOX = 2;
     const maxCol = gridWidth - 1;
     const maxRow = gridHeight - 1;
 
@@ -439,24 +441,46 @@ class SpatialWorker extends AbstractWorker {
       // Flash has neither, so it is skipped.
       if (!colliderActive[i] && !spriteRendererActive[i]) continue;
 
-      // Calculate collider position
-      const posX = x[i] + offsetX[i];
-      const posY = y[i] + offsetY[i];
-
-      // Skip invalid positions (NaN check via self-comparison)
-      if (posX !== posX || posY !== posY) continue;
-
-      // Calculate half-extent based on collider type
-      let halfW = 0,
-        halfH = 0;
+      // Calculate collider position + half-extents based on shape
+      let posX;
+      let posY;
+      let halfW = 0;
+      let halfH = 0;
       if (colliderActive[i]) {
-        if (shapeType[i] === SHAPE_CIRCLE) {
+        const ox = offsetX[i];
+        const oy = offsetY[i];
+        const shape = shapeType[i];
+        if (shape === SHAPE_CIRCLE) {
+          posX = x[i] + ox;
+          posY = y[i] + oy;
           halfW = halfH = radius[i];
+        } else if (shape === SHAPE_ORIENTED_BOX) {
+          const th = rotation[i];
+          const c = Math.cos(th);
+          const s = Math.sin(th);
+          posX = x[i] + c * ox - s * oy;
+          posY = y[i] + s * ox + c * oy;
+          const hw = width[i] * 0.5;
+          const hh = height[i] * 0.5;
+          const ac = c < 0 ? -c : c;
+          const as = s < 0 ? -s : s;
+          // AABB of OBB
+          halfW = ac * hw + as * hh;
+          halfH = as * hw + ac * hh;
         } else {
+          // AABB Box
+          posX = x[i] + ox;
+          posY = y[i] + oy;
           halfW = width[i] * 0.5;
           halfH = height[i] * 0.5;
         }
+      } else {
+        posX = x[i] + offsetX[i];
+        posY = y[i] + offsetY[i];
       }
+
+      // Skip invalid positions (NaN check via self-comparison)
+      if (posX !== posX || posY !== posY) continue;
 
       const maxHalfExtent = halfW > halfH ? halfW : halfH;
 

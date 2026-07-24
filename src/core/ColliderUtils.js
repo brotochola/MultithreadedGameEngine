@@ -13,6 +13,7 @@ import { Collider } from '../components/Collider.js';
  */
 export const SHAPE_CIRCLE = 0;
 export const SHAPE_BOX = 1;
+export const SHAPE_ORIENTED_BOX = 2;
 
 /**
  * Pre-allocated result objects for zero-GC operations
@@ -25,24 +26,42 @@ export const _cellRangeResult = { minCol: 0, maxCol: 0, minRow: 0, maxRow: 0 };
  * Get collider bounds (position and half-extents) for an entity
  * ZERO ALLOCATION - mutates result object
  *
- * Handles both circle and box colliders, includes collider offset
+ * Circle / AABB Box: offset added axis-aligned.
+ * OrientedBox: offset rotated by Transform.rotation; half-extents are AABB-of-OBB.
  *
  * @param {number} idx - Entity index
  * @param {Object} result - Result object to mutate {posX, posY, halfW, halfH}
  * @returns {Object} The result object
  */
 export function getColliderBounds(idx, result) {
-  // Position = transform + collider offset
-  result.posX = Transform.x[idx] + (Collider.offsetX[idx] || 0);
-  result.posY = Transform.y[idx] + (Collider.offsetY[idx] || 0);
+  const shape = Collider.shapeType[idx];
+  const ox = Collider.offsetX[idx] || 0;
+  const oy = Collider.offsetY[idx] || 0;
+  const tx = Transform.x[idx];
+  const ty = Transform.y[idx];
 
-  // Half-extents based on shape type
-  if (Collider.shapeType[idx] === SHAPE_CIRCLE) {
+  if (shape === SHAPE_CIRCLE) {
+    result.posX = tx + ox;
+    result.posY = ty + oy;
     const r = Collider.radius[idx] || 0;
     result.halfW = r;
     result.halfH = r;
+  } else if (shape === SHAPE_ORIENTED_BOX) {
+    const th = Transform.rotation[idx] || 0;
+    const c = Math.cos(th);
+    const s = Math.sin(th);
+    result.posX = tx + c * ox - s * oy;
+    result.posY = ty + s * ox + c * oy;
+    const hw = (Collider.width[idx] || 0) * 0.5;
+    const hh = (Collider.height[idx] || 0) * 0.5;
+    const ac = c < 0 ? -c : c;
+    const as = s < 0 ? -s : s;
+    result.halfW = ac * hw + as * hh;
+    result.halfH = as * hw + ac * hh;
   } else {
-    // Box or other - use width/height
+    // AABB Box (and unknown fallback)
+    result.posX = tx + ox;
+    result.posY = ty + oy;
     result.halfW = (Collider.width[idx] || 0) * 0.5;
     result.halfH = (Collider.height[idx] || 0) * 0.5;
   }
@@ -82,4 +101,3 @@ export function getCellRange(posX, posY, halfW, halfH, invCellSize, maxCol, maxR
 
   return result;
 }
-

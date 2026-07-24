@@ -683,7 +683,7 @@ export function applyBrightnessToColor(color, brightness) {
 // For multi-threaded scenarios, create your own result objects:
 //   const myResult = { collided: false, depth: 0, nx: 0, ny: 0 };
 // ============================================================================
-export const _collisionResult = { collided: false, depth: 0, nx: 0, ny: 0 };
+export const _collisionResult = { collided: false, depth: 0, nx: 0, ny: 0, cx: 0, cy: 0 };
 export const _directionResult = { x: 0, y: 0, length: 0 };
 export const _velocityResult = { vx: 0, vy: 0 };
 export const _cellResult = { col: 0, row: 0 };
@@ -915,6 +915,10 @@ export function testCircleCircleCollision(x1, y1, r1, x2, y2, r2, result) {
     result.ny = dy / dist;
   }
 
+  // Contact along the line of centers
+  result.cx = (x1 + x2) * 0.5;
+  result.cy = (y1 + y2) * 0.5;
+
   return result;
 }
 
@@ -987,6 +991,9 @@ export function testCircleAABBCollision(circleX, circleY, circleR, boxX, boxY, b
     result.ny = dy / dist;
   }
 
+  result.cx = closestX;
+  result.cy = closestY;
+
   return result;
 }
 
@@ -1036,7 +1043,242 @@ export function testAABBAABBCollision(x1, y1, w1, h1, x2, y2, w2, h2, result) {
     result.ny = dy > 0 ? 1 : -1;
   }
 
+  // Approximate contact at midpoint along MTV
+  result.cx = (x1 + x2) * 0.5;
+  result.cy = (y1 + y2) * 0.5;
+
   return result;
+}
+
+/**
+ * Test Circle vs Oriented Box (OBB).
+ * Transforms circle into box-local space, reuses AABB closest-point logic, rotates normal back.
+ * ZERO-GC: mutates result {collided, depth, nx, ny, cx, cy}
+ *
+ * @param {number} cos - cos(boxRotation)
+ * @param {number} sin - sin(boxRotation)
+ */
+export function testCircleOBBCollision(
+  circleX, circleY, circleR,
+  boxX, boxY, boxW, boxH,
+  cos, sin,
+  result
+) {
+  // Circle center relative to box, then into box local frame
+  const dxw = circleX - boxX;
+  const dyw = circleY - boxY;
+  const localX = cos * dxw + sin * dyw;
+  const localY = -sin * dxw + cos * dyw;
+
+  const halfW = boxW * 0.5;
+  const halfH = boxH * 0.5;
+  const minX = -halfW;
+  const maxX = halfW;
+  const minY = -halfH;
+  const maxY = halfH;
+
+  const closestX = localX < minX ? minX : localX > maxX ? maxX : localX;
+  const closestY = localY < minY ? minY : localY > maxY ? maxY : localY;
+
+  const dx = localX - closestX;
+  const dy = localY - closestY;
+  const dist2 = dx * dx + dy * dy;
+
+  if (dist2 >= circleR * circleR) return null;
+
+  const dist = Math.sqrt(dist2);
+  result.collided = true;
+
+  let localNx;
+  let localNy;
+  let depth;
+
+  if (dist === 0) {
+    const distToLeft = localX - minX;
+    const distToRight = maxX - localX;
+    const distToTop = localY - minY;
+    const distToBottom = maxY - localY;
+    const minDistX = distToLeft < distToRight ? distToLeft : distToRight;
+    const minDistY = distToTop < distToBottom ? distToTop : distToBottom;
+
+    if (minDistX < minDistY) {
+      depth = minDistX + circleR;
+      localNx = distToLeft < distToRight ? -1 : 1;
+      localNy = 0;
+    } else {
+      depth = minDistY + circleR;
+      localNx = 0;
+      localNy = distToTop < distToBottom ? -1 : 1;
+    }
+  } else {
+    depth = circleR - dist;
+    localNx = dx / dist;
+    localNy = dy / dist;
+  }
+
+  // Rotate normal back to world
+  result.depth = depth;
+  result.nx = cos * localNx - sin * localNy;
+  result.ny = sin * localNx + cos * localNy;
+
+  // Contact in world space (closest point on OBB)
+  result.cx = boxX + cos * closestX - sin * closestY;
+  result.cy = boxY + sin * closestX + cos * closestY;
+
+  return result;
+}
+
+/**
+ * Project OBB onto an axis (nx, ny) — returns half-extent of projection.
+ * Axis should be normalized.
+ */
+function _obbProjectionRadius(hw, hh, axisX, axisY, cos, sin) {
+  // Box local axes in world: (cos, sin) and (-sin, cos)
+  const ax0 = Math.abs(axisX * cos + axisY * sin);
+  const ax1 = Math.abs(axisX * -sin + axisY * cos);
+  return ax0 * hw + ax1 * hh;
+}
+
+/**
+ * Test OBB vs OBB via SAT on both boxes' edge axes.
+ * ZERO-GC: mutates result {collided, depth, nx, ny, cx, cy}
+ * Normal points from box2 toward box1 (same convention as AABB AABB: from 2 to 1 via dx = x1-x2).
+ */
+export function testOBBOBBCollision(
+  x1, y1, w1, h1, cos1, sin1,
+  x2, y2, w2, h2, cos2, sin2,
+  result
+) {
+  const hw1 = w1 * 0.5;
+  const hh1 = h1 * 0.5;
+  const hw2 = w2 * 0.5;
+  const hh2 = h2 * 0.5;
+
+  const dx = x1 - x2;
+  const dy = y1 - y2;
+
+  let minOverlap = Infinity;
+  let bestNx = 0;
+  let bestNy = 0;
+
+  // Four candidate axes: two from each OBB
+  // Axis A0
+  {
+    const ax = cos1;
+    const ay = sin1;
+    const r1 = hw1; // projection of box1 onto its own x-axis
+    const r2 = _obbProjectionRadius(hw2, hh2, ax, ay, cos2, sin2);
+    const dist = Math.abs(dx * ax + dy * ay);
+    const overlap = r1 + r2 - dist;
+    if (overlap <= 0) return null;
+    if (overlap < minOverlap) {
+      minOverlap = overlap;
+      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
+      bestNx = ax * sign;
+      bestNy = ay * sign;
+    }
+  }
+  // Axis A1
+  {
+    const ax = -sin1;
+    const ay = cos1;
+    const r1 = hh1;
+    const r2 = _obbProjectionRadius(hw2, hh2, ax, ay, cos2, sin2);
+    const dist = Math.abs(dx * ax + dy * ay);
+    const overlap = r1 + r2 - dist;
+    if (overlap <= 0) return null;
+    if (overlap < minOverlap) {
+      minOverlap = overlap;
+      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
+      bestNx = ax * sign;
+      bestNy = ay * sign;
+    }
+  }
+  // Axis B0
+  {
+    const ax = cos2;
+    const ay = sin2;
+    const r1 = _obbProjectionRadius(hw1, hh1, ax, ay, cos1, sin1);
+    const r2 = hw2;
+    const dist = Math.abs(dx * ax + dy * ay);
+    const overlap = r1 + r2 - dist;
+    if (overlap <= 0) return null;
+    if (overlap < minOverlap) {
+      minOverlap = overlap;
+      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
+      bestNx = ax * sign;
+      bestNy = ay * sign;
+    }
+  }
+  // Axis B1
+  {
+    const ax = -sin2;
+    const ay = cos2;
+    const r1 = _obbProjectionRadius(hw1, hh1, ax, ay, cos1, sin1);
+    const r2 = hh2;
+    const dist = Math.abs(dx * ax + dy * ay);
+    const overlap = r1 + r2 - dist;
+    if (overlap <= 0) return null;
+    if (overlap < minOverlap) {
+      minOverlap = overlap;
+      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
+      bestNx = ax * sign;
+      bestNy = ay * sign;
+    }
+  }
+
+  result.collided = true;
+  result.depth = minOverlap;
+  result.nx = bestNx;
+  result.ny = bestNy;
+  // Contact = support along ±n. Deadzone so near-axis normals hit face center, not a corner.
+  // If one OBB is much larger (e.g. full-width Floor), use the *smaller* body's support only —
+  // averaging with a huge face centroid invents a sideways lever and endless spin.
+  {
+    const FACE_EPS = 1e-3;
+    const lx1 = cos1 * -bestNx + sin1 * -bestNy;
+    const ly1 = -sin1 * -bestNx + cos1 * -bestNy;
+    const sx1 = lx1 > FACE_EPS ? hw1 : lx1 < -FACE_EPS ? -hw1 : 0;
+    const sy1 = ly1 > FACE_EPS ? hh1 : ly1 < -FACE_EPS ? -hh1 : 0;
+    const p1x = x1 + cos1 * sx1 - sin1 * sy1;
+    const p1y = y1 + sin1 * sx1 + cos1 * sy1;
+
+    const lx2 = cos2 * bestNx + sin2 * bestNy;
+    const ly2 = -sin2 * bestNx + cos2 * bestNy;
+    const sx2 = lx2 > FACE_EPS ? hw2 : lx2 < -FACE_EPS ? -hw2 : 0;
+    const sy2 = ly2 > FACE_EPS ? hh2 : ly2 < -FACE_EPS ? -hh2 : 0;
+    const p2x = x2 + cos2 * sx2 - sin2 * sy2;
+    const p2y = y2 + sin2 * sx2 + cos2 * sy2;
+
+    const area1 = w1 * h1;
+    const area2 = w2 * h2;
+    if (area1 < area2 * 0.25) {
+      result.cx = p1x;
+      result.cy = p1y;
+    } else if (area2 < area1 * 0.25) {
+      result.cx = p2x;
+      result.cy = p2y;
+    } else {
+      result.cx = (p1x + p2x) * 0.5;
+      result.cy = (p1y + p2y) * 0.5;
+    }
+  }
+  return result;
+}
+
+/**
+ * Ray vs Oriented Box. Transforms ray into box-local space, then uses AABB slab test.
+ * @returns {number} Distance along ray, or -1 if miss
+ */
+export function rayOBBIntersect(rayX, rayY, dirX, dirY, boxX, boxY, width, height, cos, sin, maxDist) {
+  const dx = rayX - boxX;
+  const dy = rayY - boxY;
+  const localOx = cos * dx + sin * dy;
+  const localOy = -sin * dx + cos * dy;
+  // Rotate direction into local (same rotation, no translation)
+  const localDx = cos * dirX + sin * dirY;
+  const localDy = -sin * dirX + cos * dirY;
+  return rayBoxIntersect(localOx, localOy, localDx, localDy, 0, 0, width, height, maxDist);
 }
 
 // ============================================================================

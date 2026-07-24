@@ -29,6 +29,8 @@ export class RigidBody extends Component {
     // Mass properties
     mass: Float32Array,
     invMass: Float32Array,
+    inertia: Float32Array,
+    invInertia: Float32Array,
 
     // Damping
     drag: Float32Array,
@@ -69,9 +71,10 @@ export class RigidBody extends Component {
 
     const isStatic = RigidBody.static[index] !== 0;
     let massInitialized = false;
+    let shapeType = -1;
 
     if (Collider.active && Collider.active[index]) {
-      const shapeType = Collider.shapeType[index];
+      shapeType = Collider.shapeType[index];
       if (shapeType === 0) {
         const radius = Collider.radius[index];
         if (radius > 0) {
@@ -83,7 +86,8 @@ export class RigidBody extends Component {
           }
           massInitialized = true;
         }
-      } else if (shapeType === 1) {
+      } else if (shapeType === 1 || shapeType === 2) {
+        // Box (AABB) and OrientedBox share rectangle area mass
         const width = Collider.width[index];
         const height = Collider.height[index];
         if (width > 0 && height > 0) {
@@ -111,7 +115,37 @@ export class RigidBody extends Component {
       }
     }
 
+    RigidBody.syncInertiaFromCollider(index, shapeType, isStatic);
     return massInitialized;
+  }
+
+  /**
+   * Recompute rotational inertia from collider geometry and mass.
+   * Circle: I = 0.5 * m * r²; rectangle (Box/OrientedBox): I = m * (w² + h²) / 12.
+   * Static bodies always get invInertia = 0.
+   */
+  static syncInertiaFromCollider(index, shapeType = -1, isStatic = null) {
+    if (!RigidBody.active || !RigidBody.active[index]) return;
+
+    if (isStatic === null) isStatic = RigidBody.static[index] !== 0;
+    if (shapeType < 0 && Collider.active && Collider.active[index]) {
+      shapeType = Collider.shapeType[index];
+    }
+
+    const mass = RigidBody.mass[index];
+    let inertia = 0;
+
+    if (shapeType === 0) {
+      const r = Collider.radius[index];
+      if (r > 0 && mass > 0) inertia = 0.5 * mass * r * r;
+    } else if (shapeType === 1 || shapeType === 2) {
+      const w = Collider.width[index];
+      const h = Collider.height[index];
+      if (w > 0 && h > 0 && mass > 0) inertia = (mass * (w * w + h * h)) / 12;
+    }
+
+    RigidBody.inertia[index] = inertia;
+    RigidBody.invInertia[index] = isStatic || !(inertia > 0) ? 0 : 1 / inertia;
   }
 
   /**

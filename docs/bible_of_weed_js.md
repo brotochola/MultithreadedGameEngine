@@ -187,10 +187,21 @@ Add it to `static components` and use `query([MyTag])` to find entities. No regi
 
 - **`collisionLayer`** (Uint8, 0-31): which layer this entity is on.
 - **`collisionMask`** (Uint32, bitmask): which layers this entity collides with.
-- Two entities collide only if both see each other: A's layer in B's mask **and** B's layer in A's mask.
-- Defaults: layer `0`, mask `0xFFFFFFFF` (collide with all). Mask `0` = collide with nothing.
+- **`collisionGroupIndex`** (Int32, Box2D-style `b2Filter.groupIndex`): overrides layer/mask for same-group pairs.
+- Two entities collide only if both see each other: A's layer in B's mask **and** B's layer in A's mask — **unless** group index overrides.
+- Defaults: layer `0`, mask `0xFFFFFFFF` (collide with all), group index `0` (no group override). Mask `0` = collide with nothing.
 - Hard limit: **32 collision layers**.
 - Helper: `layerMask([0, 2, 4])` converts an array of layer indices to a bitmask.
+
+### Group index rules (Box2D)
+
+| `collisionGroupIndex` | Result |
+|---|---|
+| `0` (either side) or groups differ | Use layer/mask |
+| Same **negative** value | Never collide |
+| Same **positive** value | Always collide (overrides mask) |
+
+Use a shared negative group for composite bodies (ragdoll parts, constraint-box corners) so siblings skip each other while still hitting other entities.
 
 ```javascript
 this.collider.collisionLayer = 1;
@@ -198,9 +209,12 @@ this.collider.collisionMask = layerMask([2, 4]);        // or (1 << 2) | (1 << 4
 this.collider.addLayerToMask(3);
 this.collider.removeLayerFromMask(2);
 this.collider.collidesWithLayer(4);                      // true
+
+// Sibling parts of one composite body — never collide with each other
+this.collider.collisionGroupIndex = -parentEntityIndex;
 ```
 
-All `Ray` methods also accept an optional `mask` param (default all layers). See `docs/RAYCASTING.md`.
+All `Ray` methods also accept an optional `mask` param (default all layers). Rays do **not** use `collisionGroupIndex` (entity–entity pairs only). See `docs/RAYCASTING.md`.
 
 ### Contact queries (`isCollidingWith`)
 

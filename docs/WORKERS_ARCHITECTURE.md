@@ -62,7 +62,7 @@ Integrates rigid bodies and resolves collisions. Reads neighbor data from spatia
 **What it does each frame:**
 
 1. Integrate positions (Verlet: `pos += vel + acc * dt²`)
-2. For each active entity with collision neighbors, resolve overlaps (pairs are skipped when their `collisionLayer`/`collisionMask` bitmasks don't match -- two bitwise ANDs per candidate pair)
+2. For each active entity with collision neighbors, resolve overlaps (pairs are filtered by Box2D-style `collisionGroupIndex` first — same negative skips, same positive always hits — then by `collisionLayer`/`collisionMask` bitmasks; typed-array reads only, no allocations)
 3. Write collision pairs to `collisionData`
 4. Optionally solve constraints
 
@@ -70,7 +70,7 @@ Integrates rigid bodies and resolves collisions. Reads neighbor data from spatia
 | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------ |
 | Transform (`x`, `y`)               | **Write**      | Position integration                                                                 |
 | RigidBody (`px`, `py`, `vx`, `vy`) | **Write**      | Velocity, previous position                                                          |
-| Collider                           | Read           | Shapes, radii, `collisionLayer` (Uint8 index 0-31), `collisionMask` (Uint32 bitmask) |
+| Collider                           | Read           | Shapes, radii, `collisionLayer` (Uint8 0-31), `collisionMask` (Uint32), `collisionGroupIndex` (Int32) |
 | `neighborData`                     | Read           | First `collisionCount` entries per entity                                            |
 | `collisionData`                    | **Write**      | `[pairCount, A0, B0, A1, B1, ...]`                                                   |
 | `constraintData`                   | Read/**Write** | Solve + free constraints                                                             |

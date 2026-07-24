@@ -2,7 +2,7 @@
 
 `Ray` is a static class in `src/core/Ray.js`. It casts rays against the spatial grid using DDA (Digital Differential Analyzer) traversal. Object and array return values are borrowed by default -- pre-allocated and reused for zero GC pressure.
 
-All methods accept an optional **`mask`** parameter (Uint32 bitmask, default `0xFFFFFFFF`). Only entities whose `collisionLayer` bit is set in the mask are considered. See **Collision Filtering** in `bible_of_weed_js.md`.
+All methods accept an optional **`mask`** parameter (Uint32 bitmask, default `0xFFFFFFFF`). Only entities whose `collisionLayer` bit is set in the mask are considered. Rays do not use `collisionGroupIndex` (that filter is for entity–entity physics pairs only). See **Collision Filtering** in `bible_of_weed_js.md`.
 
 If you need to keep a result after another `Ray` call, pass an optional `out` object/array as the last argument. Otherwise, consume the returned object immediately.
 

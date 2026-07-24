@@ -42,6 +42,8 @@
     import { ZenithalParticleTestScene } from '/demos/scenes/zenithalParticleTestScene.js';
     import { AdobeAnimateScene } from '/demos/scenes/AdobeAnimateScene.js';
     import { PlatformerGameScene } from '/demos/scenes/PlatformerGameScene.js';
+    import { ConstraintBoxScene } from '/demos/scenes/ConstraintBoxScene.js';
+    import { OrientedBoxScene } from '/demos/scenes/OrientedBoxScene.js';
     // Destructure what we need from WEED
     const { GameEngine } = WEED;
 
@@ -66,6 +68,8 @@
       { name: '🔬 Zenithal Particles', class: ZenithalParticleTestScene },
       { name: '🦴 Adobe Animate', class: AdobeAnimateScene },
       { name: 'platformer game', class: PlatformerGameScene },
+      { name: 'Constraint Boxes', class: ConstraintBoxScene },
+      { name: 'Oriented Boxes', class: OrientedBoxScene },
     ]
     // Register available scenes with DebugUI for scene switching
     if (game.debugUI) {

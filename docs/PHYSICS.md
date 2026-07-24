@@ -10,12 +10,37 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 
 ## Responsibilities (per frame)
 
-1. **Verlet integration** — advance positions from acceleration, velocity caps, friction, and gravity (config-driven).
-2. **Collision resolution** — for entities with collision candidates in `neighborData`, resolve overlaps (circles and AABBs; layer/mask filtering applies).
+1. **Verlet integration** — advance positions from acceleration, velocity caps, friction, and gravity (config-driven). Also integrates `angularVelocity` into `Transform.rotation` and applies `angularDrag`.
+2. **Collision resolution** — for entities with collision candidates in `neighborData`, resolve overlaps (circles, AABBs, and OrientedBoxes/OBBs; `collisionGroupIndex` then layer/mask filtering; typed-array reads only). Non-trigger contacts use PBD effective mass `ΣinvMass + (r×n)²·invInertia`, impulse `λ = correction / that`, then linear + rotational position corrections. A fraction of `Δθ` is added to `angularVelocity` so spin carries without double-applying the full kick on the next integrate step.
 3. **Distance constraints** (optional) — position-based corrections for active constraints when constraints are enabled in scene config.
 4. **Stats** — write counters and timing into `physicsStats` (see [Worker stats](#worker-stats)).
 
 The worker does **not** build the spatial grid or neighbor lists; it **reads** `Grid.neighborData` produced by spatial workers.
+
+### Collider shape types
+
+| Value | Name | Notes |
+|------:|------|-------|
+| `0` | Circle | Uses `radius` |
+| `1` | Box | Axis-aligned rectangle (`width`/`height`); ignores `Transform.rotation` for collision |
+| `2` | OrientedBox | OBB oriented by `Transform.rotation`; spatial broadphase uses the AABB of the OBB |
+
+Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
+
+- Circle: `I = 0.5 * m * r²`
+- Box / OrientedBox: `I = m * (w² + h²) / 12`
+- Static: `invInertia = 0`
+
+`angularDrag` damps spin each move step: `ω *= max(0, 1 - angularDrag * dtRatio)`. Sprite facing follows `Transform.rotation` automatically via the render queue (no extra sync).
+
+### Collision filtering (hot path)
+
+Pair filter runs in the dense collision loop with **no allocations**:
+
+1. **`collisionGroupIndex`** (Int32, Box2D-style): same nonzero group — negative skips, positive always collides (overrides mask).
+2. Else **`collisionLayer` / `collisionMask`**: mutual bit checks.
+
+See [Collision Filtering](./bible_of_weed_js.md#collision-filtering) in the bible.
 
 ### Scene `physics` config: substeps vs distance iterations
 

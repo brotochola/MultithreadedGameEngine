@@ -5,7 +5,7 @@ self.postMessage({
 });
 // physics_worker.js - Physics integration (velocity, position updates)
 // Now uses per-entity maxVel and friction from GameObject arrays
-// Supports Circle and AABB (Box) colliders
+// Supports Circle, AABB Box, and OrientedBox (OBB) colliders
 
 // Import engine dependencies
 import { GameObject } from '../core/gameObject.js';
@@ -24,15 +24,18 @@ import {
   testCircleCircleCollision,
   testCircleAABBCollision,
   testAABBAABBCollision,
+  testCircleOBBCollision,
+  testOBBOBBCollision,
 } from '../core/utils.js';
 import { rng } from '../core/utils.js';
 import { Camera } from '../core/Camera.js';
 // Note: Game-specific scripts are loaded dynamically by AbstractWorker
 // Physics worker uses RigidBody component for physics calculations
 
-// Shape type constants (must match Collider.shapeType values)
+// Shape type constants (must match Collider.shapeType / ShapeType enum)
 const SHAPE_CIRCLE = 0;
 const SHAPE_BOX = 1;
+const SHAPE_ORIENTED_BOX = 2;
 const MIN_CONSTRAINT_DIST_SQ = 0.0001 * 0.0001;
 const CONSTRAINT_ERROR_EPSILON = 0.001;
 
@@ -76,7 +79,14 @@ class PhysicsWorker extends AbstractWorker {
       depth: 0,
       nx: 0,
       ny: 0,
+      cx: 0,
+      cy: 0,
     };
+
+    // Per-entity cos/sin cache for OrientedBox narrowphase (filled each resolve pass)
+    this._obbCos = null;
+    this._obbSin = null;
+    this._obbCacheLen = 0;
 
     // Constraint system
     this.constraintsEnabled = false;
@@ -305,6 +315,7 @@ class PhysicsWorker extends AbstractWorker {
       gy,
       maxVel
     );
+    this.integrateAngular(dtRatio);
     if (shouldProfile) {
       this.moveTimeThisFrame += performance.now() - startTime;
     }
@@ -432,6 +443,7 @@ class PhysicsWorker extends AbstractWorker {
       gy,
       maxVel
     );
+    this.integrateAngular(fixedDtRatio);
     if (shouldProfile) {
       this.moveTimeThisFrame += performance.now() - startTime;
     }
@@ -507,6 +519,80 @@ class PhysicsWorker extends AbstractWorker {
       } else {
         vx[i] = (x[i] - px[i]) * invDtRatio;
         vy[i] = (y[i] - py[i]) * invDtRatio;
+      }
+    }
+  }
+
+  /**
+   * Integrate angular velocity into Transform.rotation and apply angularDrag.
+   * Runs once per move step after linear Verlet. Static/sleeping bodies skipped.
+   */
+  integrateAngular(dtRatio) {
+    const physicsEntities = this._cachedPhysicsEntities;
+    if (!physicsEntities) return;
+
+    const rotation = Transform.rotation;
+    const angularVelocity = RigidBody.angularVelocity;
+    const angularAccel = RigidBody.angularAccel;
+    const angularDrag = RigidBody.angularDrag;
+    const isStatic = RigidBody.static;
+    const sleeping = RigidBody.sleeping;
+    const count = physicsEntities.length;
+
+    for (let idx = 0; idx < count; idx++) {
+      const i = physicsEntities[idx];
+      if (isStatic[i] || sleeping[i]) continue;
+
+      let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
+      const ad = angularDrag[i];
+      if (ad > 0) {
+        const keep = 1 - ad * dtRatio;
+        omega *= keep > 0 ? keep : 0;
+      }
+      angularVelocity[i] = omega;
+      angularAccel[i] = 0;
+      if (omega !== 0) {
+        rotation[i] += omega * dtRatio;
+      }
+    }
+  }
+
+  /**
+   * Ensure OBB cos/sin scratch buffers can index every entity id used this pass.
+   */
+  _ensureObbCache(neededLen) {
+    if (this._obbCacheLen >= neededLen) return;
+    const len = Math.max(neededLen, 1024);
+    this._obbCos = new Float32Array(len);
+    this._obbSin = new Float32Array(len);
+    this._obbCacheLen = len;
+  }
+
+  /**
+   * Fill cos/sin for OrientedBox entities in the dense collider list.
+   * Also stores cos=1,sin=0 for AABB Box so Box↔OBB can share OBB testers.
+   */
+  _fillObbOrientationCache(denseColliders, denseCount, shapeType, rotation) {
+    let maxId = 0;
+    for (let idx = 0; idx < denseCount; idx++) {
+      const i = denseColliders[idx];
+      if (i > maxId) maxId = i;
+    }
+    this._ensureObbCache(maxId + 1);
+
+    const cosArr = this._obbCos;
+    const sinArr = this._obbSin;
+
+    for (let idx = 0; idx < denseCount; idx++) {
+      const i = denseColliders[idx];
+      const shape = shapeType[i];
+      if (shape === SHAPE_ORIENTED_BOX) {
+        const th = rotation[i];
+        cosArr[i] = Math.cos(th);
+        sinArr[i] = Math.sin(th);
+      } else if (shape === SHAPE_BOX) {
+        cosArr[i] = 1;
+        sinArr[i] = 0;
       }
     }
   }
@@ -883,6 +969,9 @@ class PhysicsWorker extends AbstractWorker {
     const responseStrength = this.settings.collisionResponseStrength;
     const isStatic = RigidBody.static;
     const invMass = RigidBody.invMass;
+    const invInertia = RigidBody.invInertia;
+    const angularVelocity = RigidBody.angularVelocity;
+    const rotation = Transform.rotation;
 
     let pairCount = 0;
     const collisionData = this.collisionData;
@@ -894,6 +983,7 @@ class PhysicsWorker extends AbstractWorker {
     const visualRange = Collider.visualRange;
     const collisionLayer = Collider.collisionLayer;
     const collisionMask = Collider.collisionMask;
+    const collisionGroupIndex = Collider.collisionGroupIndex;
 
     // OPTIMIZATION: Use pre-built dense list of active colliders that ACTUALLY have collision candidates
     // This perfectly bypasses thousands of empty loop iterations in sub-stepping.
@@ -902,6 +992,12 @@ class PhysicsWorker extends AbstractWorker {
 
     // Cache sleeping array reference for performance
     const sleeping = RigidBody.sleeping;
+    const collisionResult = this.collisionResult;
+
+    // Precompute cos/sin for OrientedBox (and identity for AABB Box) once per resolve
+    this._fillObbOrientationCache(denseColliders, denseCount, shapeType, rotation);
+    const obbCos = this._obbCos;
+    const obbSin = this._obbSin;
 
     for (let idx = 0; idx < denseCount; idx++) {
       const i = denseColliders[idx];
@@ -921,6 +1017,11 @@ class PhysicsWorker extends AbstractWorker {
       // Hoist offsets (invariant) but NOT position (variant)
       const offXi = offsetX[i];
       const offYi = offsetY[i];
+      let cosI = shapeI === SHAPE_ORIENTED_BOX ? obbCos[i] : 1;
+      let sinI = shapeI === SHAPE_ORIENTED_BOX ? obbSin[i] : 0;
+      // World-space offset for OrientedBox; axis-aligned add for Circle/AABB
+      let worldOffXi = shapeI === SHAPE_ORIENTED_BOX ? cosI * offXi - sinI * offYi : offXi;
+      let worldOffYi = shapeI === SHAPE_ORIENTED_BOX ? sinI * offXi + cosI * offYi : offYi;
 
       // NOTE: colliderX_i / colliderY_i CANNOT be hoisted arbitrarily because x[i]/y[i]
       // change during the loop as collisions are resolved!
@@ -928,9 +1029,10 @@ class PhysicsWorker extends AbstractWorker {
       let localXi = x[i];
       let localYi = y[i];
 
-      // OPTIMIZATION: Cache entity i's layer/mask and static/sleeping state outside the loop
+      // OPTIMIZATION: Cache entity i's layer/mask/group and static/sleeping state outside the loop
       const layerBitI = 1 << (collisionLayer[i] & 31);
       const maskI = collisionMask[i];
+      const groupI = collisionGroupIndex[i];
       const iHasRigidBody = rigidBodyActive[i];
       const iStatic = !iHasRigidBody || isStatic[i];
       const iSleeping = iHasRigidBody && sleeping[i];
@@ -961,75 +1063,105 @@ class PhysicsWorker extends AbstractWorker {
           continue;
         }
 
-        // Collision layer/mask filtering: skip if either entity's layer isn't in the other's mask
-        const layerBitJ = 1 << (collisionLayer[j] & 31);
-        if (!(layerBitI & collisionMask[j]) || !(layerBitJ & maskI)) continue;
+        // Box2D-style groupIndex: same nonzero group overrides layer/mask
+        // same negative → never; same positive → always; else fall through to layer/mask
+        const groupJ = collisionGroupIndex[j];
+        if (groupI !== 0 && groupI === groupJ) {
+          if (groupI < 0) continue;
+          // groupI > 0: always collide — skip layer/mask check
+        } else {
+          const layerBitJ = 1 << (collisionLayer[j] & 31);
+          if (!(layerBitI & collisionMask[j]) || !(layerBitJ & maskI)) continue;
+        }
 
         // Get shape type for neighbor 'j'
         const shapeJ = shapeType[j];
+        // j may not be in dense list (e.g. static floor) — compute orientation live
+        let cosJ = 1;
+        let sinJ = 0;
+        if (shapeJ === SHAPE_ORIENTED_BOX) {
+          const thJ = rotation[j];
+          cosJ = Math.cos(thJ);
+          sinJ = Math.sin(thJ);
+        }
+        const offXj = offsetX[j];
+        const offYj = offsetY[j];
+        const worldOffXj = shapeJ === SHAPE_ORIENTED_BOX ? cosJ * offXj - sinJ * offYj : offXj;
+        const worldOffYj = shapeJ === SHAPE_ORIENTED_BOX ? sinJ * offXj + cosJ * offYj : offYj;
 
         // Calculate offset-adjusted collider positions
         // We MUST re-calculate i's position here because it might have moved
         // in a previous iteration of this same loop (multi-collision)
-        const colliderX_i = localXi + offXi;
-        const colliderY_i = localYi + offYi;
+        const colliderX_i = localXi + worldOffXi;
+        const colliderY_i = localYi + worldOffYi;
 
-        const colliderX_j = x[j] + offsetX[j];
-        const colliderY_j = y[j] + offsetY[j];
+        const colliderX_j = x[j] + worldOffXj;
+        const colliderY_j = y[j] + worldOffYj;
 
-        // Collision result: { collided, depth, nx, ny }
+        // Collision result: { collided, depth, nx, ny, cx, cy }
         let result = null;
 
         // Track collision check
         this.collisionChecksThisFrame++;
 
         if (shapeI === SHAPE_CIRCLE && shapeJ === SHAPE_CIRCLE) {
-          // Circle vs Circle
-          result = this.testCircleCircle(
-            colliderX_i,
-            colliderY_i,
-            radiusI,
-            colliderX_j,
-            colliderY_j,
-            radius[j]
+          result = testCircleCircleCollision(
+            colliderX_i, colliderY_i, radiusI,
+            colliderX_j, colliderY_j, radius[j],
+            collisionResult
           );
         } else if (shapeI === SHAPE_CIRCLE && shapeJ === SHAPE_BOX) {
-          // Circle vs Box
-          result = this.testCircleAABB(
-            colliderX_i,
-            colliderY_i,
-            radiusI,
-            colliderX_j,
-            colliderY_j,
-            width[j],
-            height[j]
+          result = testCircleAABBCollision(
+            colliderX_i, colliderY_i, radiusI,
+            colliderX_j, colliderY_j, width[j], height[j],
+            collisionResult
           );
         } else if (shapeI === SHAPE_BOX && shapeJ === SHAPE_CIRCLE) {
-          // Box vs Circle (swap and invert normal)
-          result = this.testCircleAABB(
-            colliderX_j,
-            colliderY_j,
-            radius[j],
-            colliderX_i,
-            colliderY_i,
-            widthI,
-            heightI
+          result = testCircleAABBCollision(
+            colliderX_j, colliderY_j, radius[j],
+            colliderX_i, colliderY_i, widthI, heightI,
+            collisionResult
           );
           if (result && result.collided) {
             result.nx = -result.nx;
             result.ny = -result.ny;
           }
         } else if (shapeI === SHAPE_BOX && shapeJ === SHAPE_BOX) {
-          // Box vs Box
-          result = this.testAABBAABB(
-            colliderX_i,
-            colliderY_i,
-            widthI,
-            heightI,
-            colliderX_j,
-            colliderY_j,
-            width[j],
-            height[j]
+          result = testAABBAABBCollision(
+            colliderX_i, colliderY_i, widthI, heightI,
+            colliderX_j, colliderY_j, width[j], height[j],
+            collisionResult
+          );
+        } else if (shapeI === SHAPE_CIRCLE && shapeJ === SHAPE_ORIENTED_BOX) {
+          result = testCircleOBBCollision(
+            colliderX_i, colliderY_i, radiusI,
+            colliderX_j, colliderY_j, width[j], height[j], cosJ, sinJ,
+            collisionResult
+          );
+        } else if (shapeI === SHAPE_ORIENTED_BOX && shapeJ === SHAPE_CIRCLE) {
+          result = testCircleOBBCollision(
+            colliderX_j, colliderY_j, radius[j],
+            colliderX_i, colliderY_i, widthI, heightI, cosI, sinI,
+            collisionResult
+          );
+          if (result && result.collided) {
+            result.nx = -result.nx;
+            result.ny = -result.ny;
+          }
+        } else if (
+          (shapeI === SHAPE_ORIENTED_BOX || shapeI === SHAPE_BOX) &&
+          (shapeJ === SHAPE_ORIENTED_BOX || shapeJ === SHAPE_BOX) &&
+          (shapeI === SHAPE_ORIENTED_BOX || shapeJ === SHAPE_ORIENTED_BOX)
+        ) {
+          // OrientedBox–OrientedBox or Box–OrientedBox (AABB uses cos=1, sin=0)
+          const cI = shapeI === SHAPE_ORIENTED_BOX ? cosI : 1;
+          const sI = shapeI === SHAPE_ORIENTED_BOX ? sinI : 0;
+          const cJ = shapeJ === SHAPE_ORIENTED_BOX ? cosJ : 1;
+          const sJ = shapeJ === SHAPE_ORIENTED_BOX ? sinJ : 0;
+          result = testOBBOBBCollision(
+            colliderX_i, colliderY_i, widthI, heightI, cI, sI,
+            colliderX_j, colliderY_j, width[j], height[j], cJ, sJ,
+            collisionResult
           );
         }
 
@@ -1057,12 +1189,11 @@ class PhysicsWorker extends AbstractWorker {
 
         // Apply physical response if neither is a trigger
         if (!eitherIsTrigger) {
-          // OPTIMIZATION: iStatic and jStatic are already computed above
-          // No need to recompute them here
-
           const correction = result.depth * responseStrength;
           const nx = result.nx;
           const ny = result.ny;
+          const cx = result.cx;
+          const cy = result.cy;
 
           // Mass-weighted collision response:
           // Lighter objects move more, heavier objects move less
@@ -1072,16 +1203,63 @@ class PhysicsWorker extends AbstractWorker {
           const totalInvMass = invMassI + invMassJ;
 
           if (totalInvMass > 0) {
-            // Distribute correction based on inverse mass ratio
-            const corrI = correction * (invMassI / totalInvMass);
-            const corrJ = correction * (invMassJ / totalInvMass);
+            const invII = iStatic ? 0 : invInertia[i];
+            const invIJ = jStatic ? 0 : invInertia[j];
+            const rix = cx - localXi;
+            const riy = cy - localYi;
+            const rjx = cx - x[j];
+            const rjy = cy - y[j];
+            // r × n (j uses -n → opposite sign)
+            const crossI = rix * ny - riy * nx;
+            const crossJ = -rjx * ny + rjy * nx;
 
-            x[i] = localXi += nx * corrI;
-            y[i] = localYi += ny * corrI;
-            x[j] -= nx * corrJ;
-            y[j] -= ny * corrJ;
+            // PBD effective mass: include angular or corner hits explode vs static floors
+            const invMassAng =
+              totalInvMass +
+              crossI * crossI * invII +
+              crossJ * crossJ * invIJ;
+            const lambda = correction / invMassAng;
+
+            x[i] = localXi += nx * (lambda * invMassI);
+            y[i] = localYi += ny * (lambda * invMassI);
+            x[j] -= nx * (lambda * invMassJ);
+            y[j] -= ny * (lambda * invMassJ);
+
+            // Face-ish contact (|r × n| small): no torque — flat Floor hit must not spin.
+            // Real corner/edge: apply Δθ. Skip ω carry on face; damp spin vs static.
+            const CROSS_EPS = 2; // px lever; below = treat as face
+            const hitStatic = iStatic || jStatic;
+            if (invII > 0) {
+              const absCross = crossI < 0 ? -crossI : crossI;
+              if (absCross > CROSS_EPS) {
+                const dTh = crossI * invII * lambda;
+                rotation[i] += dTh;
+                angularVelocity[i] += dTh * 0.25;
+                // Mid-pass θ change: refresh OBB basis so later pairs vs i stay correct
+                if (shapeI === SHAPE_ORIENTED_BOX) {
+                  const th = rotation[i];
+                  cosI = Math.cos(th);
+                  sinI = Math.sin(th);
+                  worldOffXi = cosI * offXi - sinI * offYi;
+                  worldOffYi = sinI * offXi + cosI * offYi;
+                  obbCos[i] = cosI;
+                  obbSin[i] = sinI;
+                }
+              } else if (hitStatic) {
+                angularVelocity[i] *= 0.8;
+              }
+            }
+            if (invIJ > 0) {
+              const absCross = crossJ < 0 ? -crossJ : crossJ;
+              if (absCross > CROSS_EPS) {
+                const dTh = crossJ * invIJ * lambda;
+                rotation[j] += dTh;
+                angularVelocity[j] += dTh * 0.25;
+              } else if (hitStatic) {
+                angularVelocity[j] *= 0.8;
+              }
+            }
           }
-          // If totalInvMass === 0, both are static/infinite mass - no movement
         }
 
         // Track collision count
@@ -1103,36 +1281,6 @@ class PhysicsWorker extends AbstractWorker {
 
     // Store for stats reporting
     this.collisionPairsThisFrame = pairCount;
-  }
-
-  /**
-   * Test Circle vs Circle collision
-   * @returns {{ collided: boolean, depth: number, nx: number, ny: number } | null}
-   */
-  testCircleCircle(x1, y1, r1, x2, y2, r2) {
-    // Reuse collision result object to avoid GC pressure
-    const result = this.collisionResult;
-    return testCircleCircleCollision(x1, y1, r1, x2, y2, r2, result);
-  }
-
-  /**
-   * Test Circle vs AABB collision
-   * @returns {{ collided: boolean, depth: number, nx: number, ny: number } | null}
-   */
-  testCircleAABB(circleX, circleY, circleR, boxX, boxY, boxW, boxH) {
-    // Reuse collision result object to avoid GC pressure
-    const result = this.collisionResult;
-    return testCircleAABBCollision(circleX, circleY, circleR, boxX, boxY, boxW, boxH, result);
-  }
-
-  /**
-   * Test AABB vs AABB collision
-   * @returns {{ collided: boolean, depth: number, nx: number, ny: number } | null}
-   */
-  testAABBAABB(x1, y1, w1, h1, x2, y2, w2, h2) {
-    // Reuse collision result object to avoid GC pressure
-    const result = this.collisionResult;
-    return testAABBAABBCollision(x1, y1, w1, h1, x2, y2, w2, h2, result);
   }
 
   /**

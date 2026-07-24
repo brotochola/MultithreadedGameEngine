@@ -26,7 +26,7 @@ class Collider extends Component {
     active: Uint8Array, // 0 = entity doesn't have this component, 1 = active
 
     // Shape type
-    shapeType: Uint8Array, // 0=Circle, 1=Box
+    shapeType: Uint8Array, // 0=Circle, 1=Box (AABB), 2=OrientedBox (OBB)
 
     // Offset from entity position
     offsetX: Float32Array,
@@ -43,8 +43,10 @@ class Collider extends Component {
     isTrigger: Uint8Array, // trigger=only events, no physical response
 
     // Collision filtering (32 layers max; layer is index 0-31, mask is bitmask)
+    // collisionGroupIndex: Box2D-style group (0 = ignore; same negative = never; same positive = always)
     collisionLayer: Uint8Array,
     collisionMask: Uint32Array,
+    collisionGroupIndex: Int32Array,
 
     // Perception (for spatial queries)
     visualRange: Float32Array,
@@ -107,10 +109,14 @@ class Collider extends Component {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // COLLISION LAYER / MASK
+  // COLLISION LAYER / MASK / GROUP INDEX
   // Layer = which layer this entity is on (0-31, stored as Uint8)
   // Mask  = which layers this entity collides with (bitmask, stored as Uint32)
-  // Two entities collide only if each entity's layer bit is set in the other's mask.
+  // Two entities collide only if each entity's layer bit is set in the other's mask,
+  // unless collisionGroupIndex overrides (Box2D b2Filter.groupIndex rules):
+  //   0              → use layer/mask only
+  //   same negative  → never collide
+  //   same positive  → always collide (overrides mask)
   // ═══════════════════════════════════════════════════════════════════════════
 
   get collisionLayer() {
@@ -125,6 +131,13 @@ class Collider extends Component {
   }
   set collisionMask(value) {
     Collider.collisionMask[this.index] = value;
+  }
+
+  get collisionGroupIndex() {
+    return Collider.collisionGroupIndex[this.index];
+  }
+  set collisionGroupIndex(value) {
+    Collider.collisionGroupIndex[this.index] = value | 0;
   }
 
   addLayerToMask(layer) {

@@ -5,7 +5,7 @@
 import { Transform } from '../components/Transform.js';
 import { Collider } from '../components/Collider.js';
 import { Grid } from './Grid.js';
-import { rayCircleIntersect, rayBoxIntersect } from './utils.js';
+import { rayCircleIntersect, rayBoxIntersect, rayOBBIntersect } from './utils.js';
 
 /**
  * Ray - Static class for raycasting against entities in the spatial grid
@@ -41,9 +41,10 @@ import { rayCircleIntersect, rayBoxIntersect } from './utils.js';
  *   hits.forEach(h => spawnBulletHole(h.hitX, h.hitY));
  */
 export class Ray {
-  // Shape type constants (must match Collider.js)
+  // Shape type constants (must match Collider.js / ShapeType enum)
   static SHAPE_CIRCLE = 0;
   static SHAPE_BOX = 1;
+  static SHAPE_ORIENTED_BOX = 2;
 
   // GC Optimization: Reusable objects to avoid GC pressure
   static _tempResult = { entityIndex: -1, distance: Infinity };
@@ -689,29 +690,39 @@ export class Ray {
       if (!colliderActive[entityIndex]) continue;
       if (!((1 << (cCollisionLayer[entityIndex] & 31)) & rayMask)) continue;
 
-      const entityX = tx[entityIndex] + (cOffsetX[entityIndex] || 0);
-      const entityY = ty[entityIndex] + (cOffsetY[entityIndex] || 0);
       const shapeType = cShapeParams[entityIndex];
+      const ox = cOffsetX[entityIndex] || 0;
+      const oy = cOffsetY[entityIndex] || 0;
 
       let distance = -1;
+      let entityX;
+      let entityY;
 
-      if (shapeType === Ray.SHAPE_CIRCLE) {
-        const radius = cRadius[entityIndex];
-        distance = rayCircleIntersect(rayX, rayY, dirX, dirY, entityX, entityY, radius, rayLength);
-      } else if (shapeType === Ray.SHAPE_BOX) {
-        const width = cWidth[entityIndex];
-        const height = cHeight[entityIndex];
-        distance = rayBoxIntersect(
-          rayX,
-          rayY,
-          dirX,
-          dirY,
-          entityX,
-          entityY,
-          width,
-          height,
-          rayLength
+      if (shapeType === Ray.SHAPE_ORIENTED_BOX) {
+        const th = Transform.rotation[entityIndex];
+        const c = Math.cos(th);
+        const s = Math.sin(th);
+        entityX = tx[entityIndex] + c * ox - s * oy;
+        entityY = ty[entityIndex] + s * ox + c * oy;
+        distance = rayOBBIntersect(
+          rayX, rayY, dirX, dirY,
+          entityX, entityY,
+          cWidth[entityIndex], cHeight[entityIndex],
+          c, s, rayLength
         );
+      } else {
+        entityX = tx[entityIndex] + ox;
+        entityY = ty[entityIndex] + oy;
+        if (shapeType === Ray.SHAPE_CIRCLE) {
+          distance = rayCircleIntersect(
+            rayX, rayY, dirX, dirY, entityX, entityY, cRadius[entityIndex], rayLength
+          );
+        } else if (shapeType === Ray.SHAPE_BOX) {
+          distance = rayBoxIntersect(
+            rayX, rayY, dirX, dirY,
+            entityX, entityY, cWidth[entityIndex], cHeight[entityIndex], rayLength
+          );
+        }
       }
 
       if (distance >= 0) {
@@ -785,30 +796,39 @@ export class Ray {
       if (!((1 << (cCollisionLayer[entityIndex] & 31)) & rayMask)) continue;
 
       // Get entity collider position
-      const entityX = tx[entityIndex] + (cOffsetX[entityIndex] || 0);
-      const entityY = ty[entityIndex] + (cOffsetY[entityIndex] || 0);
       const shapeType = cShapeParams[entityIndex];
+      const ox = cOffsetX[entityIndex] || 0;
+      const oy = cOffsetY[entityIndex] || 0;
 
       let distance = -1;
+      let entityX;
+      let entityY;
 
-      // Check collision based on shape type using utils functions
-      if (shapeType === Ray.SHAPE_CIRCLE) {
-        const radius = cRadius[entityIndex];
-        distance = rayCircleIntersect(rayX, rayY, dirX, dirY, entityX, entityY, radius, rayLength);
-      } else if (shapeType === Ray.SHAPE_BOX) {
-        const width = cWidth[entityIndex];
-        const height = cHeight[entityIndex];
-        distance = rayBoxIntersect(
-          rayX,
-          rayY,
-          dirX,
-          dirY,
-          entityX,
-          entityY,
-          width,
-          height,
-          rayLength
+      if (shapeType === Ray.SHAPE_ORIENTED_BOX) {
+        const th = Transform.rotation[entityIndex];
+        const c = Math.cos(th);
+        const s = Math.sin(th);
+        entityX = tx[entityIndex] + c * ox - s * oy;
+        entityY = ty[entityIndex] + s * ox + c * oy;
+        distance = rayOBBIntersect(
+          rayX, rayY, dirX, dirY,
+          entityX, entityY,
+          cWidth[entityIndex], cHeight[entityIndex],
+          c, s, rayLength
         );
+      } else {
+        entityX = tx[entityIndex] + ox;
+        entityY = ty[entityIndex] + oy;
+        if (shapeType === Ray.SHAPE_CIRCLE) {
+          distance = rayCircleIntersect(
+            rayX, rayY, dirX, dirY, entityX, entityY, cRadius[entityIndex], rayLength
+          );
+        } else if (shapeType === Ray.SHAPE_BOX) {
+          distance = rayBoxIntersect(
+            rayX, rayY, dirX, dirY,
+            entityX, entityY, cWidth[entityIndex], cHeight[entityIndex], rayLength
+          );
+        }
       }
 
       // Track closest hit in this cell
