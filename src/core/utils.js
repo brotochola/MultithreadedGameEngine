@@ -1194,7 +1194,7 @@ export function testOBBOBBCollision(
   // If one OBB is much larger (e.g. full-width Floor), use the *smaller* body's support only —
   // averaging with a huge face centroid invents a sideways lever and endless spin.
   {
-    const FACE_EPS = 1e-3;
+    const FACE_EPS = 0.08;
     const lx1 = cos1 * -bestNx + sin1 * -bestNy;
     const ly1 = -sin1 * -bestNx + cos1 * -bestNy;
     const sx1 = lx1 > FACE_EPS ? hw1 : lx1 < -FACE_EPS ? -hw1 : 0;
@@ -1449,8 +1449,8 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
     distanceConstraintIterations: Math.max(
       1,
       newConfig.distanceConstraintIterations ??
-        current.distanceConstraintIterations ??
-        PHYSICS_DEFAULTS.distanceConstraintIterations
+      current.distanceConstraintIterations ??
+      PHYSICS_DEFAULTS.distanceConstraintIterations
     ),
     boundaryElasticity: clamp01(
       newConfig.boundaryElasticity ?? current.boundaryElasticity,
@@ -1459,6 +1459,20 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
     collisionResponseStrength: clamp01(
       newConfig.collisionResponseStrength ?? current.collisionResponseStrength,
       current.collisionResponseStrength
+    ),
+    contactHertz: Math.max(
+      0,
+      newConfig.contactHertz ?? current.contactHertz ?? PHYSICS_DEFAULTS.contactHertz
+    ),
+    contactDampingRatio: Math.max(
+      0,
+      newConfig.contactDampingRatio ??
+      current.contactDampingRatio ??
+      PHYSICS_DEFAULTS.contactDampingRatio
+    ),
+    contactMaxBias: Math.max(
+      0,
+      newConfig.contactMaxBias ?? current.contactMaxBias ?? PHYSICS_DEFAULTS.contactMaxBias
     ),
     verletDamping: clamp01(newConfig.verletDamping ?? current.verletDamping, current.verletDamping),
     minSpeedForRotation: newConfig.minSpeedForRotation ?? current.minSpeedForRotation,

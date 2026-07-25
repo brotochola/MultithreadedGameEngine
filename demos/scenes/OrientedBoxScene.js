@@ -35,10 +35,10 @@ export class OrientedBoxScene extends WEED.Scene {
             maxCollisionPairs: 100000,
             verletDamping: 0.999,
             boundaryElasticity: 0.3,
-            collisionResponseStrength: 0.66,
-            sleepThreshold: 0.005,
+            collisionResponseStrength: 0.95,
+            sleepThreshold: 0.1,
             wakeUpThreshold: 0.2,
-            sleepDuration: 4,
+            sleepDuration: 1,
             gravity: { x: 0, y: 0.55 },
         },
 

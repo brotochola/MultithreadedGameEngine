@@ -11,19 +11,23 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 ## Responsibilities (per frame)
 
 1. **Verlet integration** — advance positions from acceleration, velocity caps, friction, and gravity (config-driven). Also integrates `angularVelocity` into `Transform.rotation` and applies `angularDrag`.
-2. **Collision resolution** — for entities with collision candidates in `neighborData`, resolve overlaps (circles, AABBs, and OrientedBoxes/OBBs; `collisionGroupIndex` then layer/mask filtering; typed-array reads only). Non-trigger contacts use PBD effective mass `ΣinvMass + (r×n)²·invInertia`, impulse `λ = correction / that`, then linear + rotational **position** corrections (`Δθ` on `Transform.rotation` only — no `ω += k·Δθ` inject). Micro-overlaps below **penetration slop** (~0.75px) skip resolve and wake so dense piles can sleep. Mid-pass OBB axes use incremental rotate + renormalize (full `cos`/`sin` once per resolve). When both colliders have `contactFriction > 0`, a tangential Coulomb clamp (`μ = min(μi,μj)`, max slide `μ * correction`) kills relative slide by rewriting Verlet `px`/`py` only (never move `x` for friction — that invents velocity). Angular friction is face-gated and mass-weighted.
+2. **Collision resolution** — positional PBD with coupled `λ = correction / invMassAng`. Move `x` only — **never sync invent** with PBD (sync invents separation velocity = jumps). **No Δθ** when resting/shallow (stops stack rock). Circles force `invI = 0`. Friction: Coulomb on `px` with gravity `|jn|` floor. No soft-contact bias.
 3. **Distance constraints** (optional) — position-based corrections for active constraints when constraints are enabled in scene config.
 4. **Stats** — write counters and timing into `physicsStats` (see [Worker stats](#worker-stats)).
 
 The worker does **not** build the spatial grid or neighbor lists; it **reads** `Grid.neighborData` produced by spatial workers.
 
+### Soft contact knobs
+
+Soft spring bias (`contactHertz` / damping / maxBias) is **not used** by the current resolve path. Prefer tuning `collisionResponseStrength`, `subStepCount`, and `angularDrag` instead.
+
 ### Collider shape types
 
-| Value | Name | Notes |
-|------:|------|-------|
-| `0` | Circle | Uses `radius` |
-| `1` | Box | Axis-aligned rectangle (`width`/`height`); ignores `Transform.rotation` for collision |
-| `2` | OrientedBox | OBB oriented by `Transform.rotation`; spatial broadphase uses the AABB of the OBB |
+| Value | Name        | Notes                                                                                 |
+| ----: | ----------- | ------------------------------------------------------------------------------------- |
+|   `0` | Circle      | Uses `radius`                                                                         |
+|   `1` | Box         | Axis-aligned rectangle (`width`/`height`); ignores `Transform.rotation` for collision |
+|   `2` | OrientedBox | OBB oriented by `Transform.rotation`; spatial broadphase uses the AABB of the OBB. Narrowphase: SAT + single support contact (smaller body only vs large floors). |
 
 Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 
@@ -31,7 +35,9 @@ Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 - Box / OrientedBox: `I = m * (w² + h²) / 12`
 - Static: `invInertia = 0`
 
-`angularDrag` damps spin each move step: `ω *= max(0, 1 - angularDrag * dtRatio)`. Sprite facing follows `Transform.rotation` automatically via the render queue (no extra sync).
+`angularDrag` damps spin each move step: `ω *= max(0, 1 - angularDrag * dtRatio)`. Sprite facing follows `Transform.rotation` via the render queue. Spin settle uses contact friction + optional `angularDrag`.
+
+Sleep (particle worker `updateDerivedProperties`): a dynamic body is still only when linear `speed` **and** `|angularVelocity|` are both below `sleepThreshold`. Tumbling sticks therefore stay awake until spin dies.
 
 ### Collision filtering (hot path)
 
@@ -51,7 +57,7 @@ See [Collision Filtering](./bible_of_weed_js.md#collision-filtering) in the bibl
 
 ## Dense collider list (`buildDenseColliders`)
 
-**Problem:** With fixed substeps, collision resolution can run many times per frame. Iterating *every* entity that has a `Collider` but **zero** collision candidates wastes work in the inner loop.
+**Problem:** With fixed substeps, collision resolution can run many times per frame. Iterating _every_ entity that has a `Collider` but **zero** collision candidates wastes work in the inner loop.
 
 **Approach:** Once per physics frame, the worker builds a **dense list** of entity indices:
 
@@ -126,14 +132,14 @@ The physics solver iterates `denseIdx = 0 .. activeCount-1` and skips entries if
 
 Written to `physicsStats` via indices in `src/workers/workers-utils.js` (`PHYSICS_STATS`):
 
-| Key | Meaning |
-|-----|--------|
-| FPS | Instantaneous FPS slot (via frame timing) |
-| `COLLISION_CHECKS` | Collision tests performed |
-| `COLLISIONS_RESOLVED` | Resolutions applied |
-| `COLLISION_PAIRS` | Pairs considered |
-| `CONSTRAINT_MS` | Time spent in distance constraint solving this frame (ms) |
-| `MSG_MS` | Time spent handling incoming messages this frame (ms); see `AbstractWorker` |
+| Key                   | Meaning                                                                     |
+| --------------------- | --------------------------------------------------------------------------- |
+| FPS                   | Instantaneous FPS slot (via frame timing)                                   |
+| `COLLISION_CHECKS`    | Collision tests performed                                                   |
+| `COLLISIONS_RESOLVED` | Resolutions applied                                                         |
+| `COLLISION_PAIRS`     | Pairs considered                                                            |
+| `CONSTRAINT_MS`       | Time spent in distance constraint solving this frame (ms)                   |
+| `MSG_MS`              | Time spent handling incoming messages this frame (ms); see `AbstractWorker` |
 
 Other workers expose `MSG_MS` similarly for comparable overhead profiling.
 

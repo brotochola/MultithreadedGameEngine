@@ -154,7 +154,14 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   /** PBD sweeps over distance constraints after each collision pass (>= 1). */
   distanceConstraintIterations: 1,
   boundaryElasticity: 0.8,
+  /** Scales contactHertz (0..1). Soft normal stiffness = contactHertz * this. */
   collisionResponseStrength: 0.8,
+  /** Soft contact spring frequency (Hz). Box2D-inspired; 0 disables soft bias. */
+  contactHertz: 30,
+  /** Soft contact damping ratio ζ (0 = undamped, 1 = critical). */
+  contactDampingRatio: 0.7,
+  /** Cap on soft bias speed (px per physics step, displacement units). */
+  contactMaxBias: 4,
   verletDamping: 0.995,
   minSpeedForRotation: 0.1,
   maxCollisionPairs: 10000,

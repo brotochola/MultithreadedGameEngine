@@ -1922,10 +1922,13 @@ class ParticleWorker extends AbstractWorker {
     const rigidBodyActive = RigidBody.active;
     const vx = RigidBody.vx;
     const vy = RigidBody.vy;
+    const angularVelocity = RigidBody.angularVelocity;
     const velocityAngle = RigidBody.velocityAngle;
     const speed = RigidBody.speed;
     const minSpeedForRotation = this.minSpeedForRotation;
     const sleepThreshold = this.sleepThreshold;
+    // Spin stillness: same threshold as linear (rad/frame-ish); tumbling sticks must not sleep
+    const angSleepThreshold = sleepThreshold;
     const sleepDuration = this.sleepDuration;
     const sleeping = RigidBody.sleeping;
     const stillnessTime = RigidBody.stillnessTime;
@@ -1941,7 +1944,9 @@ class ParticleWorker extends AbstractWorker {
       const currentSpeed = calculateSpeed(vx[i], vy[i]);
       speed[i] = currentSpeed;
 
-      if (currentSpeed < sleepThreshold) {
+      const omega = angularVelocity[i];
+      const absOmega = omega < 0 ? -omega : omega;
+      if (currentSpeed < sleepThreshold && absOmega < angSleepThreshold) {
         stillnessTime[i]++;
         if (stillnessTime[i] >= sleepDuration) {
           sleeping[i] = 1;

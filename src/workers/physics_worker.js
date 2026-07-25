@@ -990,11 +990,18 @@ class PhysicsWorker extends AbstractWorker {
     let resolved = 0;
 
     // Face lever / slop as fraction of smaller body's min half-extent
-    // (was absolute CROSS_EPS=2, PENETRATION_SLOP=0.75 — wrong for tiny crates)
-    const CROSS_EPS_FRAC = 0.1;
+    const CROSS_EPS_FRAC = 0.15;
     const PENETRATION_SLOP_FRAC = 0.0375;
+    // Below this |vn| (step displacement) + shallow: resting — no Δθ, damp spin
+    // Never sync invent with PBD (that invents separation velocity = jumps).
+    const REST_VN = 0.35;
+    const REST_OMEGA_KEEP = 0.85;
     // Squared epsilon for tangential relative velocity (skip friction if smaller)
     const VT_EPS2 = 1e-8;
+    const gx = this.settings.gravity?.x || 0;
+    const gy = this.settings.gravity?.y || 0;
+    // Gravity support impulse scale (step-displacement units; matches Verlet gravity ≈ g)
+    const gravityScale = 1;
 
     // Precompute cos/sin for all OrientedBoxes once per resolve (no trig in pair loop)
     this._fillObbOrientationCache(shapeType, rotation);
@@ -1297,177 +1304,217 @@ class PhysicsWorker extends AbstractWorker {
           const penetrationSlop = minHalf * PENETRATION_SLOP_FRAC;
           const depthEff = result.depth - penetrationSlop;
           if (depthEff > 0) {
-          if (iHasRigidBody && iSleeping) {
-            sleeping[i] = 0;
-            RigidBody.stillnessTime[i] = 0;
-          }
-          if (jHasRigidBody && sleeping[j]) {
-            sleeping[j] = 0;
-            RigidBody.stillnessTime[j] = 0;
-          }
-
-          const correction = depthEff * responseStrength;
-          const nx = result.nx;
-          const ny = result.ny;
-          const cx = result.cx;
-          const cy = result.cy;
-
-          // Mass-weighted collision response:
-          // Lighter objects move more, heavier objects move less
-          // Static objects have invMass = 0 (infinite mass)
-          const invMassI = iStatic ? 0 : invMass[i];
-          const invMassJ = jStatic ? 0 : invMass[j];
-          const totalInvMass = invMassI + invMassJ;
-
-          if (totalInvMass > 0) {
-            const invII = iStatic ? 0 : invInertia[i];
-            const invIJ = jStatic ? 0 : invInertia[j];
-            const rix = cx - localXi;
-            const riy = cy - localYi;
-            const rjx = cx - x[j];
-            const rjy = cy - y[j];
-            // r × n (j uses -n → opposite sign)
-            const crossI = rix * ny - riy * nx;
-            const crossJ = -rjx * ny + rjy * nx;
-
-            // PBD effective mass: include angular or corner hits explode vs static floors
-            const invMassAng =
-              totalInvMass +
-              crossI * crossI * invII +
-              crossJ * crossJ * invIJ;
-            const lambda = correction / invMassAng;
-
-            x[i] = localXi += nx * (lambda * invMassI);
-            y[i] = localYi += ny * (lambda * invMassI);
-            x[j] -= nx * (lambda * invMassJ);
-            y[j] -= ny * (lambda * invMassJ);
-
-            // Face-ish contact (|r × n| small): no torque — flat Floor hit must not spin.
-            // Real corner/edge: apply Δθ. Skip ω carry on face; damp spin vs static.
-            const hitStatic = iStatic || jStatic;
-            if (invII > 0) {
-              const absCross = crossI < 0 ? -crossI : crossI;
-              if (absCross > crossEps) {
-                const dTh = crossI * invII * lambda;
-                rotation[i] += dTh;
-                // Step D: no ω inject from positional Δθ (was bounce/tumble fuel)
-                // Step B: incremental OBB basis (no mid-pair cos/sin)
-                if (shapeI === SHAPE_ORIENTED_BOX) {
-                  const c = cosI;
-                  const s = sinI;
-                  cosI = c - s * dTh;
-                  sinI = s + c * dTh;
-                  // Newton renorm (1 iter) — kills drift without Math.sqrt; full rebuild next pass
-                  const invLen = 1.5 - 0.5 * (cosI * cosI + sinI * sinI);
-                  cosI *= invLen;
-                  sinI *= invLen;
-                  worldOffXi = cosI * offXi - sinI * offYi;
-                  worldOffYi = sinI * offXi + cosI * offYi;
-                  obbCos[i] = cosI;
-                  obbSin[i] = sinI;
-                }
-              } else if (hitStatic) {
-                angularVelocity[i] *= 0.8;
+            // Wake only on meaningful penetration (micro jitter must not reset sleep)
+            const wakeDepth = penetrationSlop > 1e-6 ? penetrationSlop : 0.5;
+            if (depthEff > wakeDepth) {
+              if (iHasRigidBody && iSleeping) {
+                sleeping[i] = 0;
+                RigidBody.stillnessTime[i] = 0;
               }
-            }
-            if (invIJ > 0) {
-              const absCross = crossJ < 0 ? -crossJ : crossJ;
-              if (absCross > crossEps) {
-                const dTh = crossJ * invIJ * lambda;
-                rotation[j] += dTh;
-                if (shapeJ === SHAPE_ORIENTED_BOX) {
-                  const c = obbCos[j];
-                  const s = obbSin[j];
-                  let cj = c - s * dTh;
-                  let sj = s + c * dTh;
-                  const invLen = 1.5 - 0.5 * (cj * cj + sj * sj);
-                  cj *= invLen;
-                  sj *= invLen;
-                  obbCos[j] = cj;
-                  obbSin[j] = sj;
-                }
-              } else if (hitStatic) {
-                angularVelocity[j] *= 0.8;
+              if (jHasRigidBody && sleeping[j]) {
+                sleeping[j] = 0;
+                RigidBody.stillnessTime[j] = 0;
               }
             }
 
-            // Contact friction: min combine + Coulomb clamp (μ * correction)
-            const muJ = contactFriction[j];
-            if (muI > 0 && muJ > 0) {
-              const mu = muI < muJ ? muI : muJ;
+            const correction = depthEff * responseStrength;
+            const nx = result.nx;
+            const ny = result.ny;
+            const cx = result.cx;
+            const cy = result.cy;
 
-              let vix = 0;
-              let viy = 0;
-              let vjx = 0;
-              let vjy = 0;
+            const invMassI = iStatic ? 0 : invMass[i];
+            const invMassJ = jStatic ? 0 : invMass[j];
+            const totalInvMass = invMassI + invMassJ;
+
+            if (totalInvMass > 0) {
+              // Circles: rotationally symmetric — no collision torque / sprite spin.
+              const invII =
+                iStatic || shapeI === SHAPE_CIRCLE ? 0 : invInertia[i];
+              const invIJ =
+                jStatic || shapeJ === SHAPE_CIRCLE ? 0 : invInertia[j];
+              const rix = cx - localXi;
+              const riy = cy - localYi;
+              const rjx = cx - x[j];
+              const rjy = cy - y[j];
+              const crossI = rix * ny - riy * nx;
+              const crossJ = -rjx * ny + rjy * nx;
+
+              // PBD effective mass: include angular or corner hits explode vs static floors
+              const invMassAng =
+                totalInvMass +
+                crossI * crossI * invII +
+                crossJ * crossJ * invIJ;
+              const lambda = correction / invMassAng;
+
+              // Pre-positional vn for resting detect (torque gate only — never invent sync)
+              let vix0 = 0;
+              let viy0 = 0;
+              let vjx0 = 0;
+              let vjy0 = 0;
               if (!iStatic && iHasRigidBody) {
-                vix = localXi - px[i];
-                viy = localYi - py[i];
+                vix0 = localXi - px[i];
+                viy0 = localYi - py[i];
                 if (invII > 0) {
                   const wi = angularVelocity[i];
-                  vix += -wi * riy;
-                  viy += wi * rix;
+                  vix0 += -wi * riy;
+                  viy0 += wi * rix;
                 }
               }
               if (!jStatic && jHasRigidBody) {
-                vjx = x[j] - px[j];
-                vjy = y[j] - py[j];
+                vjx0 = x[j] - px[j];
+                vjy0 = y[j] - py[j];
                 if (invIJ > 0) {
                   const wj = angularVelocity[j];
-                  vjx += -wj * rjy;
-                  vjy += wj * rjx;
+                  vjx0 += -wj * rjy;
+                  vjy0 += wj * rjx;
+                }
+              }
+              const vn0 = (vix0 - vjx0) * nx + (viy0 - vjy0) * ny;
+              const absVn0 = vn0 < 0 ? -vn0 : vn0;
+              const shallow =
+                depthEff <
+                Math.max(penetrationSlop * 6, minHalf * 0.12);
+              const resting = absVn0 < REST_VN && shallow;
+
+              // Move x only — leave invent so PBD eats approach, does not invent bounce
+              x[i] = localXi += nx * (lambda * invMassI);
+              y[i] = localYi += ny * (lambda * invMassI);
+              x[j] -= nx * (lambda * invMassJ);
+              y[j] -= ny * (lambda * invMassJ);
+
+              // Face-ish / resting: no Δθ (off-center support rock). Impacts may tip.
+              const hitStatic = iStatic || jStatic;
+              const allowTorque = !resting && !shallow;
+              if (invII > 0) {
+                const absCross = crossI < 0 ? -crossI : crossI;
+                if (allowTorque && absCross > crossEps) {
+                  const dTh = crossI * invII * lambda;
+                  rotation[i] += dTh;
+                  if (shapeI === SHAPE_ORIENTED_BOX) {
+                    const c = cosI;
+                    const s = sinI;
+                    cosI = c - s * dTh;
+                    sinI = s + c * dTh;
+                    const invLen = 1.5 - 0.5 * (cosI * cosI + sinI * sinI);
+                    cosI *= invLen;
+                    sinI *= invLen;
+                    worldOffXi = cosI * offXi - sinI * offYi;
+                    worldOffYi = sinI * offXi + cosI * offYi;
+                    obbCos[i] = cosI;
+                    obbSin[i] = sinI;
+                  }
+                } else if (hitStatic || resting || shallow || absCross <= crossEps) {
+                  angularVelocity[i] *= resting || shallow ? REST_OMEGA_KEEP : 0.8;
+                }
+              }
+              if (invIJ > 0) {
+                const absCross = crossJ < 0 ? -crossJ : crossJ;
+                if (allowTorque && absCross > crossEps) {
+                  const dTh = crossJ * invIJ * lambda;
+                  rotation[j] += dTh;
+                  if (shapeJ === SHAPE_ORIENTED_BOX) {
+                    const c = obbCos[j];
+                    const s = obbSin[j];
+                    let cj = c - s * dTh;
+                    let sj = s + c * dTh;
+                    const invLen = 1.5 - 0.5 * (cj * cj + sj * sj);
+                    cj *= invLen;
+                    sj *= invLen;
+                    obbCos[j] = cj;
+                    obbSin[j] = sj;
+                  }
+                } else if (hitStatic || resting || shallow || absCross <= crossEps) {
+                  angularVelocity[j] *= resting || shallow ? REST_OMEGA_KEEP : 0.8;
                 }
               }
 
-              const rvx = vix - vjx;
-              const rvy = viy - vjy;
-              const vn = rvx * nx + rvy * ny;
-              const vtx = rvx - vn * nx;
-              const vty = rvy - vn * ny;
-              const vtLen2 = vtx * vtx + vty * vty;
+              // Contact friction: min combine + Coulomb clamp (μ * |jn|)
+              const muJ = contactFriction[j];
+              if (muI > 0 && muJ > 0) {
+                const mu = muI < muJ ? muI : muJ;
 
-              if (vtLen2 > VT_EPS2) {
-                const maxSlide = mu * correction;
-                const maxSlide2 = maxSlide * maxSlide;
-                let scale;
-                if (vtLen2 <= maxSlide2) {
-                  scale = 1;
-                } else {
-                  scale = maxSlide / Math.sqrt(vtLen2);
-                }
-
-                const fdx = vtx * scale;
-                const fdy = vty * scale;
-                const invTotal = 1 / totalInvMass;
-                const wI = invMassI * invTotal;
-                const wJ = invMassJ * invTotal;
-
-                // Kill tangent vel via px only (same as scaleVelocity). Moving x invents water-motion.
+                let vix = 0;
+                let viy = 0;
+                let vjx = 0;
+                let vjy = 0;
                 if (!iStatic && iHasRigidBody) {
-                  px[i] += fdx * wI;
-                  py[i] += fdy * wI;
-                }
-                if (!jStatic && jHasRigidBody) {
-                  px[j] -= fdx * wJ;
-                  py[j] -= fdy * wJ;
-                }
-
-                // Step G: angular friction — face-gated + mass-weighted; no θ move
-                if (invII > 0) {
-                  const absCross = crossI < 0 ? -crossI : crossI;
-                  if (absCross > crossEps) {
-                    angularVelocity[i] -= (riy * fdx - rix * fdy) * invII * wI;
+                  vix = localXi - px[i];
+                  viy = localYi - py[i];
+                  if (invII > 0) {
+                    const wi = angularVelocity[i];
+                    vix += -wi * riy;
+                    viy += wi * rix;
                   }
                 }
-                if (invIJ > 0) {
-                  const absCross = crossJ < 0 ? -crossJ : crossJ;
-                  if (absCross > crossEps) {
-                    angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ * wJ;
+                if (!jStatic && jHasRigidBody) {
+                  vjx = x[j] - px[j];
+                  vjy = y[j] - py[j];
+                  if (invIJ > 0) {
+                    const wj = angularVelocity[j];
+                    vjx += -wj * rjy;
+                    vjy += wj * rjx;
+                  }
+                }
+
+                const rvx = vix - vjx;
+                const rvy = viy - vjy;
+                const vn = rvx * nx + rvy * ny;
+                const vtx = rvx - vn * nx;
+                const vty = rvy - vn * ny;
+                const vtLen2 = vtx * vtx + vty * vty;
+
+                if (vtLen2 > VT_EPS2) {
+                  // |jn| floor: at rest depth→slop so μ·correction ≈ ice without gravity support
+                  let jnAbs = correction;
+                  {
+                    const gAlongN = -(gx * nx + gy * ny) * gravityScale;
+                    if (gAlongN > 0) {
+                      const jnSupport = gAlongN / invMassAng;
+                      if (jnSupport > jnAbs) jnAbs = jnSupport;
+                    }
+                  }
+                  const maxSlide = resting ? mu * jnAbs * 1.25 : mu * jnAbs;
+                  const maxSlide2 = maxSlide * maxSlide;
+                  let scale;
+                  if (vtLen2 <= maxSlide2) {
+                    scale = 1;
+                  } else {
+                    scale = maxSlide / Math.sqrt(vtLen2);
+                  }
+
+                  const fdx = vtx * scale;
+                  const fdy = vty * scale;
+                  const invTotal = 1 / totalInvMass;
+                  const wI = invMassI * invTotal;
+                  const wJ = invMassJ * invTotal;
+
+                  // Kill tangent vel via px only (same as scaleVelocity). Moving x invents water-motion.
+                  if (!iStatic && iHasRigidBody) {
+                    px[i] += fdx * wI;
+                    py[i] += fdy * wI;
+                  }
+                  if (!jStatic && jHasRigidBody) {
+                    px[j] -= fdx * wJ;
+                    py[j] -= fdy * wJ;
+                  }
+
+                  // Angular friction — face-gated + mass-weighted; no θ move
+                  if (invII > 0) {
+                    const absCross = crossI < 0 ? -crossI : crossI;
+                    if (absCross > crossEps) {
+                      angularVelocity[i] -= (riy * fdx - rix * fdy) * invII * wI;
+                    }
+                  }
+                  if (invIJ > 0) {
+                    const absCross = crossJ < 0 ? -crossJ : crossJ;
+                    if (absCross > crossEps) {
+                      angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ * wJ;
+                    }
                   }
                 }
               }
             }
-          }
           } // depthEff > 0
         }
 

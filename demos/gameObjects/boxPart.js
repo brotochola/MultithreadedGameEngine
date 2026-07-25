@@ -11,27 +11,29 @@ export class BoxPart extends GameObject {
     static collisionEnterDamping = 0.1;
     static scriptUrl = import.meta.url;
 
-    static components = [RigidBody, Collider, CollisionListener];
+    static components = [RigidBody, Collider,
+        //CollisionListener
+    ];
 
     setup() {
         // Values set in onSpawned
     }
-    onCollisionEnter() {
-        this.scaleVelocity(BoxPart.collisionDamping)
+    // onCollisionEnter() {
+    //     // this.scaleVelocity(BoxPart.collisionDamping)
 
-    }
+    // }
 
-    onCollisionStay() {
-        this.scaleVelocity(BoxPart.collisionEnterDamping)
+    // onCollisionStay() {
+    //     this.scaleVelocity(BoxPart.collisionEnterDamping)
 
-    }
+    // }
 
     onSpawned(spawnConfig = {}) {
         const radius = spawnConfig.radius || 15;
 
         this.collider.radius = radius;
         this.collider.isTrigger = 0;
-        this.collider.contactFriction = spawnConfig.contactFriction ?? 0.4;
+        this.collider.contactFriction = 1// spawnConfig.contactFriction ?? 0.4;
         this.collider.visualRange = radius * 3;
         // Same-box siblings share a negative groupIndex (set by ConstraintBox); default 0
         if (spawnConfig.collisionGroupIndex !== undefined) {
