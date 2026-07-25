@@ -3,7 +3,7 @@
 
 import WEED from '/src/index.js';
 
-const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
+const { GameObject, RigidBody, Collider, SpriteRenderer, enums, rng } = WEED;
 const { ShapeType } = enums;
 
 export class OrientedBox extends GameObject {
@@ -27,15 +27,15 @@ export class OrientedBox extends GameObject {
         this.collider.height = height;
         this.collider.radius = 0;
         this.collider.isTrigger = 0;
-        this.collider.contactFriction = 0.06 //dont change back!
+        this.collider.contactFriction = 0.5
         this.collider.visualRange = Math.hypot(width, height) * 0.5 + 200;
 
         this.rigidBody.static = 0;
         this.rigidBody.maxVel = 2500;
         this.rigidBody.minSpeed = 0;
-        this.rigidBody.friction = 0.01;
-        this.rigidBody.angularDrag = 0.01 //keep //spawnConfig.angularDrag ?? 0.08;
-        this.rigidBody.angularVelocity = spawnConfig.angularVelocity ?? 0;
+        this.rigidBody.friction = 0.001;
+        this.rigidBody.angularDrag = 0 //keep //spawnConfig.angularDrag ?? 0.08;
+        this.rigidBody.angularVelocity = 0// rng() * 0.2 - 0.1
         this.rigidBody.sleeping = 0;
         this.rigidBody.stillnessTime = 0;
 

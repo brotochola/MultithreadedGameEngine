@@ -174,4 +174,18 @@ export class RigidBody extends Component {
     RigidBody.syncMassFromCollider(this.index);
   }
 
+  /**
+   * Mass — keeps invMass + rotational inertia in sync when set at runtime.
+   */
+  get mass() {
+    return RigidBody.mass[this.index];
+  }
+  set mass(value) {
+    const m = value > 0 ? value : 0;
+    RigidBody.mass[this.index] = m;
+    const isStatic = RigidBody.static[this.index] !== 0;
+    RigidBody.invMass[this.index] = isStatic || !(m > 0) ? 0 : 1 / m;
+    RigidBody.syncInertiaFromCollider(this.index, -1, isStatic);
+  }
+
 }

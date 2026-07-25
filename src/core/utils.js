@@ -1070,60 +1070,19 @@ export function testCircleOBBCollision(
   const localX = cos * dxw + sin * dyw;
   const localY = -sin * dxw + cos * dyw;
 
-  const halfW = boxW * 0.5;
-  const halfH = boxH * 0.5;
-  const minX = -halfW;
-  const maxX = halfW;
-  const minY = -halfH;
-  const maxY = halfH;
+  const hit = testCircleAABBCollision(localX, localY, circleR, 0, 0, boxW, boxH, result);
+  if (!hit) return null;
 
-  const closestX = localX < minX ? minX : localX > maxX ? maxX : localX;
-  const closestY = localY < minY ? minY : localY > maxY ? maxY : localY;
+  const localNx = result.nx;
+  const localNy = result.ny;
+  const localCx = result.cx;
+  const localCy = result.cy;
 
-  const dx = localX - closestX;
-  const dy = localY - closestY;
-  const dist2 = dx * dx + dy * dy;
-
-  if (dist2 >= circleR * circleR) return null;
-
-  const dist = Math.sqrt(dist2);
-  result.collided = true;
-
-  let localNx;
-  let localNy;
-  let depth;
-
-  if (dist === 0) {
-    const distToLeft = localX - minX;
-    const distToRight = maxX - localX;
-    const distToTop = localY - minY;
-    const distToBottom = maxY - localY;
-    const minDistX = distToLeft < distToRight ? distToLeft : distToRight;
-    const minDistY = distToTop < distToBottom ? distToTop : distToBottom;
-
-    if (minDistX < minDistY) {
-      depth = minDistX + circleR;
-      localNx = distToLeft < distToRight ? -1 : 1;
-      localNy = 0;
-    } else {
-      depth = minDistY + circleR;
-      localNx = 0;
-      localNy = distToTop < distToBottom ? -1 : 1;
-    }
-  } else {
-    depth = circleR - dist;
-    localNx = dx / dist;
-    localNy = dy / dist;
-  }
-
-  // Rotate normal back to world
-  result.depth = depth;
+  // Rotate normal + contact back to world
   result.nx = cos * localNx - sin * localNy;
   result.ny = sin * localNx + cos * localNy;
-
-  // Contact in world space (closest point on OBB)
-  result.cx = boxX + cos * closestX - sin * closestY;
-  result.cy = boxY + sin * closestX + cos * closestY;
+  result.cx = boxX + cos * localCx - sin * localCy;
+  result.cy = boxY + sin * localCx + cos * localCy;
 
   return result;
 }

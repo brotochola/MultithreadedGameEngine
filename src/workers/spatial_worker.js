@@ -46,6 +46,7 @@ import {
 } from './workers-utils.js';
 import { generateSymmetricalCirclePattern } from '../core/utils.js';
 import { SPATIAL_DEFAULTS } from '../core/ConfigDefaults.js';
+import { getColliderBounds, _boundsResult } from '../core/ColliderUtils.js';
 
 /**
  * SpatialWorker - Row-based spatial hashing and neighbor detection
@@ -376,15 +377,10 @@ class SpatialWorker extends AbstractWorker {
   rebuildOwnedRows() {
     const x = Transform.x;
     const y = Transform.y;
-    const rotation = Transform.rotation;
     const offsetX = Collider.offsetX;
     const offsetY = Collider.offsetY;
     const colliderActive = Collider.active;
     const spriteRendererActive = SpriteRenderer.active;
-    const shapeType = Collider.shapeType;
-    const radius = Collider.radius;
-    const width = Collider.width;
-    const height = Collider.height;
 
     const gridWidth = this.gridWidth;
     const gridHeight = this.gridHeight;
@@ -398,8 +394,6 @@ class SpatialWorker extends AbstractWorker {
     const gridCounts = Grid._gridCounts;
     const gridEntities = Grid._gridEntities;
 
-    const SHAPE_CIRCLE = 0;
-    const SHAPE_ORIENTED_BOX = 2;
     const maxCol = gridWidth - 1;
     const maxRow = gridHeight - 1;
 
@@ -447,33 +441,11 @@ class SpatialWorker extends AbstractWorker {
       let halfW = 0;
       let halfH = 0;
       if (colliderActive[i]) {
-        const ox = offsetX[i];
-        const oy = offsetY[i];
-        const shape = shapeType[i];
-        if (shape === SHAPE_CIRCLE) {
-          posX = x[i] + ox;
-          posY = y[i] + oy;
-          halfW = halfH = radius[i];
-        } else if (shape === SHAPE_ORIENTED_BOX) {
-          const th = rotation[i];
-          const c = Math.cos(th);
-          const s = Math.sin(th);
-          posX = x[i] + c * ox - s * oy;
-          posY = y[i] + s * ox + c * oy;
-          const hw = width[i] * 0.5;
-          const hh = height[i] * 0.5;
-          const ac = c < 0 ? -c : c;
-          const as = s < 0 ? -s : s;
-          // AABB of OBB
-          halfW = ac * hw + as * hh;
-          halfH = as * hw + ac * hh;
-        } else {
-          // AABB Box
-          posX = x[i] + ox;
-          posY = y[i] + oy;
-          halfW = width[i] * 0.5;
-          halfH = height[i] * 0.5;
-        }
+        getColliderBounds(i, _boundsResult);
+        posX = _boundsResult.posX;
+        posY = _boundsResult.posY;
+        halfW = _boundsResult.halfW;
+        halfH = _boundsResult.halfH;
       } else {
         posX = x[i] + offsetX[i];
         posY = y[i] + offsetY[i];

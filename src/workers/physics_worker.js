@@ -534,12 +534,17 @@ class PhysicsWorker extends AbstractWorker {
     const entities = this._cachedColliderEntities;
     if (!entities) return;
 
-    // Cover any entity index that can appear as i or j this frame
-    this._ensureObbCache(rotation.length);
+    const count = entities.length;
+    let maxIndex = 0;
+    for (let idx = 0; idx < count; idx++) {
+      const i = entities[idx];
+      if (i > maxIndex) maxIndex = i;
+    }
+    // Dense by entity id — only grow to highest active collider index + 1
+    this._ensureObbCache(maxIndex + 1);
 
     const cosArr = this._obbCos;
     const sinArr = this._obbSin;
-    const count = entities.length;
 
     for (let idx = 0; idx < count; idx++) {
       const i = entities[idx];
@@ -587,6 +592,19 @@ class PhysicsWorker extends AbstractWorker {
 
     const gravityScale = dtRatio * dtRatio;
     const invDtRatio = dtRatio !== 0 ? 1 / dtRatio : 0;
+
+    // Fused angular integrate — one body, called from each unroll lane
+    const integrateAngular = (i) => {
+      let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
+      const ad = angularDrag[i];
+      if (ad > 0) {
+        const keep = 1 - ad * dtRatio;
+        omega *= keep > 0 ? keep : 0;
+      }
+      angularVelocity[i] = omega;
+      angularAccel[i] = 0;
+      if (omega !== 0) rotation[i] += omega * dtRatio;
+    };
 
     // Use cached query result from updateVerlet/updateVerletFixedStep
     // This avoids redundant queryActiveEntities calls per frame
@@ -647,18 +665,7 @@ class PhysicsWorker extends AbstractWorker {
           ax[i] = 0;
           ay[i] = 0;
         }
-        // Angular fused here — same entity index, no second pass
-        {
-          let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
-          const ad = angularDrag[i];
-          if (ad > 0) {
-            const keep = 1 - ad * dtRatio;
-            omega *= keep > 0 ? keep : 0;
-          }
-          angularVelocity[i] = omega;
-          angularAccel[i] = 0;
-          if (omega !== 0) rotation[i] += omega * dtRatio;
-        }
+        integrateAngular(i);
       } else if (sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
@@ -714,18 +721,7 @@ class PhysicsWorker extends AbstractWorker {
           ax[i] = 0;
           ay[i] = 0;
         }
-        // Angular fused here — same entity index, no second pass
-        {
-          let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
-          const ad = angularDrag[i];
-          if (ad > 0) {
-            const keep = 1 - ad * dtRatio;
-            omega *= keep > 0 ? keep : 0;
-          }
-          angularVelocity[i] = omega;
-          angularAccel[i] = 0;
-          if (omega !== 0) rotation[i] += omega * dtRatio;
-        }
+        integrateAngular(i);
       } else if (sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
@@ -781,18 +777,7 @@ class PhysicsWorker extends AbstractWorker {
           ax[i] = 0;
           ay[i] = 0;
         }
-        // Angular fused here — same entity index, no second pass
-        {
-          let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
-          const ad = angularDrag[i];
-          if (ad > 0) {
-            const keep = 1 - ad * dtRatio;
-            omega *= keep > 0 ? keep : 0;
-          }
-          angularVelocity[i] = omega;
-          angularAccel[i] = 0;
-          if (omega !== 0) rotation[i] += omega * dtRatio;
-        }
+        integrateAngular(i);
       } else if (sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
@@ -848,18 +833,7 @@ class PhysicsWorker extends AbstractWorker {
           ax[i] = 0;
           ay[i] = 0;
         }
-        // Angular fused here — same entity index, no second pass
-        {
-          let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
-          const ad = angularDrag[i];
-          if (ad > 0) {
-            const keep = 1 - ad * dtRatio;
-            omega *= keep > 0 ? keep : 0;
-          }
-          angularVelocity[i] = omega;
-          angularAccel[i] = 0;
-          if (omega !== 0) rotation[i] += omega * dtRatio;
-        }
+        integrateAngular(i);
       } else if (sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
@@ -951,18 +925,7 @@ class PhysicsWorker extends AbstractWorker {
       ax[i] = 0;
       ay[i] = 0;
 
-      // Angular fused here — same entity index, no second pass
-      {
-        let omega = angularVelocity[i] + angularAccel[i] * dtRatio;
-        const ad = angularDrag[i];
-        if (ad > 0) {
-          const keep = 1 - ad * dtRatio;
-          omega *= keep > 0 ? keep : 0;
-        }
-        angularVelocity[i] = omega;
-        angularAccel[i] = 0;
-        if (omega !== 0) rotation[i] += omega * dtRatio;
-      }
+      integrateAngular(i);
     }
   }
 
@@ -1026,12 +989,12 @@ class PhysicsWorker extends AbstractWorker {
     let checks = 0;
     let resolved = 0;
 
-    // Face lever threshold for angular (hoisted out of per-hit path)
-    const CROSS_EPS = 2;
+    // Face lever / slop as fraction of smaller body's min half-extent
+    // (was absolute CROSS_EPS=2, PENETRATION_SLOP=0.75 — wrong for tiny crates)
+    const CROSS_EPS_FRAC = 0.1;
+    const PENETRATION_SLOP_FRAC = 0.0375;
     // Squared epsilon for tangential relative velocity (skip friction if smaller)
     const VT_EPS2 = 1e-8;
-    // Ignore micro-penetration (stops dense OBB stacks from fighting forever)
-    const PENETRATION_SLOP = 0.75;
 
     // Precompute cos/sin for all OrientedBoxes once per resolve (no trig in pair loop)
     this._fillObbOrientationCache(shapeType, rotation);
@@ -1053,6 +1016,10 @@ class PhysicsWorker extends AbstractWorker {
       const radiusI = radius[i];
       const widthI = width[i];
       const heightI = height[i];
+      const halfMinI =
+        shapeI === SHAPE_CIRCLE
+          ? radiusI
+          : (widthI < heightI ? widthI : heightI) * 0.5;
       // Hoist offsets (invariant) but NOT position (variant)
       const offXi = offsetX[i];
       const offYi = offsetY[i];
@@ -1321,7 +1288,14 @@ class PhysicsWorker extends AbstractWorker {
         // Apply physical response if neither is a trigger
         // Step F: slop — skip micro-overlaps so stacks can settle / sleep (wake only when resolving)
         if (!eitherIsTrigger) {
-          const depthEff = result.depth - PENETRATION_SLOP;
+          const halfMinJ =
+            shapeJ === SHAPE_CIRCLE
+              ? radius[j]
+              : (width[j] < height[j] ? width[j] : height[j]) * 0.5;
+          const minHalf = halfMinI < halfMinJ ? halfMinI : halfMinJ;
+          const crossEps = minHalf * CROSS_EPS_FRAC;
+          const penetrationSlop = minHalf * PENETRATION_SLOP_FRAC;
+          const depthEff = result.depth - penetrationSlop;
           if (depthEff > 0) {
           if (iHasRigidBody && iSleeping) {
             sleeping[i] = 0;
@@ -1373,7 +1347,7 @@ class PhysicsWorker extends AbstractWorker {
             const hitStatic = iStatic || jStatic;
             if (invII > 0) {
               const absCross = crossI < 0 ? -crossI : crossI;
-              if (absCross > CROSS_EPS) {
+              if (absCross > crossEps) {
                 const dTh = crossI * invII * lambda;
                 rotation[i] += dTh;
                 // Step D: no ω inject from positional Δθ (was bounce/tumble fuel)
@@ -1383,8 +1357,8 @@ class PhysicsWorker extends AbstractWorker {
                   const s = sinI;
                   cosI = c - s * dTh;
                   sinI = s + c * dTh;
-                  // Step G: renormalize after incremental rotate (kills drift)
-                  const invLen = 1 / Math.sqrt(cosI * cosI + sinI * sinI);
+                  // Newton renorm (1 iter) — kills drift without Math.sqrt; full rebuild next pass
+                  const invLen = 1.5 - 0.5 * (cosI * cosI + sinI * sinI);
                   cosI *= invLen;
                   sinI *= invLen;
                   worldOffXi = cosI * offXi - sinI * offYi;
@@ -1398,7 +1372,7 @@ class PhysicsWorker extends AbstractWorker {
             }
             if (invIJ > 0) {
               const absCross = crossJ < 0 ? -crossJ : crossJ;
-              if (absCross > CROSS_EPS) {
+              if (absCross > crossEps) {
                 const dTh = crossJ * invIJ * lambda;
                 rotation[j] += dTh;
                 if (shapeJ === SHAPE_ORIENTED_BOX) {
@@ -1406,7 +1380,7 @@ class PhysicsWorker extends AbstractWorker {
                   const s = obbSin[j];
                   let cj = c - s * dTh;
                   let sj = s + c * dTh;
-                  const invLen = 1 / Math.sqrt(cj * cj + sj * sj);
+                  const invLen = 1.5 - 0.5 * (cj * cj + sj * sj);
                   cj *= invLen;
                   sj *= invLen;
                   obbCos[j] = cj;
@@ -1481,13 +1455,13 @@ class PhysicsWorker extends AbstractWorker {
                 // Step G: angular friction — face-gated + mass-weighted; no θ move
                 if (invII > 0) {
                   const absCross = crossI < 0 ? -crossI : crossI;
-                  if (absCross > CROSS_EPS) {
+                  if (absCross > crossEps) {
                     angularVelocity[i] -= (riy * fdx - rix * fdy) * invII * wI;
                   }
                 }
                 if (invIJ > 0) {
                   const absCross = crossJ < 0 ? -crossJ : crossJ;
-                  if (absCross > CROSS_EPS) {
+                  if (absCross > crossEps) {
                     angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ * wJ;
                   }
                 }

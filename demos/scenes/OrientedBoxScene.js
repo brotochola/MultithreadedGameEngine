@@ -35,7 +35,7 @@ export class OrientedBoxScene extends WEED.Scene {
             maxCollisionPairs: 100000,
             verletDamping: 0.999,
             boundaryElasticity: 0.3,
-            collisionResponseStrength: 0.5,
+            collisionResponseStrength: 0.66,
             sleepThreshold: 0.005,
             wakeUpThreshold: 0.2,
             sleepDuration: 4,
@@ -84,12 +84,13 @@ export class OrientedBoxScene extends WEED.Scene {
         this.spawnFloorAndWalls();
 
         for (let i = 0; i < this.numberOfBoxes; i++) {
-            const size = 50 + this.rng() * 70;
+            const width = 10 + this.rng() * 10
+            const height = 100 + this.rng() * 100
             OrientedBox.spawn({
                 x: 500 + this.rng() * (this.config.worldWidth - 1000),
                 y: 150 + this.rng() * (this.config.worldHeight * 0.45),
-                width: size,
-                height: size * (0.6 + this.rng() * 0.8),
+                width: width,
+                height: height,
                 rotation: this.rng() * Math.PI * 2,
                 angularVelocity: (this.rng() - 0.5) * 0.15,
             });
