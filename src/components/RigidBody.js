@@ -46,9 +46,9 @@ export class RigidBody extends Component {
     speed: Float32Array,
     collisionCount: Uint8Array, // Number of collisions this frame
 
-    // Sleeping optimization
-    sleeping: Uint8Array, // 0 = awake, 1 = sleeping (skips physics integration)
-    stillnessTime: Float32Array, // Time entity has been still (in frames or seconds)
+    // Sleeping optimization (gated by physics.sleeping config)
+    sleeping: Uint8Array, // 0 = awake, 1 = sleeping (physics skips Verlet integrate when sleep enabled)
+    stillnessTime: Float32Array, // Consecutive still frames (particle ticks), not seconds
   };
 
   // ═══════════════════════════════════════════════════════════════════════════

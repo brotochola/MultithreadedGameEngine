@@ -354,6 +354,7 @@ class ParticleWorker extends AbstractWorker {
     this.minSpeedForRotation = 0.1;
     this.sleepThreshold = 0.1;
     this.sleepDuration = 30;
+    this.sleepingEnabled = true;
     this._queryRigidBody = null;
 
     // Active particle tracking
@@ -495,6 +496,7 @@ class ParticleWorker extends AbstractWorker {
       this.minSpeedForRotation = physicsConfig.minSpeedForRotation ?? PHYSICS_DEFAULTS.minSpeedForRotation;
       this.sleepThreshold = physicsConfig.sleepThreshold ?? PHYSICS_DEFAULTS.sleepThreshold;
       this.sleepDuration = physicsConfig.sleepDuration ?? PHYSICS_DEFAULTS.sleepDuration;
+      this.sleepingEnabled = physicsConfig.sleeping ?? PHYSICS_DEFAULTS.sleeping;
       this._queryRigidBody = [RigidBody];
 
       // console.log('[PARTICLE WORKER] Derived properties initialized');
@@ -1930,6 +1932,7 @@ class ParticleWorker extends AbstractWorker {
     // Spin stillness: same threshold as linear (rad/frame-ish); tumbling sticks must not sleep
     const angSleepThreshold = sleepThreshold;
     const sleepDuration = this.sleepDuration;
+    const sleepingEnabled = this.sleepingEnabled;
     const sleeping = RigidBody.sleeping;
     const stillnessTime = RigidBody.stillnessTime;
     const isStatic = RigidBody.static;
@@ -1944,12 +1947,17 @@ class ParticleWorker extends AbstractWorker {
       const currentSpeed = calculateSpeed(vx[i], vy[i]);
       speed[i] = currentSpeed;
 
-      const omega = angularVelocity[i];
-      const absOmega = omega < 0 ? -omega : omega;
-      if (currentSpeed < sleepThreshold && absOmega < angSleepThreshold) {
-        stillnessTime[i]++;
-        if (stillnessTime[i] >= sleepDuration) {
-          sleeping[i] = 1;
+      if (sleepingEnabled) {
+        const omega = angularVelocity[i];
+        const absOmega = omega < 0 ? -omega : omega;
+        if (currentSpeed < sleepThreshold && absOmega < angSleepThreshold) {
+          stillnessTime[i]++;
+          if (stillnessTime[i] >= sleepDuration) {
+            sleeping[i] = 1;
+          }
+        } else {
+          sleeping[i] = 0;
+          stillnessTime[i] = 0;
         }
       } else {
         sleeping[i] = 0;

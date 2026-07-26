@@ -47,9 +47,7 @@ export class WaterAndBoxesScene extends WEED.Scene {
       boundaryElasticity: 0.1,
       collisionResponseStrength: 0.125,
       gravity: { x: 0, y: 1 },
-      sleepThreshold: 0,
-      wakeUpThreshold: 9999,
-      sleepDuration: 9999999,
+      sleeping: false,
     },
 
     preRender: {

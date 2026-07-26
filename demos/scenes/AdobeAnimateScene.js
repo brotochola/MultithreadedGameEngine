@@ -19,9 +19,7 @@ export class AdobeAnimateScene extends Scene {
     physics: {
       noLimitFPS: true,
       gravity: { x: 0, y: 0 },
-      sleepThreshold: 999,
-      wakeUpThreshold: -1,
-      sleepDuration: 30,
+      sleeping: false,
     },
     particle: {
       noLimitFPS: true,

@@ -90,7 +90,7 @@ When two entities are close enough to be considered for **collision candidates**
 - **Both** are static (no rigidbody or `RigidBody.static`), or  
 - **Both** are sleeping (`RigidBody.sleeping`).
 
-Those pairs can still appear as **visual-only** neighbors (for rendering / culling / logic that only needs proximity), subject to neighbor buffer limits. This **reduces physics work** but assumes mutual sleep/static pairs do not need collision resolution.
+Those pairs can still appear as **visual-only** neighbors (for rendering / culling / logic that only needs proximity), subject to neighbor buffer limits. This **reduces physics work** but assumes mutual sleep/static pairs do not need collision resolution. Scene knobs (`physics.sleeping`, thresholds) are documented in [Physics — Sleeping](./PHYSICS.md#sleeping).
 
 ---
 

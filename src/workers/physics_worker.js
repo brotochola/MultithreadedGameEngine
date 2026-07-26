@@ -184,6 +184,7 @@ class PhysicsWorker extends AbstractWorker {
     const wakeUpThreshold = this.config.physics.wakeUpThreshold ?? PHYSICS_DEFAULTS.wakeUpThreshold;
     this._wakeUpThresholdSq = wakeUpThreshold * wakeUpThreshold;
     this._sleepThreshold = this.config.physics.sleepThreshold ?? PHYSICS_DEFAULTS.sleepThreshold;
+    this._sleepingEnabled = this.config.physics.sleeping ?? PHYSICS_DEFAULTS.sleeping;
   }
 
   handleCustomMessage(data) {
@@ -588,6 +589,7 @@ class PhysicsWorker extends AbstractWorker {
 
     // Use cached values (calculated once in applyPhysicsConfig, not per-frame)
     const wakeUpThresholdSq = this._wakeUpThresholdSq;
+    const sleepingEnabled = this._sleepingEnabled;
     const stillnessTime = RigidBody.stillnessTime;
 
     const gravityScale = dtRatio * dtRatio;
@@ -618,7 +620,7 @@ class PhysicsWorker extends AbstractWorker {
     for (; idx + 3 < physicsCount; idx += 4) {
       let i = physicsEntities[idx];
       // Note: active[i] and rigidBodyActive[i] checks removed - queryActiveEntities already filters
-      if (!(isStatic[i] || sleeping[i])) {
+      if (!(isStatic[i] || (sleepingEnabled && sleeping[i]))) {
         const accX = ax[i] * dtRatio;
         const accY = ay[i] * dtRatio;
         if (accX * accX > wakeUpThresholdSq || accY * accY > wakeUpThresholdSq) {
@@ -666,7 +668,7 @@ class PhysicsWorker extends AbstractWorker {
           ay[i] = 0;
         }
         integrateAngular(i);
-      } else if (sleeping[i]) {
+      } else if (sleepingEnabled && sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
         ax[i] = 0;
@@ -674,7 +676,7 @@ class PhysicsWorker extends AbstractWorker {
       }
 
       i = physicsEntities[idx + 1];
-      if (!(isStatic[i] || sleeping[i])) {
+      if (!(isStatic[i] || (sleepingEnabled && sleeping[i]))) {
         const accX = ax[i] * dtRatio;
         const accY = ay[i] * dtRatio;
         if (accX * accX > wakeUpThresholdSq || accY * accY > wakeUpThresholdSq) {
@@ -722,7 +724,7 @@ class PhysicsWorker extends AbstractWorker {
           ay[i] = 0;
         }
         integrateAngular(i);
-      } else if (sleeping[i]) {
+      } else if (sleepingEnabled && sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
         ax[i] = 0;
@@ -730,7 +732,7 @@ class PhysicsWorker extends AbstractWorker {
       }
 
       i = physicsEntities[idx + 2];
-      if (!(isStatic[i] || sleeping[i])) {
+      if (!(isStatic[i] || (sleepingEnabled && sleeping[i]))) {
         const accX = ax[i] * dtRatio;
         const accY = ay[i] * dtRatio;
         if (accX * accX > wakeUpThresholdSq || accY * accY > wakeUpThresholdSq) {
@@ -778,7 +780,7 @@ class PhysicsWorker extends AbstractWorker {
           ay[i] = 0;
         }
         integrateAngular(i);
-      } else if (sleeping[i]) {
+      } else if (sleepingEnabled && sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
         ax[i] = 0;
@@ -786,7 +788,7 @@ class PhysicsWorker extends AbstractWorker {
       }
 
       i = physicsEntities[idx + 3];
-      if (!(isStatic[i] || sleeping[i])) {
+      if (!(isStatic[i] || (sleepingEnabled && sleeping[i]))) {
         const accX = ax[i] * dtRatio;
         const accY = ay[i] * dtRatio;
         if (accX * accX > wakeUpThresholdSq || accY * accY > wakeUpThresholdSq) {
@@ -834,7 +836,7 @@ class PhysicsWorker extends AbstractWorker {
           ay[i] = 0;
         }
         integrateAngular(i);
-      } else if (sleeping[i]) {
+      } else if (sleepingEnabled && sleeping[i]) {
         px[i] = x[i];
         py[i] = y[i];
         ax[i] = 0;
@@ -847,8 +849,8 @@ class PhysicsWorker extends AbstractWorker {
       // Note: active[i] and rigidBodyActive[i] checks removed - queryActiveEntities already filters
 
       // Combined static + sleeping early-out (single branch for non-moving entities)
-      if (isStatic[i] || sleeping[i]) {
-        if (sleeping[i]) {
+      if (isStatic[i] || (sleepingEnabled && sleeping[i])) {
+        if (sleepingEnabled && sleeping[i]) {
           px[i] = x[i];
           py[i] = y[i];
           ax[i] = 0;
@@ -982,6 +984,7 @@ class PhysicsWorker extends AbstractWorker {
 
     // Cache sleeping array reference for performance
     const sleeping = RigidBody.sleeping;
+    const sleepingEnabled = this._sleepingEnabled;
     const collisionResult = this.collisionResult;
 
     // Stats: local counters in hot loop, write back once (skip entirely if no stats buffer)
@@ -1048,7 +1051,7 @@ class PhysicsWorker extends AbstractWorker {
       const groupI = collisionGroupIndex[i];
       const iHasRigidBody = rigidBodyActive[i];
       const iStatic = !iHasRigidBody || isStatic[i];
-      const iSleeping = iHasRigidBody && sleeping[i];
+      const iSleeping = sleepingEnabled && iHasRigidBody && sleeping[i];
       const muI = contactFriction[i];
 
       // Iterate only collision candidates (partitioned by spatial worker)
@@ -1311,7 +1314,7 @@ class PhysicsWorker extends AbstractWorker {
                 sleeping[i] = 0;
                 RigidBody.stillnessTime[i] = 0;
               }
-              if (jHasRigidBody && sleeping[j]) {
+              if (jHasRigidBody && sleepingEnabled && sleeping[j]) {
                 sleeping[j] = 0;
                 RigidBody.stillnessTime[j] = 0;
               }

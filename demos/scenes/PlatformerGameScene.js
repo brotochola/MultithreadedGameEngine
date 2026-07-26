@@ -21,10 +21,7 @@ export class PlatformerGameScene extends Scene {
       noLimitFPS: false,
       gravity: { x: 0, y: 1 },
       maxCollisionPairs: 5000,
-
-      sleepThreshold: 0,
-      wakeUpThreshold: 99999,
-      sleepDuration: 9999999,
+      sleeping: false,
     },
     particle: {
       noLimitFPS: false,

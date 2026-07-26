@@ -37,7 +37,32 @@ Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 
 `angularDrag` damps spin each move step: `ω *= max(0, 1 - angularDrag * dtRatio)`. Sprite facing follows `Transform.rotation` via the render queue. Spin settle uses contact friction + optional `angularDrag`.
 
-Sleep (particle worker `updateDerivedProperties`): a dynamic body is still only when linear `speed` **and** `|angularVelocity|` are both below `sleepThreshold`. Tumbling sticks therefore stay awake until spin dies.
+### Sleeping
+
+Bodies that stay still can sleep so physics skips Verlet integrate and sleep–sleep pairs skip collision resolve. Cell sleeping (particle worker) builds on the same `RigidBody.sleeping` bits — see [Spatial hashing](./SPATIAL_HASHING.md).
+
+Scene knobs live under `config.physics` (merged from `PHYSICS_DEFAULTS`). Sleep enter/exit thresholds are read by the **particle worker at scene init**; prefer setting them on the scene’s `static config` rather than mid-run `updatePhysicsConfig`.
+
+| Knob | Default | Role |
+|------|---------|------|
+| `sleeping` | `true` | Master switch. When `false`, bodies never enter sleep (thresholds ignored). |
+| `sleepThreshold` | `0.1` | Max linear `speed` **and** `\|angularVelocity\|` to count as still. |
+| `sleepDuration` | `30` | Consecutive particle ticks still before `sleeping = 1` (**frames**, not seconds). |
+| `wakeUpThreshold` | `0.05` | Accel magnitude (post-`dtRatio`) that resets `stillnessTime` on **awake** bodies. |
+
+**Enter sleep** (particle `updateDerivedProperties`): when `sleeping` is enabled, a dynamic body with both `speed` and `|ω|` below `sleepThreshold` increments `stillnessTime`; at `sleepDuration` it sets `RigidBody.sleeping = 1`. Tumbling sticks stay awake until spin dies.
+
+**While asleep:** physics skips Verlet (snaps `px`/`py`, clears accel); mutual sleep pairs skip resolve. Spatial may still keep visual-only neighbors.
+
+**Wake:** speed/spin above `sleepThreshold`; meaningful collision penetration (above penetration slop); manual `RigidBody.sleeping[i] = 0` (and usually `stillnessTime[i] = 0`); awake-body accel above `wakeUpThreshold` resets the stillness counter.
+
+Disable for a scene:
+
+```javascript
+physics: {
+  sleeping: false,
+}
+```
 
 ### Collision filtering (hot path)
 

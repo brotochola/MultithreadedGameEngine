@@ -41,9 +41,7 @@ export class ConstraintBoxScene extends WEED.Scene {
             verletDamping: 0.999,
             boundaryElasticity: 0.3,
             collisionResponseStrength: 0.9,
-            sleepThreshold: 0,
-            wakeUpThreshold: 0,
-            sleepDuration: 0,
+            sleeping: false,
             gravity: { x: 0, y: 0.5 },
         },
 

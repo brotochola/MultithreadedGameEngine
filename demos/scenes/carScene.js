@@ -81,9 +81,7 @@ export class CarScene extends WEED.Scene {
             collisionResponseStrength: 0.8,
             verletDamping: 0.999, // Very low damping - car maintains momentum
             gravity: { x: 0, y: 0 },
-            sleepThreshold: 999,   // Disable sleeping for this scene
-            wakeUpThreshold: 1000,
-            sleepDuration: 100000,
+            sleeping: false,
         },
 
         renderer: {

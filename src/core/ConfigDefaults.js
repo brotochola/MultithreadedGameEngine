@@ -167,8 +167,13 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   maxCollisionPairs: 10000,
   maxConstraints: 0,
   gravity: Object.freeze({ x: 0, y: 0 }),
+  /** Master switch: when false, bodies never enter sleep (thresholds ignored). */
+  sleeping: true,
+  /** Max linear speed and |angularVelocity| to count as still (particle worker). */
   sleepThreshold: 0.1,
+  /** Accel magnitude (post-dtRatio) that resets stillnessTime on awake bodies. */
   wakeUpThreshold: 0.05,
+  /** Consecutive particle ticks still before sleeping = 1 (frames, not seconds). */
   sleepDuration: 30,
 });
 
