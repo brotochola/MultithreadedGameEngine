@@ -1,10 +1,8 @@
-// OrientedBox - Single rigid OBB crate (shapeType OrientedBox)
-// Transform.rotation is driven by physics angularVelocity; sprite follows automatically
+// OrientedBox - Rigid crate as Box2D-style 4-vert Polygon (makeBox)
 
 import WEED from '/src/index.js';
 
-const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
-const { ShapeType } = enums;
+const { GameObject, RigidBody, Collider, SpriteRenderer } = WEED;
 
 export class OrientedBox extends GameObject {
     static scriptUrl = import.meta.url;
@@ -22,19 +20,16 @@ export class OrientedBox extends GameObject {
         const height = spawnConfig.height ?? size;
         const texSize = 100;
 
-        this.collider.shapeType = ShapeType.OrientedBox;
-        this.collider.width = width;
-        this.collider.height = height;
-        this.collider.radius = 0;
+        Collider.makeBox(this.index, width * 0.5, height * 0.5);
         this.collider.isTrigger = 0;
-        this.collider.contactFriction = 0.65;
+        this.collider.contactFriction = 1;
         this.collider.visualRange = Math.hypot(width, height) * 0.5 + 200;
 
         this.rigidBody.static = 0;
         this.rigidBody.maxVel = 2500;
         this.rigidBody.minSpeed = 0;
         this.rigidBody.friction = 0.001;
-        this.rigidBody.angularDrag = 0.08;
+        this.rigidBody.angularDrag = 0.01;
         this.rigidBody.angularVelocity = 0;
         this.rigidBody.sleeping = 0;
         this.rigidBody.stillnessTime = 0;

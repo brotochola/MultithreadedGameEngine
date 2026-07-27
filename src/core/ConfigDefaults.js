@@ -8,6 +8,12 @@
 // ============================================================================
 
 /**
+ * Max vertices on a convex Collider polygon (Box2D B2_MAX_POLYGON_VERTICES).
+ * Changing this affects Collider SAB size even if you use fewer verts.
+ */
+export const MAX_POLYGON_VERTICES = 8;
+
+/**
  * Shape types for Collider component
  * @readonly
  * @enum {number}
@@ -17,8 +23,11 @@ export const ShapeType = Object.freeze({
   Circle: 0,
   /** Axis-aligned box/rectangle - uses width and height (ignores Transform.rotation) */
   Box: 1,
-  /** Oriented box (OBB) - uses width/height, oriented by Transform.rotation */
-  OrientedBox: 2,
+  /**
+   * Convex polygon (Box2D-style) — local verts/normals via Collider.makeBox / makePolygon.
+   * Oriented by Transform.rotation. Max MAX_POLYGON_VERTICES vertices.
+   */
+  Polygon: 2,
 });
 
 /**

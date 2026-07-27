@@ -5,7 +5,8 @@
 import { Transform } from '../components/Transform.js';
 import { Collider } from '../components/Collider.js';
 import { Grid } from './Grid.js';
-import { rayCircleIntersect, rayBoxIntersect, rayOBBIntersect } from './utils.js';
+import { rayCircleIntersect, rayBoxIntersect, rayPolygonIntersect } from './utils.js';
+import { MAX_POLYGON_VERTICES } from './ConfigDefaults.js';
 
 /**
  * Ray - Static class for raycasting against entities in the spatial grid
@@ -44,6 +45,8 @@ export class Ray {
   // Shape type constants (must match Collider.js / ShapeType enum)
   static SHAPE_CIRCLE = 0;
   static SHAPE_BOX = 1;
+  static SHAPE_POLYGON = 2;
+  /** @deprecated Use SHAPE_POLYGON */
   static SHAPE_ORIENTED_BOX = 2;
 
   // GC Optimization: Reusable objects to avoid GC pressure
@@ -668,17 +671,21 @@ export class Ray {
     const tx = Transform.x[entityIndex];
     const ty = Transform.y[entityIndex];
 
-    if (shapeType === Ray.SHAPE_ORIENTED_BOX) {
+    if (shapeType === Ray.SHAPE_POLYGON) {
       const th = Transform.rotation[entityIndex];
       const c = Math.cos(th);
       const s = Math.sin(th);
       const entityX = tx + c * ox - s * oy;
       const entityY = ty + s * ox + c * oy;
-      return rayOBBIntersect(
+      const count = Collider.polyCount[entityIndex];
+      if (count < 3) return -1;
+      const base = entityIndex * MAX_POLYGON_VERTICES;
+      return rayPolygonIntersect(
         rayX, rayY, dirX, dirY,
-        entityX, entityY,
-        Collider.width[entityIndex], Collider.height[entityIndex],
-        c, s, rayLength
+        entityX, entityY, c, s,
+        Collider.polyVertexX, Collider.polyVertexY,
+        Collider.polyNormalX, Collider.polyNormalY,
+        count, base, rayLength
       );
     }
 

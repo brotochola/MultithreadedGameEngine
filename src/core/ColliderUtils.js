@@ -7,12 +7,15 @@
 
 import { Transform } from '../components/Transform.js';
 import { Collider } from '../components/Collider.js';
+import { MAX_POLYGON_VERTICES } from '../core/ConfigDefaults.js';
 
 /**
  * Shape type constants (matches Collider.shapeType values)
  */
 export const SHAPE_CIRCLE = 0;
 export const SHAPE_BOX = 1;
+export const SHAPE_POLYGON = 2;
+/** @deprecated Use SHAPE_POLYGON */
 export const SHAPE_ORIENTED_BOX = 2;
 
 /**
@@ -27,7 +30,7 @@ export const _cellRangeResult = { minCol: 0, maxCol: 0, minRow: 0, maxRow: 0 };
  * ZERO ALLOCATION - mutates result object
  *
  * Circle / AABB Box: offset added axis-aligned.
- * OrientedBox: offset rotated by Transform.rotation; half-extents are AABB-of-OBB.
+ * Polygon: offset rotated; half-extents = AABB of transformed local verts (+ skin radius).
  *
  * @param {number} idx - Entity index
  * @param {Object} result - Result object to mutate {posX, posY, halfW, halfH}
@@ -46,18 +49,47 @@ export function getColliderBounds(idx, result) {
     const r = Collider.radius[idx] || 0;
     result.halfW = r;
     result.halfH = r;
-  } else if (shape === SHAPE_ORIENTED_BOX) {
+  } else if (shape === SHAPE_POLYGON) {
     const th = Transform.rotation[idx] || 0;
     const c = Math.cos(th);
     const s = Math.sin(th);
-    result.posX = tx + c * ox - s * oy;
-    result.posY = ty + s * ox + c * oy;
-    const hw = (Collider.width[idx] || 0) * 0.5;
-    const hh = (Collider.height[idx] || 0) * 0.5;
-    const ac = c < 0 ? -c : c;
-    const as = s < 0 ? -s : s;
-    result.halfW = ac * hw + as * hh;
-    result.halfH = as * hw + ac * hh;
+    const originX = tx + c * ox - s * oy;
+    const originY = ty + s * ox + c * oy;
+
+    const count = Collider.polyCount[idx];
+    const skin = Collider.radius[idx] || 0;
+    if (count >= 3) {
+      const base = idx * MAX_POLYGON_VERTICES;
+      const vx = Collider.polyVertexX;
+      const vy = Collider.polyVertexY;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (let i = 0; i < count; i++) {
+        const lx = vx[base + i];
+        const ly = vy[base + i];
+        const wx = originX + c * lx - s * ly;
+        const wy = originY + s * lx + c * ly;
+        if (wx < minX) minX = wx;
+        if (wx > maxX) maxX = wx;
+        if (wy < minY) minY = wy;
+        if (wy > maxY) maxY = wy;
+      }
+      result.posX = (minX + maxX) * 0.5;
+      result.posY = (minY + maxY) * 0.5;
+      result.halfW = (maxX - minX) * 0.5 + skin;
+      result.halfH = (maxY - minY) * 0.5 + skin;
+    } else {
+      result.posX = originX;
+      result.posY = originY;
+      const hw = (Collider.width[idx] || 0) * 0.5;
+      const hh = (Collider.height[idx] || 0) * 0.5;
+      const ac = c < 0 ? -c : c;
+      const as = s < 0 ? -s : s;
+      result.halfW = ac * hw + as * hh + skin;
+      result.halfH = as * hw + ac * hh + skin;
+    }
   } else {
     // AABB Box (and unknown fallback)
     result.posX = tx + ox;

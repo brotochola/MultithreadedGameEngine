@@ -86,8 +86,8 @@ export class RigidBody extends Component {
           }
           massInitialized = true;
         }
-      } else if (shapeType === 1 || shapeType === 2) {
-        // Box (AABB) and OrientedBox share rectangle area mass
+      } else if (shapeType === 1) {
+        // AABB Box — rectangle area mass
         const width = Collider.width[index];
         const height = Collider.height[index];
         if (width > 0 && height > 0) {
@@ -97,6 +97,14 @@ export class RigidBody extends Component {
           } else {
             updateMassFromBox(index, width, height, RigidBody);
           }
+          massInitialized = true;
+        }
+      } else if (shapeType === 2) {
+        // Convex polygon — shoelace area
+        const area = Collider.polygonArea(index);
+        if (area > 0) {
+          RigidBody.mass[index] = area;
+          RigidBody.invMass[index] = isStatic ? 0 : 1 / area;
           massInitialized = true;
         }
       }
@@ -121,7 +129,8 @@ export class RigidBody extends Component {
 
   /**
    * Recompute rotational inertia from collider geometry and mass.
-   * Circle: I = 0.5 * m * r²; rectangle (Box/OrientedBox): I = m * (w² + h²) / 12.
+   * Circle: I = 0.5 * m * r²; AABB Box: I = m * (w² + h²) / 12;
+   * Polygon: Box2D-style about centroid.
    * Static bodies always get invInertia = 0.
    */
   static syncInertiaFromCollider(index, shapeType = -1, isStatic = null) {
@@ -138,10 +147,12 @@ export class RigidBody extends Component {
     if (shapeType === 0) {
       const r = Collider.radius[index];
       if (r > 0 && mass > 0) inertia = 0.5 * mass * r * r;
-    } else if (shapeType === 1 || shapeType === 2) {
+    } else if (shapeType === 1) {
       const w = Collider.width[index];
       const h = Collider.height[index];
       if (w > 0 && h > 0 && mass > 0) inertia = (mass * (w * w + h * h)) / 12;
+    } else if (shapeType === 2) {
+      if (mass > 0) inertia = Collider.polygonInertia(index, mass);
     }
 
     RigidBody.inertia[index] = inertia;

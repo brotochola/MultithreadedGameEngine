@@ -5,7 +5,7 @@ self.postMessage({
 });
 // physics_worker.js - Physics integration (velocity, position updates)
 // Now uses per-entity maxVel and friction from GameObject arrays
-// Supports Circle, AABB Box, and OrientedBox (OBB) colliders
+// Supports Circle, AABB Box, and Polygon (convex, max 8 verts) colliders
 
 // Import engine dependencies
 import { GameObject } from '../core/gameObject.js';
@@ -15,12 +15,13 @@ import { Collider } from '../components/Collider.js';
 import { Constraint } from '../core/Constraint.js';
 import { AbstractWorker } from './AbstractWorker.js';
 import { Grid } from '../core/Grid.js';
-import { PHYSICS_DEFAULTS } from '../core/ConfigDefaults.js';
+import { PHYSICS_DEFAULTS, MAX_POLYGON_VERTICES } from '../core/ConfigDefaults.js';
 import { PHYSICS_STATS, createStatsWriter } from './workers-utils.js';
 import {
   validatePhysicsConfig,
-  testCircleOBBCollision,
-  testOBBOBBCollision,
+  testCirclePolygonCollision,
+  collidePolygonsManifold,
+  fillBoxPolygonInto,
 } from '../core/utils.js';
 // Note: Game-specific scripts are loaded dynamically by AbstractWorker
 // Physics worker uses RigidBody component for physics calculations
@@ -28,7 +29,7 @@ import {
 // Shape type constants (must match Collider.shapeType / ShapeType enum)
 const SHAPE_CIRCLE = 0;
 const SHAPE_BOX = 1;
-const SHAPE_ORIENTED_BOX = 2;
+const SHAPE_POLYGON = 2;
 const MIN_CONSTRAINT_DIST_SQ = 0.0001 * 0.0001;
 const CONSTRAINT_ERROR_EPSILON = 0.001;
 
@@ -76,10 +77,35 @@ class PhysicsWorker extends AbstractWorker {
       cy: 0,
     };
 
-    // Per-entity cos/sin cache for OrientedBox narrowphase (filled each resolve pass)
+    // Per-entity cos/sin cache for Polygon narrowphase (filled each resolve pass)
     this._obbCos = null;
     this._obbSin = null;
     this._obbCacheLen = 0;
+    // Recounted once per outer physics tick in buildDenseColliders
+    this._activePolygonCount = 0;
+
+    // Scratch for AABB Box treated as 4-vert polygon in mixed pairs
+    this._boxPolyVX = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPolyVY = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPolyNX = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPolyNY = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPoly2VX = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPoly2VY = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPoly2NX = new Float32Array(MAX_POLYGON_VERTICES);
+    this._boxPoly2NY = new Float32Array(MAX_POLYGON_VERTICES);
+
+    // Reused poly manifold (Box2D-style, ≤2 contacts) — zero GC in pair loop
+    this._polyManifold = {
+      pointCount: 0,
+      nx: 0,
+      ny: 0,
+      c0x: 0,
+      c0y: 0,
+      d0: 0,
+      c1x: 0,
+      c1y: 0,
+      d1: 0,
+    };
 
     // Constraint system
     this.constraintsEnabled = false;
@@ -196,6 +222,7 @@ class PhysicsWorker extends AbstractWorker {
   /**
    * Build a dense array of active colliders that ACTUALLY have collision candidates.
    * This runs ONCE per frame, eliminating thousands of empty loop iterations in sub-stepping.
+   * Also recounts active Polygon colliders so resolve can skip poly orientation work.
    */
   buildDenseColliders() {
     if (!this._cachedColliderEntities) {
@@ -210,14 +237,17 @@ class PhysicsWorker extends AbstractWorker {
 
     const denseColliders = this._denseColliders;
     let denseCount = 0;
+    let polyCount = 0;
 
     const neighborData = Grid.neighborData;
     const stride = Grid._stride;
     const colliderActive = Collider.active;
+    const shapeType = Collider.shapeType;
 
     for (let idx = 0; idx < colliderCount; idx++) {
       const i = colliderEntities[idx];
       if (colliderActive[i]) {
+        if (shapeType[i] === SHAPE_POLYGON) polyCount++;
         if (neighborData[i * stride + 1] > 0) {
           denseColliders[denseCount++] = i;
         }
@@ -225,6 +255,7 @@ class PhysicsWorker extends AbstractWorker {
     }
 
     this._denseColliderCount = denseCount;
+    this._activePolygonCount = polyCount;
   }
 
   /**
@@ -516,7 +547,7 @@ class PhysicsWorker extends AbstractWorker {
   }
 
   /**
-   * Ensure OBB cos/sin scratch buffers can index every entity id used this pass.
+   * Ensure polygon cos/sin scratch buffers can index every entity id used this pass.
    */
   _ensureObbCache(neededLen) {
     if (this._obbCacheLen >= neededLen) return;
@@ -527,11 +558,13 @@ class PhysicsWorker extends AbstractWorker {
   }
 
   /**
-   * Fill cos/sin for EVERY active OrientedBox (dense + neighbors / static OBBs).
+   * Fill cos/sin for EVERY active Polygon (dense + neighbors / static polys).
    * Runs once per resolve pass so the pair loop never calls Math.cos/sin.
-   * AABB Box uses identity (1,0) without a cache write.
+   * No-op when scene has zero polygons (BallsScene hot path).
    */
   _fillObbOrientationCache(shapeType, rotation) {
+    if (this._activePolygonCount === 0) return;
+
     const entities = this._cachedColliderEntities;
     if (!entities) return;
 
@@ -549,7 +582,7 @@ class PhysicsWorker extends AbstractWorker {
 
     for (let idx = 0; idx < count; idx++) {
       const i = entities[idx];
-      if (shapeType[i] === SHAPE_ORIENTED_BOX) {
+      if (shapeType[i] === SHAPE_POLYGON) {
         const th = rotation[i];
         cosArr[i] = Math.cos(th);
         sinArr[i] = Math.sin(th);
@@ -996,7 +1029,7 @@ class PhysicsWorker extends AbstractWorker {
     const CROSS_EPS_FRAC = 0.15;
     const PENETRATION_SLOP_FRAC = 0.0375;
     // Below this |vn| (step displacement) + shallow: resting — no Δθ, damp spin
-    // Never sync invent with PBD (that invents separation velocity = jumps).
+    // Never sync invent with PBD (that invents separation velocity = jumps / pancakes).
     const REST_VN = 0.35;
     const REST_OMEGA_KEEP = 0.85;
     // Squared epsilon for tangential relative velocity (skip friction if smaller)
@@ -1006,10 +1039,28 @@ class PhysicsWorker extends AbstractWorker {
     // Gravity support impulse scale (step-displacement units; matches Verlet gravity ≈ g)
     const gravityScale = 1;
 
-    // Precompute cos/sin for all OrientedBoxes once per resolve (no trig in pair loop)
-    this._fillObbOrientationCache(shapeType, rotation);
+    // Precompute cos/sin for polygons once per resolve (skip entirely if none)
+    const hasPolygons = this._activePolygonCount > 0;
+    if (hasPolygons) {
+      this._fillObbOrientationCache(shapeType, rotation);
+    }
     const obbCos = this._obbCos;
     const obbSin = this._obbSin;
+
+    const polyCount = hasPolygons ? Collider.polyCount : null;
+    const polyVX = hasPolygons ? Collider.polyVertexX : null;
+    const polyVY = hasPolygons ? Collider.polyVertexY : null;
+    const polyNX = hasPolygons ? Collider.polyNormalX : null;
+    const polyNY = hasPolygons ? Collider.polyNormalY : null;
+    const boxVX = this._boxPolyVX;
+    const boxVY = this._boxPolyVY;
+    const boxNX = this._boxPolyNX;
+    const boxNY = this._boxPolyNY;
+    const box2VX = this._boxPoly2VX;
+    const box2VY = this._boxPoly2VY;
+    const box2NX = this._boxPoly2NX;
+    const box2NY = this._boxPoly2NY;
+    const polyManifold = this._polyManifold;
 
     for (let idx = 0; idx < denseCount; idx++) {
       const i = denseColliders[idx];
@@ -1033,11 +1084,11 @@ class PhysicsWorker extends AbstractWorker {
       // Hoist offsets (invariant) but NOT position (variant)
       const offXi = offsetX[i];
       const offYi = offsetY[i];
-      let cosI = shapeI === SHAPE_ORIENTED_BOX ? obbCos[i] : 1;
-      let sinI = shapeI === SHAPE_ORIENTED_BOX ? obbSin[i] : 0;
-      // World-space offset for OrientedBox; axis-aligned add for Circle/AABB
-      let worldOffXi = shapeI === SHAPE_ORIENTED_BOX ? cosI * offXi - sinI * offYi : offXi;
-      let worldOffYi = shapeI === SHAPE_ORIENTED_BOX ? sinI * offXi + cosI * offYi : offYi;
+      let cosI = shapeI === SHAPE_POLYGON ? obbCos[i] : 1;
+      let sinI = shapeI === SHAPE_POLYGON ? obbSin[i] : 0;
+      // World-space offset for Polygon; axis-aligned add for Circle/AABB
+      let worldOffXi = shapeI === SHAPE_POLYGON ? cosI * offXi - sinI * offYi : offXi;
+      let worldOffYi = shapeI === SHAPE_POLYGON ? sinI * offXi + cosI * offYi : offYi;
 
       // NOTE: colliderX_i / colliderY_i CANNOT be hoisted arbitrarily because x[i]/y[i]
       // change during the loop as collisions are resolved!
@@ -1086,15 +1137,18 @@ class PhysicsWorker extends AbstractWorker {
           if (!(layerBitI & collisionMask[j]) || !(layerBitJ & maskI)) continue;
         }
 
+        // Poly–poly clip manifold point count (0 = use single-contact result)
+        let manPointCount = 0;
+
         // Get shape type for neighbor 'j'
         const shapeJ = shapeType[j];
-        // OrientedBox basis from per-pass cache (AABB / circle → identity)
-        const cosJ = shapeJ === SHAPE_ORIENTED_BOX ? obbCos[j] : 1;
-        const sinJ = shapeJ === SHAPE_ORIENTED_BOX ? obbSin[j] : 0;
+        // Polygon basis from per-pass cache (AABB / circle → identity)
+        const cosJ = shapeJ === SHAPE_POLYGON ? obbCos[j] : 1;
+        const sinJ = shapeJ === SHAPE_POLYGON ? obbSin[j] : 0;
         const offXj = offsetX[j];
         const offYj = offsetY[j];
-        const worldOffXj = shapeJ === SHAPE_ORIENTED_BOX ? cosJ * offXj - sinJ * offYj : offXj;
-        const worldOffYj = shapeJ === SHAPE_ORIENTED_BOX ? sinJ * offXj + cosJ * offYj : offYj;
+        const worldOffXj = shapeJ === SHAPE_POLYGON ? cosJ * offXj - sinJ * offYj : offXj;
+        const worldOffYj = shapeJ === SHAPE_POLYGON ? sinJ * offXj + cosJ * offYj : offYj;
 
         // Calculate offset-adjusted collider positions
         // We MUST re-calculate i's position here because it might have moved
@@ -1256,16 +1310,20 @@ class PhysicsWorker extends AbstractWorker {
             collisionResult.cy = (colliderY_i + colliderY_j) * 0.5;
             result = collisionResult;
           }
-        } else if (shapeI === SHAPE_CIRCLE && shapeJ === SHAPE_ORIENTED_BOX) {
-          result = testCircleOBBCollision(
+        } else if (shapeI === SHAPE_CIRCLE && shapeJ === SHAPE_POLYGON) {
+          const baseJ = j * MAX_POLYGON_VERTICES;
+          result = testCirclePolygonCollision(
             colliderX_i, colliderY_i, radiusI,
-            colliderX_j, colliderY_j, width[j], height[j], cosJ, sinJ,
+            colliderX_j, colliderY_j, cosJ, sinJ,
+            polyVX, polyVY, polyNX, polyNY, polyCount[j], baseJ,
             collisionResult
           );
-        } else if (shapeI === SHAPE_ORIENTED_BOX && shapeJ === SHAPE_CIRCLE) {
-          result = testCircleOBBCollision(
+        } else if (shapeI === SHAPE_POLYGON && shapeJ === SHAPE_CIRCLE) {
+          const baseI = i * MAX_POLYGON_VERTICES;
+          result = testCirclePolygonCollision(
             colliderX_j, colliderY_j, radius[j],
-            colliderX_i, colliderY_i, widthI, heightI, cosI, sinI,
+            colliderX_i, colliderY_i, cosI, sinI,
+            polyVX, polyVY, polyNX, polyNY, polyCount[i], baseI,
             collisionResult
           );
           if (result && result.collided) {
@@ -1273,20 +1331,51 @@ class PhysicsWorker extends AbstractWorker {
             result.ny = -result.ny;
           }
         } else if (
-          (shapeI === SHAPE_ORIENTED_BOX || shapeI === SHAPE_BOX) &&
-          (shapeJ === SHAPE_ORIENTED_BOX || shapeJ === SHAPE_BOX) &&
-          (shapeI === SHAPE_ORIENTED_BOX || shapeJ === SHAPE_ORIENTED_BOX)
+          (shapeI === SHAPE_POLYGON || shapeI === SHAPE_BOX) &&
+          (shapeJ === SHAPE_POLYGON || shapeJ === SHAPE_BOX) &&
+          (shapeI === SHAPE_POLYGON || shapeJ === SHAPE_POLYGON)
         ) {
-          // OrientedBox–OrientedBox or Box–OrientedBox (AABB uses cos=1, sin=0)
-          const cI = shapeI === SHAPE_ORIENTED_BOX ? cosI : 1;
-          const sI = shapeI === SHAPE_ORIENTED_BOX ? sinI : 0;
-          const cJ = shapeJ === SHAPE_ORIENTED_BOX ? cosJ : 1;
-          const sJ = shapeJ === SHAPE_ORIENTED_BOX ? sinJ : 0;
-          result = testOBBOBBCollision(
-            colliderX_i, colliderY_i, widthI, heightI, cI, sI,
-            colliderX_j, colliderY_j, width[j], height[j], cJ, sJ,
-            collisionResult
+          // Polygon–Polygon or Box–Polygon (AABB synthesized as 4-vert poly)
+          let vxI = polyVX;
+          let vyI = polyVY;
+          let nxI = polyNX;
+          let nyI = polyNY;
+          let countI = polyCount[i];
+          let baseI = i * MAX_POLYGON_VERTICES;
+          let cI = cosI;
+          let sI = sinI;
+          if (shapeI === SHAPE_BOX) {
+            fillBoxPolygonInto(boxVX, boxVY, boxNX, boxNY, widthI * 0.5, heightI * 0.5);
+            vxI = boxVX; vyI = boxVY; nxI = boxNX; nyI = boxNY;
+            countI = 4; baseI = 0; cI = 1; sI = 0;
+          }
+
+          let vxJ = polyVX;
+          let vyJ = polyVY;
+          let nxJ = polyNX;
+          let nyJ = polyNY;
+          let countJ = polyCount[j];
+          let baseJ = j * MAX_POLYGON_VERTICES;
+          let cJ = cosJ;
+          let sJ = sinJ;
+          if (shapeJ === SHAPE_BOX) {
+            fillBoxPolygonInto(box2VX, box2VY, box2NX, box2NY, width[j] * 0.5, height[j] * 0.5);
+            vxJ = box2VX; vyJ = box2VY; nxJ = box2NX; nyJ = box2NY;
+            countJ = 4; baseJ = 0; cJ = 1; sJ = 0;
+          }
+
+          const man = collidePolygonsManifold(
+            colliderX_i, colliderY_i, cI, sI, vxI, vyI, nxI, nyI, countI, baseI,
+            colliderX_j, colliderY_j, cJ, sJ, vxJ, vyJ, nxJ, nyJ, countJ, baseJ,
+            polyManifold
           );
+          if (man && man.pointCount > 0) {
+            manPointCount = man.pointCount;
+            collisionResult.collided = true;
+            result = collisionResult;
+          } else {
+            result = null;
+          }
         }
 
         if (!result || !result.collided) continue;
@@ -1297,16 +1386,50 @@ class PhysicsWorker extends AbstractWorker {
 
         // Apply physical response if neither is a trigger
         // Step F: slop — skip micro-overlaps so stacks can settle / sleep (wake only when resolving)
+        // Poly–poly: sequential PBD over ≤2 clip contacts (shared normal)
         if (!eitherIsTrigger) {
           const halfMinJ =
             shapeJ === SHAPE_CIRCLE
               ? radius[j]
               : (width[j] < height[j] ? width[j] : height[j]) * 0.5;
           const minHalf = halfMinI < halfMinJ ? halfMinI : halfMinJ;
-          const crossEps = minHalf * CROSS_EPS_FRAC;
+          // Polys need small lever arms to tip; 0.15*minHalf froze near-center contacts
+          const crossEps =
+            minHalf * (manPointCount > 0 ? 0.02 : CROSS_EPS_FRAC);
           const penetrationSlop = minHalf * PENETRATION_SLOP_FRAC;
-          const depthEff = result.depth - penetrationSlop;
-          if (depthEff > 0) {
+          const contactPoints = manPointCount > 0 ? manPointCount : 1;
+          // Split correction across manifold points so face–face does not double-push
+          const contactShare = 1 / contactPoints;
+
+          for (let pi = 0; pi < contactPoints; pi++) {
+            let depth;
+            let nx;
+            let ny;
+            let cx;
+            let cy;
+            if (manPointCount > 0) {
+              nx = polyManifold.nx;
+              ny = polyManifold.ny;
+              if (pi === 0) {
+                depth = polyManifold.d0;
+                cx = polyManifold.c0x;
+                cy = polyManifold.c0y;
+              } else {
+                depth = polyManifold.d1;
+                cx = polyManifold.c1x;
+                cy = polyManifold.c1y;
+              }
+            } else {
+              depth = result.depth;
+              nx = result.nx;
+              ny = result.ny;
+              cx = result.cx;
+              cy = result.cy;
+            }
+
+            const depthEff = depth - penetrationSlop;
+            if (depthEff <= 0) continue;
+
             // Wake only on meaningful penetration (micro jitter must not reset sleep)
             const wakeDepth = penetrationSlop > 1e-6 ? penetrationSlop : 0.5;
             if (depthEff > wakeDepth) {
@@ -1320,205 +1443,213 @@ class PhysicsWorker extends AbstractWorker {
               }
             }
 
-            const correction = depthEff * responseStrength;
-            const nx = result.nx;
-            const ny = result.ny;
-            const cx = result.cx;
-            const cy = result.cy;
+            const correction = depthEff * responseStrength * contactShare;
 
             const invMassI = iStatic ? 0 : invMass[i];
             const invMassJ = jStatic ? 0 : invMass[j];
             const totalInvMass = invMassI + invMassJ;
 
-            if (totalInvMass > 0) {
-              // Circles: rotationally symmetric — no collision torque / sprite spin.
-              const invII =
-                iStatic || shapeI === SHAPE_CIRCLE ? 0 : invInertia[i];
-              const invIJ =
-                jStatic || shapeJ === SHAPE_CIRCLE ? 0 : invInertia[j];
-              const rix = cx - localXi;
-              const riy = cy - localYi;
-              const rjx = cx - x[j];
-              const rjy = cy - y[j];
-              const crossI = rix * ny - riy * nx;
-              const crossJ = -rjx * ny + rjy * nx;
+            if (totalInvMass <= 0) continue;
 
-              // PBD effective mass: include angular or corner hits explode vs static floors
-              const invMassAng =
-                totalInvMass +
-                crossI * crossI * invII +
-                crossJ * crossJ * invIJ;
-              const lambda = correction / invMassAng;
+            // Circles: rotationally symmetric — no collision torque / sprite spin.
+            const invII =
+              iStatic || shapeI === SHAPE_CIRCLE ? 0 : invInertia[i];
+            const invIJ =
+              jStatic || shapeJ === SHAPE_CIRCLE ? 0 : invInertia[j];
+            const rix = cx - localXi;
+            const riy = cy - localYi;
+            const rjx = cx - x[j];
+            const rjy = cy - y[j];
+            const crossI = rix * ny - riy * nx;
+            const crossJ = -rjx * ny + rjy * nx;
 
-              // Pre-positional vn for resting detect (torque gate only — never invent sync)
-              let vix0 = 0;
-              let viy0 = 0;
-              let vjx0 = 0;
-              let vjy0 = 0;
+            // PBD effective mass: include angular or corner hits explode vs static floors
+            const invMassAng =
+              totalInvMass +
+              crossI * crossI * invII +
+              crossJ * crossJ * invIJ;
+            const lambda = correction / invMassAng;
+
+            // Pre-correction relative normal velocity at the contact point
+            let vix0 = 0;
+            let viy0 = 0;
+            let vjx0 = 0;
+            let vjy0 = 0;
+            if (!iStatic && iHasRigidBody) {
+              vix0 = localXi - px[i];
+              viy0 = localYi - py[i];
+              if (invII > 0) {
+                const wi = angularVelocity[i];
+                vix0 += -wi * riy;
+                viy0 += wi * rix;
+              }
+            }
+            if (!jStatic && jHasRigidBody) {
+              vjx0 = x[j] - px[j];
+              vjy0 = y[j] - py[j];
+              if (invIJ > 0) {
+                const wj = angularVelocity[j];
+                vjx0 += -wj * rjy;
+                vjy0 += wj * rjx;
+              }
+            }
+            const vn0 = (vix0 - vjx0) * nx + (viy0 - vjy0) * ny;
+            const absVn0 = vn0 < 0 ? -vn0 : vn0;
+            const shallow =
+              depthEff <
+              Math.max(penetrationSlop * 6, minHalf * 0.12);
+            const resting = absVn0 < REST_VN && shallow;
+
+            // Move x only — leave invent so PBD eats approach, does not invent bounce/pancake
+            x[i] = localXi += nx * (lambda * invMassI);
+            y[i] = localYi += ny * (lambda * invMassI);
+            x[j] -= nx * (lambda * invMassJ);
+            y[j] -= ny * (lambda * invMassJ);
+
+            // Circles: gate Δθ when resting/shallow (stops jitter spin).
+            // Poly manifolds: always apply positional torque (2-point couple flattens).
+            // Do NOT write ω from dTh — that invents energy (drift → spin explosion).
+            // Box2D keeps velocity solver and position solver separate for this reason.
+            const hitStatic = iStatic || jStatic;
+            const allowTorque =
+              manPointCount > 0 || (!resting && !shallow);
+            if (invII > 0) {
+              const absCross = crossI < 0 ? -crossI : crossI;
+              if (allowTorque && absCross > crossEps) {
+                const dTh = crossI * invII * lambda;
+                rotation[i] += dTh;
+                if (shapeI === SHAPE_POLYGON) {
+                  const c = cosI;
+                  const s = sinI;
+                  cosI = c - s * dTh;
+                  sinI = s + c * dTh;
+                  const invLen = 1.5 - 0.5 * (cosI * cosI + sinI * sinI);
+                  cosI *= invLen;
+                  sinI *= invLen;
+                  worldOffXi = cosI * offXi - sinI * offYi;
+                  worldOffYi = sinI * offXi + cosI * offYi;
+                  obbCos[i] = cosI;
+                  obbSin[i] = sinI;
+                }
+              }
+              // Resting/shallow: kill leftover ω (poly invent removed; still damp residual)
+              if (resting || shallow || (!allowTorque && (hitStatic || absCross <= crossEps))) {
+                angularVelocity[i] *= resting || shallow ? REST_OMEGA_KEEP : 0.8;
+              }
+            }
+            if (invIJ > 0) {
+              const absCross = crossJ < 0 ? -crossJ : crossJ;
+              if (allowTorque && absCross > crossEps) {
+                const dTh = crossJ * invIJ * lambda;
+                rotation[j] += dTh;
+                if (shapeJ === SHAPE_POLYGON) {
+                  const c = obbCos[j];
+                  const s = obbSin[j];
+                  let cj = c - s * dTh;
+                  let sj = s + c * dTh;
+                  const invLen = 1.5 - 0.5 * (cj * cj + sj * sj);
+                  cj *= invLen;
+                  sj *= invLen;
+                  obbCos[j] = cj;
+                  obbSin[j] = sj;
+                }
+              }
+              if (resting || shallow || (!allowTorque && (hitStatic || absCross <= crossEps))) {
+                angularVelocity[j] *= resting || shallow ? REST_OMEGA_KEEP : 0.8;
+              }
+            }
+
+            // Contact friction: min combine + Coulomb clamp (μ * |jn|)
+            // Skip when resting poly stack — tangent kill via px still invents lateral creep
+            const muJ = contactFriction[j];
+            if (
+              muI > 0 &&
+              muJ > 0 &&
+              !(manPointCount > 0 && resting)
+            ) {
+              const mu = muI < muJ ? muI : muJ;
+
+              let vix = 0;
+              let viy = 0;
+              let vjx = 0;
+              let vjy = 0;
               if (!iStatic && iHasRigidBody) {
-                vix0 = localXi - px[i];
-                viy0 = localYi - py[i];
+                vix = localXi - px[i];
+                viy = localYi - py[i];
                 if (invII > 0) {
                   const wi = angularVelocity[i];
-                  vix0 += -wi * riy;
-                  viy0 += wi * rix;
+                  vix += -wi * riy;
+                  viy += wi * rix;
                 }
               }
               if (!jStatic && jHasRigidBody) {
-                vjx0 = x[j] - px[j];
-                vjy0 = y[j] - py[j];
+                vjx = x[j] - px[j];
+                vjy = y[j] - py[j];
                 if (invIJ > 0) {
                   const wj = angularVelocity[j];
-                  vjx0 += -wj * rjy;
-                  vjy0 += wj * rjx;
+                  vjx += -wj * rjy;
+                  vjy += wj * rjx;
                 }
               }
-              const vn0 = (vix0 - vjx0) * nx + (viy0 - vjy0) * ny;
-              const absVn0 = vn0 < 0 ? -vn0 : vn0;
-              const shallow =
-                depthEff <
-                Math.max(penetrationSlop * 6, minHalf * 0.12);
-              const resting = absVn0 < REST_VN && shallow;
 
-              // Move x only — leave invent so PBD eats approach, does not invent bounce
-              x[i] = localXi += nx * (lambda * invMassI);
-              y[i] = localYi += ny * (lambda * invMassI);
-              x[j] -= nx * (lambda * invMassJ);
-              y[j] -= ny * (lambda * invMassJ);
+              const rvx = vix - vjx;
+              const rvy = viy - vjy;
+              const vn = rvx * nx + rvy * ny;
+              const vtx = rvx - vn * nx;
+              const vty = rvy - vn * ny;
+              const vtLen2 = vtx * vtx + vty * vty;
 
-              // Face-ish / resting: no Δθ (off-center support rock). Impacts may tip.
-              const hitStatic = iStatic || jStatic;
-              const allowTorque = !resting && !shallow;
-              if (invII > 0) {
-                const absCross = crossI < 0 ? -crossI : crossI;
-                if (allowTorque && absCross > crossEps) {
-                  const dTh = crossI * invII * lambda;
-                  rotation[i] += dTh;
-                  if (shapeI === SHAPE_ORIENTED_BOX) {
-                    const c = cosI;
-                    const s = sinI;
-                    cosI = c - s * dTh;
-                    sinI = s + c * dTh;
-                    const invLen = 1.5 - 0.5 * (cosI * cosI + sinI * sinI);
-                    cosI *= invLen;
-                    sinI *= invLen;
-                    worldOffXi = cosI * offXi - sinI * offYi;
-                    worldOffYi = sinI * offXi + cosI * offYi;
-                    obbCos[i] = cosI;
-                    obbSin[i] = sinI;
+              if (vtLen2 > VT_EPS2) {
+                // |jn| floor: at rest depth→slop so μ·correction ≈ ice without gravity support
+                let jnAbs = correction;
+                {
+                  const gAlongN = -(gx * nx + gy * ny) * gravityScale;
+                  if (gAlongN > 0) {
+                    const jnSupport = gAlongN / invMassAng;
+                    if (jnSupport > jnAbs) jnAbs = jnSupport;
                   }
-                } else if (hitStatic || resting || shallow || absCross <= crossEps) {
-                  angularVelocity[i] *= resting || shallow ? REST_OMEGA_KEEP : 0.8;
                 }
-              }
-              if (invIJ > 0) {
-                const absCross = crossJ < 0 ? -crossJ : crossJ;
-                if (allowTorque && absCross > crossEps) {
-                  const dTh = crossJ * invIJ * lambda;
-                  rotation[j] += dTh;
-                  if (shapeJ === SHAPE_ORIENTED_BOX) {
-                    const c = obbCos[j];
-                    const s = obbSin[j];
-                    let cj = c - s * dTh;
-                    let sj = s + c * dTh;
-                    const invLen = 1.5 - 0.5 * (cj * cj + sj * sj);
-                    cj *= invLen;
-                    sj *= invLen;
-                    obbCos[j] = cj;
-                    obbSin[j] = sj;
-                  }
-                } else if (hitStatic || resting || shallow || absCross <= crossEps) {
-                  angularVelocity[j] *= resting || shallow ? REST_OMEGA_KEEP : 0.8;
+                const maxSlide = resting ? mu * jnAbs * 1.25 : mu * jnAbs;
+                const maxSlide2 = maxSlide * maxSlide;
+                let scale;
+                if (vtLen2 <= maxSlide2) {
+                  scale = 1;
+                } else {
+                  scale = maxSlide / Math.sqrt(vtLen2);
                 }
-              }
 
-              // Contact friction: min combine + Coulomb clamp (μ * |jn|)
-              const muJ = contactFriction[j];
-              if (muI > 0 && muJ > 0) {
-                const mu = muI < muJ ? muI : muJ;
+                const fdx = vtx * scale;
+                const fdy = vty * scale;
+                const invTotal = 1 / totalInvMass;
+                const wI = invMassI * invTotal;
+                const wJ = invMassJ * invTotal;
 
-                let vix = 0;
-                let viy = 0;
-                let vjx = 0;
-                let vjy = 0;
+                // Kill tangent vel via px only (same as scaleVelocity). Moving x invents water-motion.
                 if (!iStatic && iHasRigidBody) {
-                  vix = localXi - px[i];
-                  viy = localYi - py[i];
-                  if (invII > 0) {
-                    const wi = angularVelocity[i];
-                    vix += -wi * riy;
-                    viy += wi * rix;
-                  }
+                  px[i] += fdx * wI;
+                  py[i] += fdy * wI;
                 }
                 if (!jStatic && jHasRigidBody) {
-                  vjx = x[j] - px[j];
-                  vjy = y[j] - py[j];
-                  if (invIJ > 0) {
-                    const wj = angularVelocity[j];
-                    vjx += -wj * rjy;
-                    vjy += wj * rjx;
-                  }
+                  px[j] -= fdx * wJ;
+                  py[j] -= fdy * wJ;
                 }
 
-                const rvx = vix - vjx;
-                const rvy = viy - vjy;
-                const vn = rvx * nx + rvy * ny;
-                const vtx = rvx - vn * nx;
-                const vty = rvy - vn * ny;
-                const vtLen2 = vtx * vtx + vty * vty;
-
-                if (vtLen2 > VT_EPS2) {
-                  // |jn| floor: at rest depth→slop so μ·correction ≈ ice without gravity support
-                  let jnAbs = correction;
-                  {
-                    const gAlongN = -(gx * nx + gy * ny) * gravityScale;
-                    if (gAlongN > 0) {
-                      const jnSupport = gAlongN / invMassAng;
-                      if (jnSupport > jnAbs) jnAbs = jnSupport;
-                    }
+                // Angular friction — face-gated + mass-weighted; no θ move
+                if (invII > 0) {
+                  const absCross = crossI < 0 ? -crossI : crossI;
+                  if (absCross > crossEps) {
+                    angularVelocity[i] -= (riy * fdx - rix * fdy) * invII * wI;
                   }
-                  const maxSlide = resting ? mu * jnAbs * 1.25 : mu * jnAbs;
-                  const maxSlide2 = maxSlide * maxSlide;
-                  let scale;
-                  if (vtLen2 <= maxSlide2) {
-                    scale = 1;
-                  } else {
-                    scale = maxSlide / Math.sqrt(vtLen2);
-                  }
-
-                  const fdx = vtx * scale;
-                  const fdy = vty * scale;
-                  const invTotal = 1 / totalInvMass;
-                  const wI = invMassI * invTotal;
-                  const wJ = invMassJ * invTotal;
-
-                  // Kill tangent vel via px only (same as scaleVelocity). Moving x invents water-motion.
-                  if (!iStatic && iHasRigidBody) {
-                    px[i] += fdx * wI;
-                    py[i] += fdy * wI;
-                  }
-                  if (!jStatic && jHasRigidBody) {
-                    px[j] -= fdx * wJ;
-                    py[j] -= fdy * wJ;
-                  }
-
-                  // Angular friction — face-gated + mass-weighted; no θ move
-                  if (invII > 0) {
-                    const absCross = crossI < 0 ? -crossI : crossI;
-                    if (absCross > crossEps) {
-                      angularVelocity[i] -= (riy * fdx - rix * fdy) * invII * wI;
-                    }
-                  }
-                  if (invIJ > 0) {
-                    const absCross = crossJ < 0 ? -crossJ : crossJ;
-                    if (absCross > crossEps) {
-                      angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ * wJ;
-                    }
+                }
+                if (invIJ > 0) {
+                  const absCross = crossJ < 0 ? -crossJ : crossJ;
+                  if (absCross > crossEps) {
+                    angularVelocity[j] -= (rjx * fdy - rjy * fdx) * invIJ * wJ;
                   }
                 }
               }
             }
-          } // depthEff > 0
+          } // contact points
         }
 
         // Track collision count

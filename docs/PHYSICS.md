@@ -11,7 +11,7 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 ## Responsibilities (per frame)
 
 1. **Verlet integration** — advance positions from acceleration, velocity caps, friction, and gravity (config-driven). Also integrates `angularVelocity` into `Transform.rotation` and applies `angularDrag`.
-2. **Collision resolution** — positional PBD with coupled `λ = correction / invMassAng`. Move `x` only — **never sync invent** with PBD (sync invents separation velocity = jumps). **No Δθ** when resting/shallow (stops stack rock). Circles force `invI = 0`. Friction: Coulomb on `px` with gravity `|jn|` floor. No soft-contact bias.
+2. **Collision resolution** — positional PBD with coupled `λ = correction / invMassAng`. The correction moves `x`, and `contactSyncFraction()` decides how much of it also moves the invent `px` — **restitution 0**: sync only the part that cancels the approach, so contacts never invent separation velocity (jumps) but a correction too small to stop the approach still propagates shock up a stack. **Δθ** only when `|r × n| > crossEps` (a flat floor hit must not spin); spin decay is `angularDrag`'s job, once per tick. Circles force `invI = 0`. Friction: Coulomb on `px`, clamped by `μ · max(correction, g·n · dtRatio²)` — both terms in step-displacement units. No soft-contact bias.
 3. **Distance constraints** (optional) — position-based corrections for active constraints when constraints are enabled in scene config.
 4. **Stats** — write counters and timing into `physicsStats` (see [Worker stats](#worker-stats)).
 
@@ -23,16 +23,17 @@ Soft spring bias (`contactHertz` / damping / maxBias) is **not used** by the cur
 
 ### Collider shape types
 
-| Value | Name        | Notes                                                                                 |
-| ----: | ----------- | ------------------------------------------------------------------------------------- |
-|   `0` | Circle      | Uses `radius`                                                                         |
-|   `1` | Box         | Axis-aligned rectangle (`width`/`height`); ignores `Transform.rotation` for collision |
-|   `2` | OrientedBox | OBB oriented by `Transform.rotation`; spatial broadphase uses the AABB of the OBB. Narrowphase: SAT + single support contact (smaller body only vs large floors). |
+| Value | Name     | Notes                                                                 |
+| ----: | -------- | --------------------------------------------------------------------- |
+|   `0` | Circle   | Uses `radius`                                                         |
+|   `1` | Box      | Axis-aligned rectangle (`width`/`height`); ignores `Transform.rotation` for collision |
+|   `2` | Polygon  | Convex polygon (Box2D-style): local verts/normals via `Collider.makeBox` / `makePolygon`, max 8 verts; oriented by `Transform.rotation`. Broadphase uses AABB of transformed verts. Narrowphase: SAT + single support contact (smaller body only vs large floors). Two-contact clip manifolds deferred. |
 
 Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 
 - Circle: `I = 0.5 * m * r²`
-- Box / OrientedBox: `I = m * (w² + h²) / 12`
+- AABB Box: `I = m * (w² + h²) / 12`
+- Polygon: shoelace area mass; inertia about centroid (Box2D-style)
 - Static: `invInertia = 0`
 
 `angularDrag` damps spin each move step: `ω *= max(0, 1 - angularDrag * dtRatio)`. Sprite facing follows `Transform.rotation` via the render queue. Spin settle uses contact friction + optional `angularDrag`.

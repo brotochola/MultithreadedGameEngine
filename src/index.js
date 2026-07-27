@@ -174,6 +174,7 @@ import { Constraint } from './core/Constraint.js';
 import { AbstractWorker } from './workers/AbstractWorker.js';
 import {
   ShapeType,
+  MAX_POLYGON_VERTICES,
   BLEND_MODES,
   DEFAULT_LAYERS,
   CAMERA_TYPES,
@@ -181,6 +182,7 @@ import {
 
 const enums = Object.freeze({
   ShapeType,
+  MAX_POLYGON_VERTICES,
   BLEND_MODES,
   DEFAULT_LAYERS,
   CAMERA_TYPES,

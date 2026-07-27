@@ -1051,12 +1051,9 @@ export function testAABBAABBCollision(x1, y1, w1, h1, x2, y2, w2, h2, result) {
 }
 
 /**
- * Test Circle vs Oriented Box (OBB).
- * Transforms circle into box-local space, reuses AABB closest-point logic, rotates normal back.
+ * Test Circle vs Oriented Box (OBB) — thin wrapper over circle–AABB in local frame.
+ * Prefer testCirclePolygonCollision for Polygon shapes.
  * ZERO-GC: mutates result {collided, depth, nx, ny, cx, cy}
- *
- * @param {number} cos - cos(boxRotation)
- * @param {number} sin - sin(boxRotation)
  */
 export function testCircleOBBCollision(
   circleX, circleY, circleR,
@@ -1064,7 +1061,6 @@ export function testCircleOBBCollision(
   cos, sin,
   result
 ) {
-  // Circle center relative to box, then into box local frame
   const dxw = circleX - boxX;
   const dyw = circleY - boxY;
   const localX = cos * dxw + sin * dyw;
@@ -1078,7 +1074,6 @@ export function testCircleOBBCollision(
   const localCx = result.cx;
   const localCy = result.cy;
 
-  // Rotate normal + contact back to world
   result.nx = cos * localNx - sin * localNy;
   result.ny = sin * localNx + cos * localNy;
   result.cx = boxX + cos * localCx - sin * localCy;
@@ -1087,142 +1082,567 @@ export function testCircleOBBCollision(
   return result;
 }
 
+/** Scratch for AABB→polygon (4 verts + 4 normals). Shared — single-threaded workers / tests only. */
+const _boxPolyVX = new Float32Array(8);
+const _boxPolyVY = new Float32Array(8);
+const _boxPolyNX = new Float32Array(8);
+const _boxPolyNY = new Float32Array(8);
+const _boxPoly2VX = new Float32Array(8);
+const _boxPoly2VY = new Float32Array(8);
+const _boxPoly2NX = new Float32Array(8);
+const _boxPoly2NY = new Float32Array(8);
+
 /**
- * Project OBB onto an axis (nx, ny) — returns half-extent of projection.
- * Axis should be normalized.
+ * Fill a box-poly scratch with local box (±hw, ±hh), count 4.
+ * @param {Float32Array} vx
+ * @param {Float32Array} vy
+ * @param {Float32Array} nx
+ * @param {Float32Array} ny
+ * @param {number} halfW
+ * @param {number} halfH
  */
-function _obbProjectionRadius(hw, hh, axisX, axisY, cos, sin) {
-  // Box local axes in world: (cos, sin) and (-sin, cos)
-  const ax0 = Math.abs(axisX * cos + axisY * sin);
-  const ax1 = Math.abs(axisX * -sin + axisY * cos);
-  return ax0 * hw + ax1 * hh;
+export function fillBoxPolygonInto(vx, vy, nx, ny, halfW, halfH) {
+  vx[0] = -halfW; vy[0] = -halfH;
+  vx[1] = halfW; vy[1] = -halfH;
+  vx[2] = halfW; vy[2] = halfH;
+  vx[3] = -halfW; vy[3] = halfH;
+  nx[0] = 0; ny[0] = -1;
+  nx[1] = 1; ny[1] = 0;
+  nx[2] = 0; ny[2] = 1;
+  nx[3] = -1; ny[3] = 0;
 }
 
 /**
- * Test OBB vs OBB via SAT on both boxes' edge axes.
+ * Fill primary scratch with local box polygon (±hw, ±hh), count 4. Returns base 0.
+ */
+export function fillBoxPolygonScratch(halfW, halfH) {
+  fillBoxPolygonInto(_boxPolyVX, _boxPolyVY, _boxPolyNX, _boxPolyNY, halfW, halfH);
+  return 0;
+}
+
+export function getBoxPolygonScratchArrays() {
+  return { vx: _boxPolyVX, vy: _boxPolyVY, nx: _boxPolyNX, ny: _boxPolyNY };
+}
+
+/**
+ * Project convex polygon (local verts, world transform) onto world axis.
+ * Returns [min, max] via outMinMax {min, max}.
+ */
+function _projectPolygonWorld(
+  ox, oy, cos, sin,
+  vx, vy, count, base,
+  ax, ay,
+  outMinMax
+) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const lx = vx[base + i];
+    const ly = vy[base + i];
+    const wx = ox + cos * lx - sin * ly;
+    const wy = oy + sin * lx + cos * ly;
+    const d = wx * ax + wy * ay;
+    if (d < min) min = d;
+    if (d > max) max = d;
+  }
+  outMinMax.min = min;
+  outMinMax.max = max;
+}
+
+const _projA = { min: 0, max: 0 };
+const _projB = { min: 0, max: 0 };
+
+/**
+ * Support of polygon along world direction (dx, dy).
+ * Averages all vertices within EPS of the extreme (face/edge center, not a lone corner).
+ * Corner-only support on face–face contacts invents a lever → spin, vibration, tunneling.
+ */
+function _polySupportWorld(
+  ox, oy, cos, sin,
+  vx, vy, count, base,
+  dx, dy,
+  out
+) {
+  let best = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const lx = vx[base + i];
+    const ly = vy[base + i];
+    const wx = ox + cos * lx - sin * ly;
+    const wy = oy + sin * lx + cos * ly;
+    const d = wx * dx + wy * dy;
+    if (d > best) best = d;
+  }
+  // Relative epsilon so large floors still cluster face verts
+  const eps = 1e-4 * (Math.abs(best) + 1) + 1e-3;
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let i = 0; i < count; i++) {
+    const lx = vx[base + i];
+    const ly = vy[base + i];
+    const wx = ox + cos * lx - sin * ly;
+    const wy = oy + sin * lx + cos * ly;
+    const d = wx * dx + wy * dy;
+    if (d >= best - eps) {
+      sx += wx;
+      sy += wy;
+      n++;
+    }
+  }
+  const inv = n > 0 ? 1 / n : 0;
+  out.x = sx * inv;
+  out.y = sy * inv;
+}
+
+const _support1 = { x: 0, y: 0 };
+const _support2 = { x: 0, y: 0 };
+
+/** World-space poly scratch for clip manifold (max 8 verts). Module-level — zero GC. */
+const _manAVx = new Float32Array(8);
+const _manAVy = new Float32Array(8);
+const _manANx = new Float32Array(8);
+const _manANy = new Float32Array(8);
+const _manBVx = new Float32Array(8);
+const _manBVy = new Float32Array(8);
+const _manBNx = new Float32Array(8);
+const _manBNy = new Float32Array(8);
+const _clipInX = new Float32Array(2);
+const _clipInY = new Float32Array(2);
+const _clipOutX = new Float32Array(2);
+const _clipOutY = new Float32Array(2);
+const _edgeOut = { edge: 0 };
+
+function _fillWorldPoly(
+  ox, oy, cos, sin,
+  vx, vy, nx, ny, count, base,
+  outVX, outVY, outNX, outNY
+) {
+  for (let i = 0; i < count; i++) {
+    const lx = vx[base + i];
+    const ly = vy[base + i];
+    outVX[i] = ox + cos * lx - sin * ly;
+    outVY[i] = oy + sin * lx + cos * ly;
+    const lnx = nx[base + i];
+    const lny = ny[base + i];
+    outNX[i] = cos * lnx - sin * lny;
+    outNY[i] = sin * lnx + cos * lny;
+  }
+}
+
+/**
+ * Max face separation of poly1 vs poly2 (Box2D b2FindMaxSeparation).
+ * Separation > 0 ⇒ separated on that axis. Returns max (least penetrating).
+ */
+function _findMaxSeparation(
+  edgeOut,
+  count1, vx1, vy1, nx1, ny1,
+  count2, vx2, vy2
+) {
+  let maxSep = -Infinity;
+  let bestEdge = 0;
+  for (let i = 0; i < count1; i++) {
+    const nnx = nx1[i];
+    const nny = ny1[i];
+    const v1x = vx1[i];
+    const v1y = vy1[i];
+    let si = Infinity;
+    for (let j = 0; j < count2; j++) {
+      const sij = nnx * (vx2[j] - v1x) + nny * (vy2[j] - v1y);
+      if (sij < si) si = sij;
+    }
+    if (si > maxSep) {
+      maxSep = si;
+      bestEdge = i;
+    }
+  }
+  edgeOut.edge = bestEdge;
+  return maxSep;
+}
+
+/**
+ * Clip segment (inX/inY, inCount) against half-plane offset*normal + planeOffset >= 0 side kept.
+ * Writes to outX/outY, returns out count (0..2). ZERO-GC.
+ */
+function _clipSegmentToLine(inX, inY, inCount, nx, ny, offset, outX, outY) {
+  let outCount = 0;
+  const d0 = nx * inX[0] + ny * inY[0] - offset;
+  const d1 = inCount > 1 ? nx * inX[1] + ny * inY[1] - offset : d0;
+
+  if (d0 <= 0) {
+    outX[outCount] = inX[0];
+    outY[outCount] = inY[0];
+    outCount++;
+  }
+  if (inCount > 1) {
+    if (d1 <= 0) {
+      outX[outCount] = inX[1];
+      outY[outCount] = inY[1];
+      outCount++;
+    }
+    // Crossing?
+    if ((d0 > 0 && d1 <= 0) || (d0 <= 0 && d1 > 0)) {
+      if (outCount < 2) {
+        const t = d0 / (d0 - d1);
+        outX[outCount] = inX[0] + t * (inX[1] - inX[0]);
+        outY[outCount] = inY[0] + t * (inY[1] - inY[0]);
+        outCount++;
+      }
+    }
+  }
+  return outCount;
+}
+
+/**
+ * Box2D-style polygon–polygon clip manifold (≤2 contacts, shared normal).
+ * Normal points from poly2 toward poly1. Depths are positive penetration.
+ * ZERO-GC: mutates manifold { pointCount, nx, ny, c0x,c0y,d0, c1x,c1y,d1 }.
+ * Returns manifold or null if separated.
+ */
+export function collidePolygonsManifold(
+  x1, y1, cos1, sin1, vx1, vy1, nx1, ny1, count1, base1,
+  x2, y2, cos2, sin2, vx2, vy2, nx2, ny2, count2, base2,
+  manifold
+) {
+  if (count1 < 3 || count2 < 3) {
+    manifold.pointCount = 0;
+    return null;
+  }
+
+  _fillWorldPoly(x1, y1, cos1, sin1, vx1, vy1, nx1, ny1, count1, base1, _manAVx, _manAVy, _manANx, _manANy);
+  _fillWorldPoly(x2, y2, cos2, sin2, vx2, vy2, nx2, ny2, count2, base2, _manBVx, _manBVy, _manBNx, _manBNy);
+
+  const sepA = _findMaxSeparation(_edgeOut, count1, _manAVx, _manAVy, _manANx, _manANy, count2, _manBVx, _manBVy);
+  const edgeA = _edgeOut.edge;
+  if (sepA > 0) {
+    manifold.pointCount = 0;
+    return null;
+  }
+
+  const sepB = _findMaxSeparation(_edgeOut, count2, _manBVx, _manBVy, _manBNx, _manBNy, count1, _manAVx, _manAVy);
+  const edgeB = _edgeOut.edge;
+  if (sepB > 0) {
+    manifold.pointCount = 0;
+    return null;
+  }
+
+  // Reference = face with greater separation (less penetration) — Box2D bias
+  let flip = false;
+  let refEdge = edgeA;
+  let refVX = _manAVx;
+  let refVY = _manAVy;
+  let refNX = _manANx;
+  let refNY = _manANy;
+  let refCount = count1;
+  let incVX = _manBVx;
+  let incVY = _manBVy;
+  let incNX = _manBNx;
+  let incNY = _manBNy;
+  let incCount = count2;
+  if (sepB > sepA) {
+    flip = true;
+    refEdge = edgeB;
+    refVX = _manBVx;
+    refVY = _manBVy;
+    refNX = _manBNx;
+    refNY = _manBNy;
+    refCount = count2;
+    incVX = _manAVx;
+    incVY = _manAVy;
+    incNX = _manANx;
+    incNY = _manANy;
+    incCount = count1;
+  }
+
+  const refNx = refNX[refEdge];
+  const refNy = refNY[refEdge];
+  const i11 = refEdge;
+  const i12 = refEdge + 1 < refCount ? refEdge + 1 : 0;
+  const v11x = refVX[i11];
+  const v11y = refVY[i11];
+  const v12x = refVX[i12];
+  const v12y = refVY[i12];
+
+  // Incident edge: most anti-aligned with reference normal
+  let incEdge = 0;
+  let minDot = Infinity;
+  for (let i = 0; i < incCount; i++) {
+    const d = refNx * incNX[i] + refNy * incNY[i];
+    if (d < minDot) {
+      minDot = d;
+      incEdge = i;
+    }
+  }
+  const i21 = incEdge;
+  const i22 = incEdge + 1 < incCount ? incEdge + 1 : 0;
+
+  // Side planes of reference face (outward from segment, along face tangent)
+  // Tangent = perpendicular to normal: (-ny, nx) for CCW (left of outward normal? )
+  // Side plane at v11: keep points with dot(p - v11, -tangent) <= 0 ... Box2D uses tangent = cross(1, normal) = (-ny, nx)
+  const tangentX = -refNy;
+  const tangentY = refNx;
+
+  // Clip incident edge against front side plane at v11: offset = dot(v11, tangent)
+  // Box2D: clip against plane with normal = -tangent through v11, and tangent through v12
+  _clipInX[0] = incVX[i21];
+  _clipInY[0] = incVY[i21];
+  _clipInX[1] = incVX[i22];
+  _clipInY[1] = incVY[i22];
+
+  // Plane 1: keep side of -tangent through v11 → offset = -dot(v11, tangent), normal = -tangent
+  // Clip: nx*p + ny*p - offset <= 0 for "inside"
+  // Using normal = -tangent, offset = -dot(v11, tangent): (-tx)*x + (-ty)*y - (-dot) = -dot(p,t) + dot(v11,t) <= 0
+  // ⇒ dot(p - v11, t) >= 0  (points on +tangent side of v11)
+  let nClip = _clipSegmentToLine(
+    _clipInX, _clipInY, 2,
+    -tangentX, -tangentY, -(v11x * tangentX + v11y * tangentY),
+    _clipOutX, _clipOutY
+  );
+  if (nClip < 2) {
+    manifold.pointCount = 0;
+    return null;
+  }
+  // Swap buffers: out → in
+  _clipInX[0] = _clipOutX[0];
+  _clipInY[0] = _clipOutY[0];
+  _clipInX[1] = _clipOutX[1];
+  _clipInY[1] = _clipOutY[1];
+
+  // Plane 2: normal = tangent through v12
+  nClip = _clipSegmentToLine(
+    _clipInX, _clipInY, 2,
+    tangentX, tangentY, v12x * tangentX + v12y * tangentY,
+    _clipOutX, _clipOutY
+  );
+  if (nClip < 1) {
+    manifold.pointCount = 0;
+    return null;
+  }
+
+  // Keep points behind reference face (separation <= 0)
+  const faceOffset = v11x * refNx + v11y * refNy;
+  let pointCount = 0;
+  for (let i = 0; i < nClip && pointCount < 2; i++) {
+    const px = _clipOutX[i];
+    const py = _clipOutY[i];
+    const separation = px * refNx + py * refNy - faceOffset;
+    if (separation <= 0) {
+      if (pointCount === 0) {
+        manifold.c0x = px;
+        manifold.c0y = py;
+        manifold.d0 = -separation;
+      } else {
+        manifold.c1x = px;
+        manifold.c1y = py;
+        manifold.d1 = -separation;
+      }
+      pointCount++;
+    }
+  }
+
+  if (pointCount === 0) {
+    manifold.pointCount = 0;
+    return null;
+  }
+
+  manifold.pointCount = pointCount;
+  // Normal from poly2 toward poly1 (resolve pushes body1 along +n)
+  // Ref face on poly1: outward points toward poly2 → negate
+  // Ref face on poly2 (flip): outward already points toward poly1
+  if (flip) {
+    manifold.nx = refNx;
+    manifold.ny = refNy;
+  } else {
+    manifold.nx = -refNx;
+    manifold.ny = -refNy;
+  }
+  return manifold;
+}
+
+/**
+ * Convex polygon vs polygon SAT (Box2D-style axes = outward edge normals).
+ * Single contact (MTV + support). Normal from poly2 toward poly1.
  * ZERO-GC: mutates result {collided, depth, nx, ny, cx, cy}
- * Normal points from box2 toward box1 (same convention as AABB AABB: from 2 to 1 via dx = x1-x2).
+ *
+ * @param {number} area1 - polygon area (for floor lever heuristic); 0 skips size bias
+ * @param {number} area2
+ */
+export function testPolygonPolygonCollision(
+  x1, y1, cos1, sin1, vx1, vy1, nx1, ny1, count1, base1, area1,
+  x2, y2, cos2, sin2, vx2, vy2, nx2, ny2, count2, base2, area2,
+  result
+) {
+  // Prefer clip manifold; collapse to single contact for legacy callers
+  const man = collidePolygonsManifold(
+    x1, y1, cos1, sin1, vx1, vy1, nx1, ny1, count1, base1,
+    x2, y2, cos2, sin2, vx2, vy2, nx2, ny2, count2, base2,
+    _legacyManifold
+  );
+  if (!man || man.pointCount === 0) return null;
+
+  result.collided = true;
+  result.nx = man.nx;
+  result.ny = man.ny;
+  if (man.pointCount === 1) {
+    result.depth = man.d0;
+    result.cx = man.c0x;
+    result.cy = man.c0y;
+  } else {
+    // Clip points already lie on the incident edge — average ≈ face center
+    result.depth = (man.d0 + man.d1) * 0.5;
+    result.cx = (man.c0x + man.c1x) * 0.5;
+    result.cy = (man.c0y + man.c1y) * 0.5;
+  }
+  return result;
+}
+
+const _legacyManifold = {
+  pointCount: 0,
+  nx: 0,
+  ny: 0,
+  c0x: 0,
+  c0y: 0,
+  d0: 0,
+  c1x: 0,
+  c1y: 0,
+  d1: 0,
+};
+
+/**
+ * Circle vs convex polygon. Circle → poly local; closest feature; rotate normal back.
+ * ZERO-GC
+ */
+export function testCirclePolygonCollision(
+  circleX, circleY, circleR,
+  polyX, polyY, cos, sin,
+  vx, vy, nx, ny, count, base,
+  result
+) {
+  if (count < 3 || !(circleR > 0)) return null;
+
+  const dxw = circleX - polyX;
+  const dyw = circleY - polyY;
+  const lx = cos * dxw + sin * dyw;
+  const ly = -sin * dxw + cos * dyw;
+
+  // Closest point on convex poly to local circle center
+  let inside = true;
+  let bestSep = -Infinity;
+  let sepNx = 0;
+  let sepNy = 0;
+
+  for (let i = 0; i < count; i++) {
+    const px = vx[base + i];
+    const py = vy[base + i];
+    const nnx = nx[base + i];
+    const nny = ny[base + i];
+    const sep = (lx - px) * nnx + (ly - py) * nny;
+    if (sep > 0) inside = false;
+    if (sep > bestSep) {
+      bestSep = sep;
+      sepNx = nnx;
+      sepNy = nny;
+    }
+  }
+
+  let localCx;
+  let localCy;
+  let localNx;
+  let localNy;
+  let depth;
+
+  if (inside) {
+    // Deepest inside face → push out along that outward normal
+    depth = circleR - bestSep;
+    if (depth <= 0) return null;
+    localNx = sepNx;
+    localNy = sepNy;
+    localCx = lx - sepNx * bestSep;
+    localCy = ly - sepNy * bestSep;
+  } else {
+    // Outside: closest point on boundary (edges + verts)
+    let bestD2 = Infinity;
+    localCx = lx;
+    localCy = ly;
+    for (let i = 0; i < count; i++) {
+      const j = i + 1 < count ? i + 1 : 0;
+      const ax = vx[base + i];
+      const ay = vy[base + i];
+      const bx = vx[base + j];
+      const by = vy[base + j];
+      const ex = bx - ax;
+      const ey = by - ay;
+      const t = ((lx - ax) * ex + (ly - ay) * ey) / (ex * ex + ey * ey + 1e-30);
+      const tt = t < 0 ? 0 : t > 1 ? 1 : t;
+      const qx = ax + ex * tt;
+      const qy = ay + ey * tt;
+      const ddx = lx - qx;
+      const ddy = ly - qy;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        localCx = qx;
+        localCy = qy;
+      }
+    }
+    const dist = Math.sqrt(bestD2);
+    if (dist >= circleR) return null;
+    if (dist < 1e-8) {
+      localNx = sepNx;
+      localNy = sepNy;
+      depth = circleR;
+    } else {
+      const inv = 1 / dist;
+      localNx = (lx - localCx) * inv;
+      localNy = (ly - localCy) * inv;
+      depth = circleR - dist;
+    }
+  }
+
+  result.collided = true;
+  result.depth = depth;
+  result.nx = cos * localNx - sin * localNy;
+  result.ny = sin * localNx + cos * localNy;
+  result.cx = polyX + cos * localCx - sin * localCy;
+  result.cy = polyY + sin * localCx + cos * localCy;
+  return result;
+}
+
+/**
+ * Test OBB vs OBB via polygon SAT (boxes as 4-vert polys). Kept for tests / legacy.
  */
 export function testOBBOBBCollision(
   x1, y1, w1, h1, cos1, sin1,
   x2, y2, w2, h2, cos2, sin2,
   result
 ) {
-  const hw1 = w1 * 0.5;
-  const hh1 = h1 * 0.5;
-  const hw2 = w2 * 0.5;
-  const hh2 = h2 * 0.5;
+  fillBoxPolygonInto(_boxPolyVX, _boxPolyVY, _boxPolyNX, _boxPolyNY, w1 * 0.5, h1 * 0.5);
+  fillBoxPolygonInto(_boxPoly2VX, _boxPoly2VY, _boxPoly2NX, _boxPoly2NY, w2 * 0.5, h2 * 0.5);
+  return testPolygonPolygonCollision(
+    x1, y1, cos1, sin1, _boxPolyVX, _boxPolyVY, _boxPolyNX, _boxPolyNY, 4, 0, w1 * h1,
+    x2, y2, cos2, sin2, _boxPoly2VX, _boxPoly2VY, _boxPoly2NX, _boxPoly2NY, 4, 0, w2 * h2,
+    result
+  );
+}
 
-  const dx = x1 - x2;
-  const dy = y1 - y2;
-
-  let minOverlap = Infinity;
-  let bestNx = 0;
-  let bestNy = 0;
-
-  // Four candidate axes: two from each OBB
-  // Axis A0
-  {
-    const ax = cos1;
-    const ay = sin1;
-    const r1 = hw1; // projection of box1 onto its own x-axis
-    const r2 = _obbProjectionRadius(hw2, hh2, ax, ay, cos2, sin2);
-    const dist = Math.abs(dx * ax + dy * ay);
-    const overlap = r1 + r2 - dist;
-    if (overlap <= 0) return null;
-    if (overlap < minOverlap) {
-      minOverlap = overlap;
-      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
-      bestNx = ax * sign;
-      bestNy = ay * sign;
-    }
-  }
-  // Axis A1
-  {
-    const ax = -sin1;
-    const ay = cos1;
-    const r1 = hh1;
-    const r2 = _obbProjectionRadius(hw2, hh2, ax, ay, cos2, sin2);
-    const dist = Math.abs(dx * ax + dy * ay);
-    const overlap = r1 + r2 - dist;
-    if (overlap <= 0) return null;
-    if (overlap < minOverlap) {
-      minOverlap = overlap;
-      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
-      bestNx = ax * sign;
-      bestNy = ay * sign;
-    }
-  }
-  // Axis B0
-  {
-    const ax = cos2;
-    const ay = sin2;
-    const r1 = _obbProjectionRadius(hw1, hh1, ax, ay, cos1, sin1);
-    const r2 = hw2;
-    const dist = Math.abs(dx * ax + dy * ay);
-    const overlap = r1 + r2 - dist;
-    if (overlap <= 0) return null;
-    if (overlap < minOverlap) {
-      minOverlap = overlap;
-      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
-      bestNx = ax * sign;
-      bestNy = ay * sign;
-    }
-  }
-  // Axis B1
-  {
-    const ax = -sin2;
-    const ay = cos2;
-    const r1 = _obbProjectionRadius(hw1, hh1, ax, ay, cos1, sin1);
-    const r2 = hh2;
-    const dist = Math.abs(dx * ax + dy * ay);
-    const overlap = r1 + r2 - dist;
-    if (overlap <= 0) return null;
-    if (overlap < minOverlap) {
-      minOverlap = overlap;
-      const sign = dx * ax + dy * ay < 0 ? -1 : 1;
-      bestNx = ax * sign;
-      bestNy = ay * sign;
-    }
-  }
-
-  result.collided = true;
-  result.depth = minOverlap;
-  result.nx = bestNx;
-  result.ny = bestNy;
-  // Contact = support along ±n. Deadzone so near-axis normals hit face center, not a corner.
-  // If one OBB is much larger (e.g. full-width Floor), use the *smaller* body's support only —
-  // averaging with a huge face centroid invents a sideways lever and endless spin.
-  {
-    const FACE_EPS = 0.08;
-    const lx1 = cos1 * -bestNx + sin1 * -bestNy;
-    const ly1 = -sin1 * -bestNx + cos1 * -bestNy;
-    const sx1 = lx1 > FACE_EPS ? hw1 : lx1 < -FACE_EPS ? -hw1 : 0;
-    const sy1 = ly1 > FACE_EPS ? hh1 : ly1 < -FACE_EPS ? -hh1 : 0;
-    const p1x = x1 + cos1 * sx1 - sin1 * sy1;
-    const p1y = y1 + sin1 * sx1 + cos1 * sy1;
-
-    const lx2 = cos2 * bestNx + sin2 * bestNy;
-    const ly2 = -sin2 * bestNx + cos2 * bestNy;
-    const sx2 = lx2 > FACE_EPS ? hw2 : lx2 < -FACE_EPS ? -hw2 : 0;
-    const sy2 = ly2 > FACE_EPS ? hh2 : ly2 < -FACE_EPS ? -hh2 : 0;
-    const p2x = x2 + cos2 * sx2 - sin2 * sy2;
-    const p2y = y2 + sin2 * sx2 + cos2 * sy2;
-
-    const area1 = w1 * h1;
-    const area2 = w2 * h2;
-    if (area1 < area2 * 0.25) {
-      result.cx = p1x;
-      result.cy = p1y;
-    } else if (area2 < area1 * 0.25) {
-      result.cx = p2x;
-      result.cy = p2y;
-    } else {
-      result.cx = (p1x + p2x) * 0.5;
-      result.cy = (p1y + p2y) * 0.5;
-    }
-  }
-  return result;
+/**
+ * Fraction of a positional contact correction that should also be applied to the
+ * Verlet invent (`px`/`py`), giving restitution 0.
+ *
+ * Verlet reads velocity as `x - px`. Moving `x` without `px` invents separation
+ * velocity, so contacts bounce and stacks jump. Moving `px` by the whole correction
+ * cancels the shock propagation that lets a stack carry load, so stacks pancake.
+ * Sync only the part that cancels the approach: whatever correction is left over
+ * after `vn` reaches 0 stays unsynced and keeps pushing the stack apart.
+ *
+ * @param {number} vn - Relative normal velocity before correction (negative = approaching)
+ * @param {number} dRelN - Relative normal displacement the correction applies (>= 0)
+ * @returns {number} Sync fraction in [0, 1]
+ */
+export function contactSyncFraction(vn, dRelN) {
+  if (!(dRelN > 0)) return 0;
+  const sRel = vn + dRelN;
+  if (sRel <= 0) return 0; // still approaching after the push — let the shock travel
+  return sRel < dRelN ? sRel / dRelN : 1;
 }
 
 /**
@@ -1234,10 +1654,62 @@ export function rayOBBIntersect(rayX, rayY, dirX, dirY, boxX, boxY, width, heigh
   const dy = rayY - boxY;
   const localOx = cos * dx + sin * dy;
   const localOy = -sin * dx + cos * dy;
-  // Rotate direction into local (same rotation, no translation)
   const localDx = cos * dirX + sin * dirY;
   const localDy = -sin * dirX + cos * dirY;
   return rayBoxIntersect(localOx, localOy, localDx, localDy, 0, 0, width, height, maxDist);
+}
+
+/**
+ * Ray vs convex polygon (local verts). Transform ray to local; clip against half-planes.
+ * @returns {number} Distance along ray, or -1 if miss
+ */
+export function rayPolygonIntersect(
+  rayX, rayY, dirX, dirY,
+  polyX, polyY, cos, sin,
+  vx, vy, nx, ny, count, base,
+  maxDist
+) {
+  if (count < 3) return -1;
+  const dx = rayX - polyX;
+  const dy = rayY - polyY;
+  const ox = cos * dx + sin * dy;
+  const oy = -sin * dx + cos * dy;
+  const rdx = cos * dirX + sin * dirY;
+  const rdy = -sin * dirX + cos * dirY;
+
+  let tEnter = 0;
+  let tExit = maxDist;
+
+  for (let i = 0; i < count; i++) {
+    const px = vx[base + i];
+    const py = vy[base + i];
+    const nnx = nx[base + i];
+    const nny = ny[base + i];
+    // Outward plane: (p - vert) · n <= 0 inside
+    const denom = rdx * nnx + rdy * nny;
+    const numer = (ox - px) * nnx + (oy - py) * nny;
+    if (denom > 1e-12) {
+      // Leaving
+      const t = -numer / denom;
+      if (t < tExit) tExit = t;
+    } else if (denom < -1e-12) {
+      // Entering
+      const t = -numer / denom;
+      if (t > tEnter) tEnter = t;
+    } else if (numer > 0) {
+      return -1; // parallel and outside
+    }
+    if (tEnter > tExit) return -1;
+  }
+
+  if (tEnter < 0) {
+    // Starts inside — treat as miss (Box2D solid convention) or hit at 0?
+    // Match circle/box: no hit from inside for ray casts in this engine's circle path
+    // rayCircle returns miss if origin inside in some cases — check rayBox...
+    // For consistency with solid shapes: miss if start inside
+    return -1;
+  }
+  return tEnter <= tExit ? tEnter : -1;
 }
 
 // ============================================================================
@@ -2659,7 +3131,13 @@ export function getComponentPropertyNames(ComponentClass) {
   if (!ComponentClass || !ComponentClass.ARRAY_SCHEMA) {
     return [];
   }
-  return Object.keys(ComponentClass.ARRAY_SCHEMA).filter((key) => key !== 'active');
+  return Object.keys(ComponentClass.ARRAY_SCHEMA).filter((key) => {
+    if (key === 'active') return false;
+    const entry = ComponentClass.ARRAY_SCHEMA[key];
+    // Skip strided multi-element fields (e.g. polygon verts)
+    if (entry && typeof entry === 'object' && entry.type && (entry.length | 0) > 1) return false;
+    return true;
+  });
 }
 
 // ============================================================================

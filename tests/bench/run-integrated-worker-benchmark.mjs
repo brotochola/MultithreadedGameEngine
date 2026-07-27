@@ -131,15 +131,28 @@ async function main() {
   let browser;
 
   try {
+    // Prefer installed Google Chrome (no `playwright install chromium` needed).
+    // Falls back to Playwright's Chromium binary if Chrome is not installed.
     browser = await chromium.launch({
       headless: !headed,
+      channel: 'chrome',
       ...(launchArgs.length > 0 ? { args: launchArgs } : {}),
     });
-  } catch (error) {
-    await server.close();
-    throw new Error(
-      `Unable to launch Playwright Chromium. Install the browser binary with "npx playwright install chromium". Original error: ${error.message}`
-    );
+  } catch (chromeError) {
+    try {
+      browser = await chromium.launch({
+        headless: !headed,
+        ...(launchArgs.length > 0 ? { args: launchArgs } : {}),
+      });
+    } catch (error) {
+      await server.close();
+      throw new Error(
+        `Unable to launch Chrome or Playwright Chromium.\n` +
+          `Install Google Chrome, or run: pnpm exec playwright install chromium\n` +
+          `Chrome error: ${chromeError.message}\n` +
+          `Chromium error: ${error.message}`
+      );
+    }
   }
 
   try {

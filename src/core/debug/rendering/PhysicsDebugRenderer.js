@@ -158,26 +158,43 @@ export class PhysicsDebugRenderer {
         if (w === 0 || h === 0) continue;
         ctx.strokeRect(sx - (w / 2) * zoom, sy - (h / 2) * zoom, w * zoom, h * zoom);
       } else if (shape === 2) {
-        const w = width[i];
-        const h = height[i];
-        if (w === 0 || h === 0) continue;
+        const count = Collider.polyCount?.[i] || 0;
         const th = rotation[i];
-        const hw = (w / 2) * zoom;
-        const hh = (h / 2) * zoom;
         const c = Math.cos(th);
         const s = Math.sin(th);
-        // Corners in local space, rotated to screen
-        const x0 = -hw, y0 = -hh;
-        const x1 = hw, y1 = -hh;
-        const x2 = hw, y2 = hh;
-        const x3 = -hw, y3 = hh;
-        ctx.beginPath();
-        ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
-        ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
-        ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
-        ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
-        ctx.closePath();
-        ctx.stroke();
+        if (count >= 3) {
+          const base = i * 8;
+          const vx = Collider.polyVertexX;
+          const vy = Collider.polyVertexY;
+          ctx.beginPath();
+          for (let v = 0; v < count; v++) {
+            const lx = vx[base + v];
+            const ly = vy[base + v];
+            const wx = sx + (c * lx - s * ly) * zoom;
+            const wy = sy + (s * lx + c * ly) * zoom;
+            if (v === 0) ctx.moveTo(wx, wy);
+            else ctx.lineTo(wx, wy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        } else {
+          const w = width[i];
+          const h = height[i];
+          if (w === 0 || h === 0) continue;
+          const hw = (w / 2) * zoom;
+          const hh = (h / 2) * zoom;
+          const x0 = -hw, y0 = -hh;
+          const x1 = hw, y1 = -hh;
+          const x2 = hw, y2 = hh;
+          const x3 = -hw, y3 = hh;
+          ctx.beginPath();
+          ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
+          ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
+          ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
+          ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
+          ctx.closePath();
+          ctx.stroke();
+        }
       }
     }
   }
@@ -353,23 +370,42 @@ export class PhysicsDebugRenderer {
         ctx.fillRect(sx - halfW, sy - halfH, w * zoom, h * zoom);
         ctx.strokeRect(sx - halfW, sy - halfH, w * zoom, h * zoom);
       } else if (shape === 2) {
-        const w = width?.[i] || 20;
-        const h = height?.[i] || 20;
-        if (w === 0 || h === 0) continue;
+        const count = Collider.polyCount?.[i] || 0;
         const th = rotation[i];
-        const hw = (w / 2) * zoom;
-        const hh = (h / 2) * zoom;
         const c = Math.cos(th);
         const s = Math.sin(th);
-        const x0 = -hw, y0 = -hh, x1 = hw, y1 = -hh, x2 = hw, y2 = hh, x3 = -hw, y3 = hh;
-        ctx.beginPath();
-        ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
-        ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
-        ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
-        ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        if (count >= 3) {
+          const base = i * 8;
+          const vx = Collider.polyVertexX;
+          const vy = Collider.polyVertexY;
+          ctx.beginPath();
+          for (let v = 0; v < count; v++) {
+            const lx = vx[base + v];
+            const ly = vy[base + v];
+            const wx = sx + (c * lx - s * ly) * zoom;
+            const wy = sy + (s * lx + c * ly) * zoom;
+            if (v === 0) ctx.moveTo(wx, wy);
+            else ctx.lineTo(wx, wy);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          const w = width?.[i] || 20;
+          const h = height?.[i] || 20;
+          if (w === 0 || h === 0) continue;
+          const hw = (w / 2) * zoom;
+          const hh = (h / 2) * zoom;
+          const x0 = -hw, y0 = -hh, x1 = hw, y1 = -hh, x2 = hw, y2 = hh, x3 = -hw, y3 = hh;
+          ctx.beginPath();
+          ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
+          ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
+          ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
+          ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
       } else {
         ctx.beginPath(); ctx.arc(sx, sy, 10 * zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }

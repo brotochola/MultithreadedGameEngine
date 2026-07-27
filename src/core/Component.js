@@ -42,6 +42,18 @@ export class Component {
    * @param {SharedArrayBuffer} buffer - The shared memory
    * @param {number} count - Total number of component instances
    */
+  /**
+   * Resolve ARRAY_SCHEMA entry: TypedArray ctor, or `{ type, length }` for
+   * per-entity multi-element fields (e.g. polygon verts: length = 8).
+   * @returns {{ type: Function, length: number }}
+   */
+  static _schemaEntry(typeOrSpec) {
+    if (typeOrSpec && typeof typeOrSpec === 'object' && typeOrSpec.type) {
+      return { type: typeOrSpec.type, length: typeOrSpec.length | 0 || 1 };
+    }
+    return { type: typeOrSpec, length: 1 };
+  }
+
   static initializeArrays(buffer, count) {
     this.sharedBuffer = buffer;
     this.globalEntityCount = count;
@@ -49,8 +61,10 @@ export class Component {
     let offset = 0;
 
     // Create typed array views for each property defined in schema
-    for (const [name, type] of Object.entries(this.ARRAY_SCHEMA)) {
+    for (const [name, typeOrSpec] of Object.entries(this.ARRAY_SCHEMA)) {
+      const { type, length } = this._schemaEntry(typeOrSpec);
       const bytesPerElement = type.BYTES_PER_ELEMENT;
+      const elements = count * length;
 
       // Ensure proper alignment for this typed array
       const remainder = offset % bytesPerElement;
@@ -58,8 +72,8 @@ export class Component {
         offset += bytesPerElement - remainder;
       }
 
-      this[name] = new type(buffer, offset, count);
-      offset += count * bytesPerElement;
+      this[name] = new type(buffer, offset, elements);
+      offset += elements * bytesPerElement;
     }
 
     // Auto-generate instance getters/setters on prototype
@@ -77,7 +91,11 @@ export class Component {
     // Skip if already created (avoid duplicate property definitions)
     if (ComponentClass.prototype._propertiesCreated) return;
 
-    Object.entries(ComponentClass.ARRAY_SCHEMA).forEach(([name, type]) => {
+    Object.entries(ComponentClass.ARRAY_SCHEMA).forEach(([name, typeOrSpec]) => {
+      const { length } = ComponentClass._schemaEntry(typeOrSpec);
+      // Strided multi-element fields are indexed as entity * length + i — no scalar accessor
+      if (length !== 1) return;
+
       // Skip if custom getter/setter already defined in subclass
       // This allows components like Collider to have custom setters (e.g., auto-compute mass)
       if (Object.getOwnPropertyDescriptor(ComponentClass.prototype, name)) {
@@ -109,8 +127,10 @@ export class Component {
   static getBufferSize(count) {
     let offset = 0;
 
-    for (const type of Object.values(this.ARRAY_SCHEMA)) {
+    for (const typeOrSpec of Object.values(this.ARRAY_SCHEMA)) {
+      const { type, length } = this._schemaEntry(typeOrSpec);
       const bytesPerElement = type.BYTES_PER_ELEMENT;
+      const elements = count * length;
 
       // Add alignment padding
       const remainder = offset % bytesPerElement;
@@ -118,7 +138,7 @@ export class Component {
         offset += bytesPerElement - remainder;
       }
 
-      offset += count * bytesPerElement;
+      offset += elements * bytesPerElement;
     }
 
     return offset;

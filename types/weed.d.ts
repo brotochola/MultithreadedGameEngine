@@ -7,7 +7,8 @@ export * from './utils';
 
 // --- Config / enums (from ConfigDefaults.js) ---
 
-export const ShapeType: Readonly<{ Circle: 0; Box: 1 }>;
+export const ShapeType: Readonly<{ Circle: 0; Box: 1; Polygon: 2 }>;
+export const MAX_POLYGON_VERTICES: 8;
 export const BLEND_MODES: Readonly<Record<string, number>>;
 
 export interface DefaultLayerEntry {
