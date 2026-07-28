@@ -120,9 +120,13 @@ test('readWorkerStatsFields skips schema stride metadata keys', () => {
   const view = createStatsWriter(buf, PHYSICS_STATS);
   view[PHYSICS_STATS.FPS] = 55;
   view[PHYSICS_STATS.BODY_COUNT] = 12345;
+  view[PHYSICS_STATS.BOX2D_MS] = 6.25;
+  view[PHYSICS_STATS.CONTACT_DROPPED] = 7;
   const fields = readWorkerStatsFields(view, PHYSICS_STATS);
   assert.equal(fields.FPS, 55);
   assert.equal(fields.BODY_COUNT, 12345);
+  assert.equal(fields.BOX2D_MS, 6.25);
+  assert.equal(fields.CONTACT_DROPPED, 7);
   assert.equal('STRIDE_FLOATS' in fields, false);
 });
 

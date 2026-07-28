@@ -6,6 +6,7 @@
  * Usage:
  *   node tests/bench/run-headed-median.mjs
  *   node tests/bench/run-headed-median.mjs --runs 6 --json-out tests/results/research-spatial-headed.json
+ *   node tests/bench/run-headed-median.mjs --scene /demos/scenes/carScene.js --scene-export CarScene
  *
  * Leave the Chromium window visible; do not minimize during measurement.
  */
@@ -27,6 +28,8 @@ function parseArgs(argv) {
     warmupMs: DEFAULT_WARMUP_MS,
     durationMs: DEFAULT_DURATION_MS,
     jsonOut: null,
+    scene: null,
+    sceneExport: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -34,6 +37,8 @@ function parseArgs(argv) {
     else if (a === '--warmup-ms' && argv[i + 1]) out.warmupMs = parseInt(argv[++i], 10) || DEFAULT_WARMUP_MS;
     else if (a === '--duration-ms' && argv[i + 1]) out.durationMs = parseInt(argv[++i], 10) || DEFAULT_DURATION_MS;
     else if (a === '--json-out' && argv[i + 1]) out.jsonOut = path.resolve(argv[++i]);
+    else if (a === '--scene' && argv[i + 1]) out.scene = argv[++i];
+    else if (a === '--scene-export' && argv[i + 1]) out.sceneExport = argv[++i];
   }
   return out;
 }
@@ -147,15 +152,56 @@ function printPhysicsSummary(physicsFps, bodyCounts, stepMs, runs) {
   }
 }
 
-function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
+const PHYSICS_DIAGNOSTIC_FIELDS = [
+  'BODY_SYNC_MS',
+  'JOINT_SYNC_MS',
+  'COMMAND_MS',
+  'FORCE_MS',
+  'BOX2D_MS',
+  'POST_MS',
+  'BODY_SYNC_CHANGES',
+  'BODY_SYNC_VISITED',
+  'JOINT_SYNC_CHANGES',
+  'COMMAND_COUNT',
+  'COMMAND_OVERFLOW_TOTAL',
+  'CONTACT_DROPPED',
+  'SENSOR_DROPPED',
+];
+
+function recordPhysicsStats(stats, accumulator) {
+  if (!stats) return;
+  for (const field of PHYSICS_DIAGNOSTIC_FIELDS) {
+    if (!accumulator[field]) accumulator[field] = [];
+    accumulator[field].push(stats[field] || 0);
+  }
+}
+
+function printPhysicsDiagnostics(accumulator, runs) {
+  console.log('\n--- Physics subphases / diagnostics ---');
+  for (const field of PHYSICS_DIAGNOSTIC_FIELDS) {
+    const values = accumulator[field] || [];
+    const summary = summaryForSeries(values, runs);
+    if (!summary) continue;
+    const digits = field.endsWith('_MS') ? 3 : 1;
+    console.log(
+      `${field}: median ${summary.median.toFixed(digits)} | mean ${summary.mean.toFixed(digits)} | CV ${fmtPct(summary.cv)}`
+    );
+  }
+}
+
+function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix, scene, sceneExport) {
   const physicsFps = [];
   const bodyCounts = [];
   const stepMs = [];
+  const physicsStats = Object.create(null);
   const spatialAcc = Object.create(null);
   let runsCompleted = 0;
+  let attempts = 0;
+  const maxAttempts = runs + 3;
 
-  for (let i = 0; i < runs; i++) {
-    const outPath = path.join(tmpDir, `${runPrefix}-${i}.json`);
+  while (runsCompleted < runs && attempts < maxAttempts) {
+    const attempt = attempts++;
+    const outPath = path.join(tmpDir, `${runPrefix}-${attempt}.json`);
     const args = [
       runner,
       '--headed',
@@ -166,7 +212,16 @@ function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
       '--output',
       outPath,
     ];
-    execFileSync(process.execPath, args, { stdio: 'inherit', cwd: repoRoot });
+    if (scene) args.push('--scene', scene);
+    if (sceneExport) args.push('--scene-export', sceneExport);
+    try {
+      execFileSync(process.execPath, args, { stdio: 'inherit', cwd: repoRoot });
+    } catch (err) {
+      console.warn(
+        `  attempt ${attempt + 1}/${maxAttempts} failed; retrying (${err?.status ?? 'unknown status'})`
+      );
+      continue;
+    }
 
     const j = JSON.parse(fs.readFileSync(outPath, 'utf8'));
     const ph = j.workers.find((w) => w.id === 'physics');
@@ -180,10 +235,11 @@ function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
     if (ph.statsSamplesAverage) {
       bodyCounts.push(ph.statsSamplesAverage.BODY_COUNT || 0);
       stepMs.push(ph.statsSamplesAverage.STEP_MS || 0);
+      recordPhysicsStats(ph.statsSamplesAverage, physicsStats);
     }
     runsCompleted++;
     let line =
-      `  [${i + 1}/${runs}] physics avg FPS ${ph.averageFPS.toFixed(2)}` +
+      `  [${runsCompleted}/${runs}] physics avg FPS ${ph.averageFPS.toFixed(2)}` +
       (ph.statsSamplesAverage
         ? ` | BODY_COUNT ${(ph.statsSamplesAverage.BODY_COUNT || 0).toFixed(0)} | STEP_MS ${(ph.statsSamplesAverage.STEP_MS || 0).toFixed(3)}`
         : '');
@@ -197,10 +253,10 @@ function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
     console.log(line);
   }
 
-  return { physicsFps, bodyCounts, stepMs, spatialAcc, runsCompleted };
+  return { physicsFps, bodyCounts, stepMs, physicsStats, spatialAcc, runsCompleted };
 }
 
-const { runs, warmupMs, durationMs, jsonOut } = parseArgs(process.argv.slice(2));
+const { runs, warmupMs, durationMs, jsonOut, scene, sceneExport } = parseArgs(process.argv.slice(2));
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weed-bench-'));
 let exitCode = 0;
@@ -211,10 +267,23 @@ try {
       '(Keep the Chromium window visible and in front.)\n'
   );
 
-  const block = runMedianBlock(runs, warmupMs, durationMs, tmpDir, 'run');
+  const block = runMedianBlock(
+    runs,
+    warmupMs,
+    durationMs,
+    tmpDir,
+    'run',
+    scene,
+    sceneExport,
+  );
   if (block.physicsFps.length === 0) exitCode = 1;
   else {
+    if (block.runsCompleted < runs) {
+      console.error(`Only ${block.runsCompleted}/${runs} runs completed after retries.`);
+      exitCode = 1;
+    }
     printPhysicsSummary(block.physicsFps, block.bodyCounts, block.stepMs, block.runsCompleted);
+    printPhysicsDiagnostics(block.physicsStats, block.runsCompleted);
     printSpatialSummary(block.spatialAcc, block.runsCompleted);
 
     if (jsonOut) {
@@ -224,18 +293,26 @@ try {
           warmupMs,
           durationMs,
           runs,
+          scene: scene || '/demos/scenes/BallsScene.js',
+          sceneExport: sceneExport || 'BallsScene',
           generatedAt: new Date().toISOString(),
-          note: 'Scene config from demos/scenes/BallsScene.js only.',
         },
         physicsFps: block.physicsFps,
         bodyCounts: block.bodyCounts,
         stepMs: block.stepMs,
+        physicsStatsPerRun: block.physicsStats,
         spatialPerRun: block.spatialAcc,
         summary: {
           physics: {
             averageFPS: summaryForSeries(block.physicsFps, block.runsCompleted),
             BODY_COUNT: summaryForSeries(block.bodyCounts, block.bodyCounts.length),
             STEP_MS: summaryForSeries(block.stepMs, block.stepMs.length),
+            ...Object.fromEntries(
+              Object.entries(block.physicsStats).map(([field, values]) => [
+                field,
+                summaryForSeries(values, values.length),
+              ])
+            ),
           },
         },
       };

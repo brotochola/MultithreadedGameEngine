@@ -33,6 +33,7 @@
   let hasBody = null;
   let denseList = null;
   let denseCount = 0;
+  let lastBodySyncVisited = 0;
   let jointViews = null;
   let jointHandle = null; // Int32Array, -1 = none
   let jointFp = null; // Float32Array fingerprint per joint
@@ -58,6 +59,19 @@
     SENSOR_BEGIN: 7,
     SENSOR_END: 8,
     WEED_JOINTS: 9,
+    BODY_SYNC_MS: 10,
+    JOINT_SYNC_MS: 11,
+    COMMAND_MS: 12,
+    FORCE_MS: 13,
+    BOX2D_MS: 14,
+    POST_MS: 15,
+    BODY_SYNC_CHANGES: 16,
+    BODY_SYNC_VISITED: 17,
+    JOINT_SYNC_CHANGES: 18,
+    COMMAND_COUNT: 19,
+    COMMAND_OVERFLOW_TOTAL: 20,
+    CONTACT_DROPPED: 21,
+    SENSOR_DROPPED: 22,
   };
 
   function viewFromDesc(desc, TypedArray) {
@@ -251,8 +265,10 @@
 
   function syncBodies(entityCount) {
     denseCount = 0;
+    let changes = 0;
     const bodyCap = hasBody ? hasBody.length : 0;
     const n = Math.min(entityCount | 0, bodyCap);
+    lastBodySyncVisited = n;
     for (let i = 0; i < n; i++) {
       const want =
         views.rbActive[i] !== 0 && views.colActive[i] !== 0 ? 1 : 0;
@@ -260,6 +276,7 @@
       if (want && !have) {
         if (createBodyForEntity(i)) {
           hasBody[i] = 1;
+          changes++;
         }
       } else if (!want && have) {
         try {
@@ -268,11 +285,13 @@
           /* slot may already be clear */
         }
         hasBody[i] = 0;
+        changes++;
       }
       if (hasBody[i]) {
         denseList[denseCount++] = i;
       }
     }
+    return changes;
   }
 
   function jointFingerprint(idx) {
@@ -391,9 +410,10 @@
   }
 
   function syncJoints() {
-    if (!jointViews || !jointHandle || !world) return;
+    if (!jointViews || !jointHandle || !world) return 0;
     const jv = jointViews;
     const activeCount = Atomics.load(jv.activeCount, 0) | 0;
+    let changes = 0;
     jointLive.fill(0);
 
     for (let slot = 0; slot < activeCount; slot++) {
@@ -409,18 +429,22 @@
       if (want && have && jointFp[idx] !== fp) {
         destroyJointAt(idx);
         createJointAt(idx);
+        changes++;
       } else if (want && !have) {
-        createJointAt(idx);
+        if (createJointAt(idx)) changes++;
       } else if (!want && have) {
         destroyJointAt(idx);
+        changes++;
       }
     }
 
     for (let i = 0; i < maxJoints; i++) {
       if (!jointLive[i] && jointHandle[i] >= 0) {
         destroyJointAt(i);
+        changes++;
       }
     }
+    return changes;
   }
 
   let sleepingEnabled = true;
@@ -473,8 +497,8 @@
   };
 
   function drainCommands() {
-    if (!cmdI32 || !cmdF32) return;
-    drainBox2dCommandRing(cmdI32, cmdF32, cmdHandlers);
+    if (!cmdI32 || !cmdF32) return 0;
+    return drainBox2dCommandRing(cmdI32, cmdF32, cmdHandlers);
   }
 
   function applyForcesAndTorque() {
@@ -552,21 +576,50 @@
     }
   }
 
-  function writePhysicsStats() {
+  function writePhysicsStats(
+    bodySyncMs,
+    jointSyncMs,
+    commandMs,
+    forceMs,
+    box2dMs,
+    postMs,
+    bodySyncChanges,
+    jointSyncChanges,
+    commandCount,
+  ) {
     if (!statsF32) return;
     statsF32[PS.BODY_COUNT] = denseCount;
     statsF32[PS.JOINT_COUNT] = world ? world.getJointCount() : 0;
+    statsF32[PS.BODY_SYNC_MS] = bodySyncMs;
+    statsF32[PS.JOINT_SYNC_MS] = jointSyncMs;
+    statsF32[PS.COMMAND_MS] = commandMs;
+    statsF32[PS.FORCE_MS] = forceMs;
+    statsF32[PS.BOX2D_MS] = box2dMs;
+    statsF32[PS.POST_MS] = postMs;
+    statsF32[PS.BODY_SYNC_CHANGES] = bodySyncChanges;
+    statsF32[PS.BODY_SYNC_VISITED] = lastBodySyncVisited;
+    statsF32[PS.JOINT_SYNC_CHANGES] = jointSyncChanges;
+    statsF32[PS.COMMAND_COUNT] = commandCount;
+    statsF32[PS.COMMAND_OVERFLOW_TOTAL] = cmdI32
+      ? Atomics.load(cmdI32, 3) | 0
+      : 0;
     const hdr = world && world._eventHeader;
     if (hdr) {
       statsF32[PS.CONTACT_BEGIN] = hdr[EVENT_HEADER.CONTACT_BEGIN_COUNT] | 0;
       statsF32[PS.CONTACT_END] = hdr[EVENT_HEADER.CONTACT_END_COUNT] | 0;
       statsF32[PS.SENSOR_BEGIN] = hdr[EVENT_HEADER.SENSOR_BEGIN_COUNT] | 0;
       statsF32[PS.SENSOR_END] = hdr[EVENT_HEADER.SENSOR_END_COUNT] | 0;
+      statsF32[PS.CONTACT_DROPPED] =
+        hdr[EVENT_HEADER.CONTACT_DROPPED_COUNT] | 0;
+      statsF32[PS.SENSOR_DROPPED] =
+        hdr[EVENT_HEADER.SENSOR_DROPPED_COUNT] | 0;
     } else {
       statsF32[PS.CONTACT_BEGIN] = 0;
       statsF32[PS.CONTACT_END] = 0;
       statsF32[PS.SENSOR_BEGIN] = 0;
       statsF32[PS.SENSOR_END] = 0;
+      statsF32[PS.CONTACT_DROPPED] = 0;
+      statsF32[PS.SENSOR_DROPPED] = 0;
     }
     if (jointViews && jointViews.activeCount) {
       statsF32[PS.WEED_JOINTS] = Atomics.load(jointViews.activeCount, 0) | 0;
@@ -583,16 +636,33 @@
     if (!(dt > 0) || !world) {
       return;
     }
-    syncBodies(entityCount);
-    syncJoints();
-    drainCommands();
+    const t0 = performance.now();
+    const bodySyncChanges = syncBodies(entityCount);
+    const t1 = performance.now();
+    const jointSyncChanges = syncJoints();
+    const t2 = performance.now();
+    const commandCount = drainCommands();
+    const t3 = performance.now();
     if (!sleepingEnabled) {
       enforceAwakeDynamics();
     }
     applyForcesAndTorque();
+    const t4 = performance.now();
     world.step(dt, solverSteps);
+    const t5 = performance.now();
     afterStep();
-    writePhysicsStats();
+    const t6 = performance.now();
+    writePhysicsStats(
+      t1 - t0,
+      t2 - t1,
+      t3 - t2,
+      t4 - t3,
+      t5 - t4,
+      t6 - t5,
+      bodySyncChanges,
+      jointSyncChanges,
+      commandCount,
+    );
   }
 
   function controlLoop() {

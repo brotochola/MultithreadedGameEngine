@@ -1,9 +1,5 @@
 Since Box2d:
-- [x] clean up dead code (collisionData / SAT / legacy logic path)
-- [x] zero-copy hot pose/vel (HEAP rebind) — verified, not rebuilt
-- [x] hot-path GC (hoist drainCommands handlers + contact applyBegin/End)
-- [x] update tests
-- [x] keep polyVertexX/Y (Ray + Box2D polygon create + debug)
+-make build, test built, see what to do with wasm
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar
