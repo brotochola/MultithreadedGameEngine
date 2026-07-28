@@ -5,7 +5,7 @@ import { Ball } from '/demos/gameObjects/ball.js';
 import { Floor } from '/demos/gameObjects/floor.js';
 
 import WEED from '/src/index.js';
-const { Scene, Camera, Mouse } = WEED;
+const { Scene, Camera, Mouse, Gamepad } = WEED;
 
 export class BallsScene extends Scene {
   // ========================================

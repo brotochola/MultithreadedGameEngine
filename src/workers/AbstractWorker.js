@@ -735,6 +735,7 @@ export class AbstractWorker {
     self.Joint = Joint;
     self.Layer = Layer;
     self.SceneBridge = SceneBridge;
+    self.Gamepad = Gamepad;
 
     // Components (required for blob worker entity script evaluation)
     self.Transform = Transform;
