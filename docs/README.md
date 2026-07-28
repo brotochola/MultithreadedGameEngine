@@ -17,8 +17,8 @@ This folder contains the engine notes that are closest to the code. The docs are
 | ------------------------------------------------------ | --------------------------------------------------------------------------- |
 | [`COMPONENT_STORAGE.md`](./COMPONENT_STORAGE.md)       | Dense component storage policy and when to consider sparse storage          |
 | [`SPATIAL_HASHING.md`](./SPATIAL_HASHING.md)           | Spatial worker grid rebuilds, neighbor reuse, and collision-candidate lists |
-| [`PHYSICS.md`](./PHYSICS.md)                           | Physics worker integration, collisions, constraints, and invariants         |
-| [`PHYSICS_KERNEL_STUDY.md`](./PHYSICS_KERNEL_STUDY.md) | Isolated physics benchmark policy before moving hot kernels to WASM/SIMD    |
+| [`PHYSICS.md`](./PHYSICS.md)                           | Box2D 3.0 nested WASM worker, contacts, joints, sleep |
+| [`PHYSICS_KERNEL_STUDY.md`](./PHYSICS_KERNEL_STUDY.md) | Historical JS kernel microbench (pre–Box2D 3.0)       |
 | [`LAYER_ROUTING.md`](./LAYER_ROUTING.md)               | Render layer routing, layer-owned backgrounds, and custom layer constraints |
 | [`TILEMAP.md`](./TILEMAP.md)                           | Tiled JSON loading, SAB-backed tile data, and tile query APIs               |
 | [`RAYCASTING.md`](./RAYCASTING.md)                     | DDA grid raycasts, line-of-sight checks, and layer-mask filtering           |
@@ -27,6 +27,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 
 | Path                                 | Contents                                                             |
 | ------------------------------------ | -------------------------------------------------------------------- |
+| [`../src/box2d/README.md`](../src/box2d/README.md) | Box2D 3.0 WASM runtime layout, rebuild, bundle embed |
 | [`../src/index.js`](../src/index.js) | Public source entry and exported namespace                           |
 | [`../demos/`](../demos/)             | Browser demos and scene examples                                     |
 | [`../tests/node/`](../tests/node/)   | Node test suite for core data structures and worker protocol helpers |

@@ -1,32 +1,31 @@
-# Physics Kernel Study
+# Physics Kernel Study (historical)
 
-This is an isolated benchmark for experimenting with physics movement kernels before touching `physics_worker.js`.
+> **Superseded.** Production physics is Box2D 3.0 WASM (`src/box2d/`, nested from `physics_worker`). This page is leftover from when we were still weighing a JS Verlet / PBD path vs a WASM jump. Kept because the microbench script is handy for comparing raw loop shapes — not as current engine policy.
 
-Run:
+Isolated movement-kernel microbench (does not touch `physics_worker.js`):
 
 ```bash
 node tests/bench/run-physics-kernel-study.mjs
 ```
 
-Optional flags:
+Optional:
 
 ```bash
 node tests/bench/run-physics-kernel-study.mjs --entities 100000 --iterations 240
 ```
 
-## Why This Exists
+## Why it existed
 
-The production physics worker operates on `SharedArrayBuffer` component arrays and already uses straight-line, JIT-friendly loops in hot paths. Moving physics to WASM SIMD is not automatically faster because:
+Back then component arrays lived only in JS-owned SABs. Dropping a WASM solver in looked “free,” but:
 
-- component arrays currently live in JavaScript-owned `SharedArrayBuffer`s
-- WASM prefers operating inside its own linear memory
-- copying/mirroring component state can erase SIMD wins
-- collision solving is branchy and data-dependent
+- WASM likes its own linear memory
+- mirroring SoA every step can wipe out SIMD gains
+- collision solving is branchy anyway
 
-Before any production WASM/SIMD work, compare isolated kernels and require a clear win over optimized JavaScript.
+So the rule was: prove a win in isolation first. We later shipped Box2D 3 with HEAP rebind instead of copying pose every frame — different architecture than what this study was measuring.
 
-## Current Policy
+## Current status
 
-Do not migrate production physics to WASM unless an isolated prototype beats the JavaScript kernel and the integration plan avoids expensive memory copies.
+Use [`PHYSICS.md`](./PHYSICS.md) and [`../src/box2d/README.md`](../src/box2d/README.md). Don’t treat the “stay on JS until WASM wins” note below as policy anymore; that ship sailed.
 
-The production path remains JavaScript until benchmark data proves otherwise.
+The harness itself is still valid if you want to poke at alternate JS integrate loops for curiosity.

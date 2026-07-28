@@ -12,7 +12,7 @@ Each worker owns its data region so hot paths can avoid broad locking and per-fr
 | Worker                | Count | Scalable | Runs Entity Scripts | Primary Job                                              |
 | --------------------- | ----: | -------- | ------------------- | -------------------------------------------------------- |
 | `spatial_worker`      |  1..N | Yes      | No                  | Spatial hash grid + neighbor lists                       |
-| `physics_worker`      |     1 | No       | No                  | Verlet integration + collision resolution                |
+| `physics_worker`      |     1 | No       | No                  | Box2D 3.0 WASM step (nested worker), contacts, joints    |
 | `logic_worker`        |  1..N | Yes      | **Yes**             | Entity `tick()`, callbacks, lifecycle                    |
 | `particle_worker`     |     1 | No       | No                  | Particles, bullets, decals, navigation, visibility lists |
 | `pre_render_worker`   |     1 | No       | No                  | Animation, Y-sort, render + shadow queue assembly        |
@@ -56,29 +56,30 @@ Details: [SPATIAL_HASHING.md](./SPATIAL_HASHING.md)
 
 ### Physics Worker (1)
 
-Integrates rigid bodies and resolves collisions. Reads neighbor data from spatial, writes collision pairs for logic.
+Owns the Box2D tick. The ESM `physics_worker` can’t host Emscripten pthreads, so it spins a nested classic worker (`box2d_wasm.js` + `weedjs_post.js`) and talks to it over Atomics + rings.
 
 **What it does each frame:**
 
-1. Integrate positions (Verlet: `pos += vel + acc * dt²`)
-2. For each active entity with collision neighbors, resolve overlaps (pairs are filtered by Box2D-style `collisionGroupIndex` first — same negative skips, same positive always hits — then by `collisionLayer`/`collisionMask` bitmasks; typed-array reads only, no allocations)
-3. Write collision pairs to `collisionData`
-4. Optionally solve constraints
+1. Hand the step to nested Box2D (WASM HEAP holds pose/vel; Weed SoA views rebound onto those channels)
+2. Drain the command ring (set pose/vel, fixedRotation, etc.)
+3. After the step, contact begin/end (+ sensors) land in the sequenced contact ring for logic workers
+4. Sync Weed `Joint` slots into Box2D joints
 
-| Buffer                             | Access         | Notes                                                                                |
+Spatial `neighborData` is visual-range only — Box2D does narrowphase itself.
+
+| Buffer / channel                   | Access         | Notes                                                                                |
 | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------ |
-| Transform (`x`, `y`)               | **Write**      | Position integration                                                                 |
-| RigidBody (`px`, `py`, `vx`, `vy`) | **Write**      | Velocity, previous position                                                          |
-| Collider                           | Read           | Shapes, radii, `friction`, `collisionLayer` (Uint8 0-31), `collisionMask` (Uint32), `collisionGroupIndex` (Int32) |
-| `neighborData`                     | Read           | Visual-range neighbors (`totalCount` entries)                                        |
-| `collisionData`                    | **Write**      | `[pairCount, A0, B0, A1, B1, ...]`                                                   |
-| `jointData`                   | Read/**Write** | Sync Weed joints → Box2D                                                             |
-| `constraintFreeList/Top`           | Read/**Write** | Return freed constraint slots                                                        |
-| `activeEntitiesData`               | Read           | Which entities are alive                                                             |
-| `physicsStats`                     | **Write**      | FPS, checks, pairs resolved                                                          |
+| Transform / RigidBody hot fields   | **Write** via HEAP rebind | `x,y,rotation,vx,vy,ω` live in WASM memory after `box2dReady`              |
+| Collider                           | Read (sync)    | Shapes, radii, `friction`, layers/masks/`groupIndex`                                 |
+| `neighborData`                     | Read           | Visual-range neighbors — not the contact source                                      |
+| Command ring (`commandSab`)        | **Write** (logic/main) / drain (Box2D) | MPSC sequence-slot pose/vel commands                            |
+| Contact ring (`contactSab`)        | **Write** (Box2D) / read (logic) | Begin/end + sensor events with body generations                             |
+| `Joint` SAB                        | Read/**Write** | Dense active list → Box2D distance / revolute / weld                                 |
+| `activeEntitiesData`               | Read           | Alive entities                                                                       |
+| `physicsStats`                     | **Write**      | FPS, body/joint/contact counters                                                     |
 | `frameRateData`                    | **Write**      | Own slot                                                                             |
 
-Details: [PHYSICS.md](./PHYSICS.md)
+Details: [PHYSICS.md](./PHYSICS.md), [box2d README](../src/box2d/README.md)
 
 ---
 
@@ -107,7 +108,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 | Buffer                   | Access                               | Notes                                                                                  |
 | ------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------- |
 | All component SABs       | Read/**Write**                       | Entity state (positions, velocities, custom components)                                |
-| `collisionData`          | Read                                 | From physics -- collision pairs                                                        |
+| Contact ring (`contactSab`) | Read                              | Box2D begin/end + sensor events (private cursor per logic worker)                      |
 | `impactBuffer`           | Read                                 | From particle — `[count, seq, …]`; process when `seq` changes                          |
 | `activeEntitiesData`     | Read/**Write** (logic 0)             | Logic 0 maintains the global active list                                               |
 | `perTypeActiveLists`     | Read/**Write** (logic 0)             | Per-type active lists                                                                  |
@@ -117,8 +118,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 | `cameraData`             | Read/**Write**                       | Camera state SAB `[zoom,x,y,followX,followY,targetZoom]` (prefer single writer policy) |
 | `queryResultsSAB`        | Read, **published write** (logic 0)  | Triple-buffered pre-computed active query snapshots                                    |
 | `queryVersionSAB`        | Read/**Write** (logic 0 maintenance) | Shared invalidation counter for cached non-precomputed active queries                  |
-| `jointData`         | **Write**                            | Create joints via `Joint.addDistance` / `addRevolute` / `addWeld`                      |
-| `constraintFreeList/Top` | Read/**Write**                       | Pop free constraint slots                                                              |
+| `Joint` SAB              | **Write**                            | Create joints via `Joint.addDistance` / `addRevolute` / `addWeld`                      |
 | `raycastDebugData`       | **Write**                            | Debug ray visualization                                                                |
 | `logicStats`             | **Write**                            | FPS, entities processed                                                                |
 | `frameRateData`          | **Write**                            | Own slot                                                                               |
@@ -346,12 +346,13 @@ Not a Web Worker — an `AudioWorkletProcessor` running on the browser's **audio
    │   Spatial     │ │   Physics   │ │   Logic     │
    │   Worker(s)   │ │   Worker    │ │   Worker(s) │
    │               │ │             │ │             │
-   │ grid +        │ │ integration │ │ tick() +    │
-   │ neighbors     │ │ + collisions│ │ callbacks   │
+   │ grid +        │ │ Box2D step  │ │ tick() +    │
+   │ neighbors     │ │ (nested WASM│ │ callbacks   │
+   │               │ │  + rings)   │ │             │
    └───────┬───────┘ └──────┬──────┘ └──────┬──────┘
            │                │               │
-           │ neighborData   │ collisionData │ component state
-           │ gridBuffer     │               │ active lists
+           │ neighborData   │ contact ring  │ component state
+           │ gridBuffer     │ HEAP pose/vel │ active lists
            ▼                ▼               ▼
          ┌─────────────────────────────────────┐
          │          Particle Worker             │

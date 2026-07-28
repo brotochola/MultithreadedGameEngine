@@ -113,7 +113,7 @@ Some lifecycle callbacks are expensive to check every frame for every entity. Th
 
 Tag components have no `ARRAY_SCHEMA` and allocate no `SharedArrayBuffer`. They exist purely as a declaration in `static components`. The logic worker reads this once at startup and stores per-type flags. The hot loop checks these flags -- not per-entity, but per-type -- so the branch predictor handles it with near-zero overhead.
 
-**Collision:** if no type in the scene has `CollisionListener`, `processCollisionCallbacks()` is skipped entirely (zero Set operations, zero iteration — including `isCollidingWith()`). When at least one type has the tag, **every** physics pair is keyed (Cantor `min,max`) and stored in a per-worker Set so `isCollidingWith()` is accurate on all logic workers during `tick()`. **Callback dispatch** is the part that is gated: each pair is checked with two `Uint8Array` reads (`collisionListenerByType[entityType[A/B]]`), and enter/stay/exit fire only when at least one side listens. Mixed pairs (one listener, one not) only dispatch to the listening entity. Callback ownership is partitioned by `minEntity % totalLogicWorkers`; Set population is not. Entities still need `Collider` to appear in `collisionData` from the physics worker.
+**Collision:** if no type in the scene has `CollisionListener`, `processCollisionCallbacks()` is skipped entirely (zero Set operations, zero iteration — including `isCollidingWith()`). When at least one type has the tag, logic drains the Box2D **contact ring** (begin/end + sensors), keys every live pair (Cantor `min,max`) into a per-worker Set so `isCollidingWith()` works during `tick()`, and dispatches enter/stay/exit only when at least one side listens (`collisionListenerByType`). Callback ownership is partitioned by `minEntity % totalLogicWorkers`; Set population is not. Entities still need `Collider` (and an active Box2D body) to show up in the ring.
 
 **Screen visibility:** resolved per-type on the `typeInfo` object. `pre_render_worker` clears `Transform.isItOnScreen` once per visual frame and each entity render pass sets it to `1` when that entity is visible. The logic worker reads that single canonical byte only for entity types that have `CameraInOutListener`, so the callback path does not need to know which render component made the entity visible.
 
@@ -174,7 +174,7 @@ Add it to `static components` and use `query([MyTag])` to find entities. No regi
 | Worker | Count | Main Responsibility |
 |---|---:|---|
 | `spatial_worker` | 1..N | Grid rebuild + neighbor lists |
-| `physics_worker` | 1 | Integration + collision solve |
+| `physics_worker` | 1 | Box2D 3.0 WASM step + contact/joint sync |
 | `logic_worker` | 1..N | Entity tick + callbacks + lifecycle |
 | `particle_worker` | 1 | Particles, decals, nav, visibility buffers |
 | `pre_render_worker` | 1 | Animation + render/shadow queue build |
@@ -202,7 +202,7 @@ Add it to `static components` and use `query([MyTag])` to find entities. No regi
 | Same **negative** value | Never collide |
 | Same **positive** value | Always collide (overrides mask) |
 
-Use a shared negative group for composite bodies (ragdoll parts, constraint-box corners) so siblings skip each other while still hitting other entities.
+Use a shared negative group for composite bodies (ragdoll parts, jointed box corners) so siblings skip each other while still hitting other entities.
 
 ```javascript
 this.collider.collisionLayer = 1;
@@ -219,7 +219,7 @@ All `Ray` methods also accept an optional `mask` param (default all layers). Ray
 
 ### Contact queries (`isCollidingWith`)
 
-Poll whether this entity is touching another **this frame** (physics pair present in the logic worker's completed collision set). Requires at least one registered entity type with `CollisionListener` — without it, the collision Set is never built.
+Poll whether this entity is touching another **this frame** (pair present after the contact-ring drain into the logic worker’s Set). Needs at least one registered entity type with `CollisionListener` — otherwise the Set is never built.
 
 ```javascript
 // other: entity index or GameObject facade

@@ -27,7 +27,7 @@ WeedJS splits work across specialized workers. Hot frame data lives in typed arr
 | Worker                | Count | Primary job                                              |
 | --------------------- | ----: | -------------------------------------------------------- |
 | `spatial_worker`      |  1..N | Spatial hash rebuilds and neighbor lists                 |
-| `physics_worker`      |     1 | Verlet integration, collision solving, constraints       |
+| `physics_worker`      |     1 | Box2D 3.0 WASM (nested pthread worker), contacts, joints |
 | `logic_worker`        |  1..N | Entity `tick()`, lifecycle, collision callbacks          |
 | `particle_worker`     |     1 | Particles, bullets, decals, navigation, visibility lists |
 | `pre_render_worker`   |     1 | Animation, Y-sorting, render queue assembly              |
@@ -49,7 +49,7 @@ npm run dev
 
 Open `http://localhost:8000/demos/`, or use the port printed by the server if `8000` is already in use.
 
-`SharedArrayBuffer` requires cross-origin isolation headers. The included development server sets the required COOP/COEP headers.
+`SharedArrayBuffer` needs cross-origin isolation (COOP/COEP). Same headers unlock Box2D’s pthread pool. The included `npm run dev` server already sends them.
 
 ---
 
@@ -143,7 +143,7 @@ WeedJS is intended to be a full 2D game runtime, not just a renderer. The major 
 - **Particle emitter**: `ParticleEmitter.emit()` supports sparks, smoke, blood, muzzle effects, floor decals, alpha/scale/tint controls, gravity, blending, and worker-side particle simulation.
 - **Bullets and projectile trails**: `BulletPool` and `BulletComponent` provide lightweight projectile slots, impact reporting, damage payloads, trail rendering, and visibility culling without turning every shot into a full entity.
 - **Decorations and attachments**: `DecorationPool` handles trees, rocks, props, child decorations attached to entities, sway animation, custom anchors, tint, alpha, and Y-sort ordering.
-- **Physics**: Box2D via nested WASM worker — gravity, circles/boxes/polygons, sensors, static bodies, sleeping, collision layers/masks/groupIndex, `linearDamping` / `angularDamping` / `Collider.friction`, optional `maxLinearSpeed` clamp. Weed `Joint` pool (`addDistance` / `addRevolute` / `addWeld`) syncs to Box2D joints.
+- **Physics (Box2D 3.0)**: real Box2D 3 — the C rewrite — compiled to multithreaded WASM (SIMD + pthreads), not a JS reimplementation. Phaser games usually run Arcade or Matter on the main thread; Weed keeps the solver off-thread. Pose and velocity live on the WASM HEAP (rebound into Weed SoA views), with sequenced contact/command rings feeding logic workers. Circles, boxes, polygons, sensors, sleeping, layers/masks/`groupIndex`, damping, friction, `maxLinearSpeed`, and Weed `Joint`s (`addDistance` / `addRevolute` / `addWeld`). Runtime lives under `src/box2d/`; `npm run make_bundle` embeds glue + wasm into `weed.bundle*.min.js` (no loose `dist/box2d/`). Smoke: `dist/index.html`. Details: [`src/box2d/README.md`](src/box2d/README.md), [`docs/PHYSICS.md`](docs/PHYSICS.md).
 - **Spatial hashing**: row-owned spatial workers rebuild the grid, cache entity positions, reuse neighbor results when cells have not changed, and expose nearby entities through `this.neighborCount` / `this.getNeighbor(i)`.
 - **Ray casting**: `Ray.cast`, `Ray.castWithInfo`, `Ray.castAll`, `Ray.linecast`, and line-of-sight helpers traverse the spatial grid with DDA and support collision layer masks.
 - **Point lights and shadows**: `LightEmitter`, `ShadowCaster`, `LightOccluder`, `Flash`, and `Sun` support point lights, glow sprites, temporary flashes, ambient lighting, day/night-style sun control, and shadow queues.
@@ -217,7 +217,8 @@ Start with `docs/README.md` for the full docs index.
 | `docs/MEMORY_STRUCTURE.md`     | Shared memory layout and ownership map           |
 | `docs/COMPONENT_STORAGE.md`    | Dense component storage policy                   |
 | `docs/SPATIAL_HASHING.md`      | Spatial grid and neighbor query pipeline         |
-| `docs/PHYSICS.md`              | Physics worker pipeline and invariants           |
+| `docs/PHYSICS.md`              | Box2D 3.0 worker pipeline and invariants         |
+| `src/box2d/README.md`          | Nested WASM runtime, rebuild, bundle embed       |
 | `docs/LAYER_ROUTING.md`        | Render layers, backgrounds, custom layer routing |
 | `docs/TILEMAP.md`              | SAB-backed Tiled map API                         |
 | `docs/RAYCASTING.md`           | Grid-based raycast API                           |
