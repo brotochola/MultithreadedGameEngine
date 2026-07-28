@@ -33,12 +33,26 @@ const server = http.createServer((req, res) => {
   console.log(`${req.method} ${req.url}`);
 
   // Parse URL and strip query parameters
-  const urlPath = req.url.split('?')[0]; // Remove query string
+  const [urlPath, query = ''] = req.url.split('?');
+  const querySuffix = query ? `?${query}` : '';
 
   // Get file path
   let filePath = '.' + urlPath;
   if (filePath === './') {
     filePath = './index.html';
+  }
+
+  // Directory without trailing slash: redirect so relative assets
+  // (e.g. weed.bundle.min.js under /dist/) resolve correctly.
+  // /dist + src="weed.bundle.min.js" otherwise fetches /weed.bundle.min.js.
+  if (
+    !urlPath.endsWith('/') &&
+    fs.existsSync(filePath) &&
+    fs.statSync(filePath).isDirectory()
+  ) {
+    res.writeHead(301, { Location: `${urlPath}/${querySuffix}` });
+    res.end();
+    return;
   }
 
   // Check if path is a directory and append index.html

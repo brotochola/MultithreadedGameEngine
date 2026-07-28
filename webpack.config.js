@@ -137,7 +137,10 @@ const mainConfig = {
     }
 };
 
-// Workers bundle configuration
+// Workers bundle configuration.
+// Shared AbstractWorker graph is extracted once into workers/worker_common.min.js
+// (import-scripts). build-bundle.js embeds that chunk once and rewrites the
+// importScripts URL to a blob URL at createWorker() time.
 const workersConfig = {
     mode: 'production',
     devtool: false,
@@ -145,13 +148,35 @@ const workersConfig = {
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: '[name].min.js',
-        globalObject: 'self'
+        chunkFilename: '[name].min.js',
+        globalObject: 'self',
+        chunkLoading: 'import-scripts',
+        enabledChunkLoadingTypes: ['import-scripts'],
     },
     target: 'webworker',
     module: {
         rules: [babelLoader]
     },
-    optimization,
+    optimization: {
+        ...optimization,
+        runtimeChunk: false,
+        splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                workerCommon: {
+                    name: 'workers/worker_common',
+                    test: /[\\/]src[\\/]/,
+                    minChunks: 2,
+                    priority: 10,
+                    reuseExistingChunk: true,
+                    enforce: true,
+                },
+            },
+        },
+    },
     plugins: shouldObfuscate ? [new WebpackObfuscator(obfuscatorOptions, [])] : [],
     resolve: {
         extensions: ['.js'],

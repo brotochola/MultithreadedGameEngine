@@ -16,7 +16,20 @@ Nested classic worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Weed
 
 ## Dist / npm bundle
 
-`npm run make_bundle` embeds glue + `.wasm` (base64) + the classic `importScripts` siblings into `WEED.Box2dWorkerSource` inside `weed.bundle*.min.js`. At runtime `WEED.getBox2dWorkerUrl()` creates one blob URL; physics receives it as `box2dWorkerUrl`. Do **not** ship a separate `dist/box2d/` folder or blob-inline only the glue — pthreads re-fetch the same worker URL via `_scriptName`.
+`npm run make_bundle` emits **both** debug and prod single-file artifacts into `dist/`:
+
+| File | Contents |
+|------|----------|
+| `weed.bundle.min.js` / `.esm.min.js` | Debug UI kept |
+| `weed.prod.bundle.min.js` / `.esm.min.js` | Debug* stubbed out |
+
+Embed pipeline:
+
+1. Workers share one `worker_common` chunk (AbstractWorker graph) so that code is not copied six times.
+2. Glue + siblings + **gzip-compressed** `.wasm` (base64) go into `WEED.Box2dWorkerSource`.
+3. At runtime `getBox2dWorkerUrl()` creates one blob URL; `instantiateWasm` gunzips via `DecompressionStream` then instantiates. Pthreads re-fetch the same worker URL via `_scriptName`.
+
+Do **not** ship a separate `dist/box2d/` folder or blob-inline only the glue.
 
 Unbundled demos still load `/src/box2d/box2d_wasm.js` from the repo server.
 
@@ -27,7 +40,7 @@ cd ..\box2d_3.0_wasm_sab
 build_for_weed.bat
 ```
 
-That builds with `weed_post.js` (`importScripts('weedjs_post.js')`, not the lab `physics_post.js` / `game-constants.js`) and copies `box2d_wasm.js` + `.wasm` into this folder.
+That builds with `weed_post.js` (`importScripts('weedjs_post.js')`, not the lab `physics_post.js` / `game-constants.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.
 
 - `build_for_weed.bat clean` — wipe `build_wasm_weed`
 - `build_for_weed.bat copy` — copy root artifacts only

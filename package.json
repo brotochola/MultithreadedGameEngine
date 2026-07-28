@@ -1,6 +1,6 @@
 {
   "name": "@weed.js/engine",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "A multithreaded 2D web game engine for high-entity-count browser games",
   "type": "module",
   "main": "dist/weed.bundle.min.js",
@@ -54,7 +54,7 @@
     "make_bundle": "node scripts/build-bundle.js",
     "make_bundle:obfuscate": "node scripts/build-bundle.js --obfuscate",
     "premake_prod_bundle": "node scripts/sync-version.js",
-    "make_prod_bundle": "cross-env WEED_PROD=true node scripts/build-bundle.js",
+    "make_prod_bundle": "node scripts/build-bundle.js",
     "build:pixi": "esbuild scripts/build-pixi-worker.js --bundle --format=esm --minify --outfile=src/lib/pixi_8.16_.min.js",
     "prebuild:docs": "node scripts/sync-version.js",
     "build:docs": "node scripts/build-docs.js",
