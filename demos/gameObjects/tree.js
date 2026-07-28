@@ -16,10 +16,10 @@ const { ShapeType } = enums;
 export class Tree extends GameObject {
   static scriptUrl = import.meta.url;
 
-  static components = [Collider, SpriteRenderer, ShadowCaster];
+  static components = [Collider, SpriteRenderer, ShadowCaster, RigidBody];
 
   setup() {
-    // this.rigidBody.static = 1;
+    this.rigidBody.static = 1;
     const whichTree = rng() > 0.5 ? 1 : 2;
     this.setSprite('tree' + whichTree);
     const scale = rng() * 0.5 + 1;

@@ -452,7 +452,7 @@ export class PredatorScene extends WEED.Scene {
   }
 
   onMessageFromGameObject(data, entityIndex, className, workerName) {
-    console.log('onMessageFromGameObject', data, entityIndex, className, workerName);
+    // console.log('onMessageFromGameObject', data, entityIndex, className, workerName);
 
   }
 

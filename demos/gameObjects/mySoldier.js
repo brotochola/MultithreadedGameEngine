@@ -24,7 +24,7 @@ export class MySoldier extends Person {
   static separationForce = 36000;
   static chaseStrength = 72000;
 
-  static followDestinationStrength = 360;
+  static followDestinationStrength = 3060;
 
   // Damage resistance (override Person default)
   static resistance = 0.6;
@@ -67,7 +67,7 @@ export class MySoldier extends Person {
   }
 
   die() {
-    this.sendMessageToScene('die');
+    // this.sendMessageToScene('die');
 
     super.die();
   }

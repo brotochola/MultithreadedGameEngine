@@ -6,6 +6,7 @@ const {
   Collider,
   SpriteRenderer,
   LightEmitter,
+  RigidBody,
   rng,
   randomColor,
   ShadowCaster,
@@ -17,9 +18,10 @@ const { ShapeType } = enums;
 export class Rock extends GameObject {
   static scriptUrl = import.meta.url;
 
-  static components = [Collider, SpriteRenderer, ShadowCaster];
+  static components = [Collider, SpriteRenderer, ShadowCaster, RigidBody];
 
   setup() {
+    this.rigidBody.static = 1;
     this.setSprite('rock' + Math.floor(Math.random() * 4 + 1));
     this.scale = Math.random() * 0.5 + 1;
     this.setScale(Math.random() > 0.5 ? this.scale : -this.scale, this.scale);

@@ -7,6 +7,7 @@ const {
   Collider,
   SpriteRenderer,
   LightEmitter,
+  RigidBody,
   randomColor,
   Flash,
   ParticleEmitter,
@@ -18,12 +19,10 @@ export class House extends GameObject {
   static scriptUrl = import.meta.url;
 
   // Add PreyBehavior component for prey-specific properties
-  static components = [Collider, SpriteRenderer, LightEmitter];
+  static components = [Collider, SpriteRenderer, LightEmitter, RigidBody];
 
   setup() {
-    // Override Boid's physics properties for prey behavior
-    // this.rigidBody.maxLinearSpeed = 0;
-    // this.rigidBody.static = 1; // Static body - nothing can move it
+    this.rigidBody.static = 1;
     const type = Math.random() > 0.5 ? 1 : 2;
     this.setSprite('house' + type);
 
