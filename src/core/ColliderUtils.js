@@ -15,8 +15,6 @@ import { MAX_POLYGON_VERTICES } from '../core/ConfigDefaults.js';
 export const SHAPE_CIRCLE = 0;
 export const SHAPE_BOX = 1;
 export const SHAPE_POLYGON = 2;
-/** @deprecated Use SHAPE_POLYGON */
-export const SHAPE_ORIENTED_BOX = 2;
 
 /**
  * Pre-allocated result objects for zero-GC operations

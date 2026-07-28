@@ -105,12 +105,9 @@ export class ZenithalParticleTestScene extends Scene {
 
     if (this._dragIdx != null) {
       if (Mouse.isButton0Down) {
-        Transform.x[this._dragIdx] = Mouse.x;
-        Transform.y[this._dragIdx] = Mouse.y;
-        RigidBody.px[this._dragIdx] = Mouse.x;
-        RigidBody.py[this._dragIdx] = Mouse.y;
-        RigidBody.vx[this._dragIdx] = 0;
-        RigidBody.vy[this._dragIdx] = 0;
+        const body = this.getEntityView(this._dragIdx, { cache: true });
+        body.setPosition(Mouse.x, Mouse.y);
+        body.setVelocity(0, 0);
         RigidBody.sleeping[this._dragIdx] = 0;
       } else {
         this._dragIdx = null;

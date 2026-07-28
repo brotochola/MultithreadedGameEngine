@@ -1918,20 +1918,6 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
   const current = currentConfig || PHYSICS_DEFAULTS;
   return {
     subStepCount: Math.max(1, newConfig.subStepCount ?? current.subStepCount),
-    distanceConstraintIterations: Math.max(
-      1,
-      newConfig.distanceConstraintIterations ??
-      current.distanceConstraintIterations ??
-      PHYSICS_DEFAULTS.distanceConstraintIterations
-    ),
-    boundaryElasticity: clamp01(
-      newConfig.boundaryElasticity ?? current.boundaryElasticity,
-      current.boundaryElasticity
-    ),
-    collisionResponseStrength: clamp01(
-      newConfig.collisionResponseStrength ?? current.collisionResponseStrength,
-      current.collisionResponseStrength
-    ),
     contactHertz: Math.max(
       0,
       newConfig.contactHertz ?? current.contactHertz ?? PHYSICS_DEFAULTS.contactHertz
@@ -1942,11 +1928,6 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
       current.contactDampingRatio ??
       PHYSICS_DEFAULTS.contactDampingRatio
     ),
-    contactMaxBias: Math.max(
-      0,
-      newConfig.contactMaxBias ?? current.contactMaxBias ?? PHYSICS_DEFAULTS.contactMaxBias
-    ),
-    verletDamping: clamp01(newConfig.verletDamping ?? current.verletDamping, current.verletDamping),
     minSpeedForRotation: newConfig.minSpeedForRotation ?? current.minSpeedForRotation,
     gravity: {
       x:

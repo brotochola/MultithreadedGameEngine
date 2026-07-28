@@ -19,10 +19,6 @@ export class RigidBody extends Component {
     ax: Float32Array,
     ay: Float32Array,
 
-    // Verlet integration (for alternative physics mode)
-    px: Float32Array, // Previous X position
-    py: Float32Array, // Previous Y position
-
     // Angular motion
     angularVelocity: Float32Array,
     angularAccel: Float32Array,
@@ -48,7 +44,7 @@ export class RigidBody extends Component {
     collisionCount: Uint8Array, // Number of collisions this frame
 
     // Sleeping optimization (gated by physics.sleeping config)
-    sleeping: Uint8Array, // 0 = awake, 1 = sleeping (physics skips Verlet integrate when sleep enabled)
+    sleeping: Uint8Array, // 0 = awake, 1 = sleeping
     stillnessTime: Float32Array, // Consecutive still frames (particle ticks), not seconds
   };
 

@@ -46,8 +46,6 @@ export class Ray {
   static SHAPE_CIRCLE = 0;
   static SHAPE_BOX = 1;
   static SHAPE_POLYGON = 2;
-  /** @deprecated Use SHAPE_POLYGON */
-  static SHAPE_ORIENTED_BOX = 2;
 
   // GC Optimization: Reusable objects to avoid GC pressure
   static _tempResult = { entityIndex: -1, distance: Infinity };

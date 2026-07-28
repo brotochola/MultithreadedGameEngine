@@ -46,8 +46,6 @@ class PhysicsWorker extends AbstractWorker {
     super(selfRef);
     this.needsGameScripts = false;
     this.settings = null;
-    this.collisionData = null;
-    this.maxCollisionPairs = PHYSICS_DEFAULTS.maxCollisionPairs;
     this.constraintsEnabled = false;
     this.maxConstraints = 0;
 
@@ -62,15 +60,6 @@ class PhysicsWorker extends AbstractWorker {
   initialize(data) {
     if (data.buffers.physicsStats) {
       this.stats = createStatsWriter(data.buffers.physicsStats, PHYSICS_STATS);
-    }
-
-    if (data.buffers.collisionData) {
-      this.collisionData = new Int32Array(data.buffers.collisionData);
-      this.maxCollisionPairs =
-        this.config.physics?.maxCollisionPairs ??
-        this.config.maxCollisionPairs ??
-        PHYSICS_DEFAULTS.maxCollisionPairs;
-      this.collisionData[0] = 0;
     }
 
     if (data.constraints && data.constraints.enabled) {

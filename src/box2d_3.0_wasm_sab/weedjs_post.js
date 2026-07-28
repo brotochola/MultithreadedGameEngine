@@ -7,7 +7,8 @@
     return;
   }
 
-  importScripts('game-constants.js', 'physics-api.js', 'box2dCommandRing.classic.js');
+  importScripts('game-constants.js', 'physics-api.js', 'box2dCommandRing.impl.js');
+  const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
 
   const CTRL = {
     STATE: 0, // 0 idle, 1 step, 2 done, 3 fatal

@@ -33,14 +33,10 @@ export class ConstraintBoxScene extends WEED.Scene {
         },
 
         physics: {
-            distanceConstraintIterations: 6,
             subStepCount: 5,
             noLimitFPS: true,
             maxCollisionPairs: 100000,
             maxConstraints: 10000,
-            verletDamping: 0.999,
-            boundaryElasticity: 0.3,
-            collisionResponseStrength: 0.9,
             sleeping: false,
             gravity: { x: 0, y: 1800 },
         },
@@ -154,14 +150,11 @@ export class ConstraintBoxScene extends WEED.Scene {
         if (this._dragIdx == null) return;
 
         if (!Mouse.isButton0Down || !Transform.active[this._dragIdx]) {
-            // Inject mouse velocity into Verlet (px = x - tossV)
             const tossVx = this._tossVx;
             const tossVy = this._tossVy;
             this._forEachPart(this._dragIdx, (partIdx) => {
-                RigidBody.px[partIdx] = Transform.x[partIdx] - tossVx;
-                RigidBody.py[partIdx] = Transform.y[partIdx] - tossVy;
-                RigidBody.vx[partIdx] = tossVx;
-                RigidBody.vy[partIdx] = tossVy;
+                const part = this.getEntityView(partIdx, { cache: true });
+                part.setVelocity(tossVx, tossVy);
                 RigidBody.sleeping[partIdx] = 0;
             });
             this._dragIdx = null;
@@ -179,12 +172,9 @@ export class ConstraintBoxScene extends WEED.Scene {
         const dy = targetY - Transform.y[this._dragIdx];
 
         this._forEachPart(this._dragIdx, (partIdx) => {
-            Transform.x[partIdx] += dx;
-            Transform.y[partIdx] += dy;
-            RigidBody.px[partIdx] = Transform.x[partIdx];
-            RigidBody.py[partIdx] = Transform.y[partIdx];
-            RigidBody.vx[partIdx] = 0;
-            RigidBody.vy[partIdx] = 0;
+            const part = this.getEntityView(partIdx, { cache: true });
+            part.setPosition(Transform.x[partIdx] + dx, Transform.y[partIdx] + dy);
+            part.setVelocity(0, 0);
             RigidBody.sleeping[partIdx] = 0;
         });
 

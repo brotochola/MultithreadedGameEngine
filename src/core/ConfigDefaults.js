@@ -158,20 +158,12 @@ export const SCENE_DEFAULTS = Object.freeze({
 // ============================================================================
 
 export const PHYSICS_DEFAULTS = Object.freeze({
-  /** Outer loop: collision resolve passes per frame (variable FPS) or fixed micro-steps (noLimitFPS). */
+  /** Solver steps per physics tick (maps to Box2D world.step subStep). */
   subStepCount: 4,
-  /** PBD sweeps over distance constraints after each collision pass (>= 1). */
-  distanceConstraintIterations: 1,
-  boundaryElasticity: 0.8,
-  /** Scales contactHertz (0..1). Soft normal stiffness = contactHertz * this. */
-  collisionResponseStrength: 0.8,
-  /** Soft contact spring frequency (Hz). Box2D-inspired; 0 disables soft bias. */
+  /** Soft contact spring frequency (Hz) → b2WorldDef.contactHertz. */
   contactHertz: 30,
-  /** Soft contact damping ratio ζ (0 = undamped, 1 = critical). */
+  /** Soft contact damping ratio ζ → b2WorldDef.contactDampingRatio. */
   contactDampingRatio: 0.7,
-  /** Cap on soft bias speed (px per physics step, displacement units). */
-  contactMaxBias: 4,
-  verletDamping: 0.995,
   minSpeedForRotation: 6,
   maxCollisionPairs: 10000,
   maxConstraints: 0,

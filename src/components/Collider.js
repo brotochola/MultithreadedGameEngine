@@ -1,9 +1,8 @@
-// Collider.js - Collision component for entity collision detection
-// Supports circles, AABB boxes, and convex polygons (Box2D-style, max 8 verts)
+// Collider.js - Collision shapes for Box2D sync + spatial/Ray queries
+// Supports circles, AABB boxes, and convex polygons (max 8 verts)
 //
 // CUSTOM SETTERS FOR MASS AUTO-COMPUTATION:
-// This component defines custom setters for radius, width, and height that
-// automatically compute mass and invMass in the RigidBody component.
+// radius / width / height setters recompute RigidBody.mass / invMass.
 //
 // Mass formulas:
 // - Circle: mass = π * radius²  (area)
