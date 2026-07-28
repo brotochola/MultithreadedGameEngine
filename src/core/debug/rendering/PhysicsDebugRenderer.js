@@ -10,6 +10,8 @@ import { Grid } from '../../Grid.js';
 import { Constraint } from '../../Constraint.js';
 import { DebugDraw } from '../DebugDraw.js';
 import { distanceSq2D } from '../../utils.js';
+import { ShapeType } from '../../ConfigDefaults.js';
+import { getColliderBounds, _boundsResult } from '../../ColliderUtils.js';
 
 export class PhysicsDebugRenderer {
   constructor() {
@@ -101,6 +103,7 @@ export class PhysicsDebugRenderer {
     const x = Transform.x;
     const y = Transform.y;
     const isOnScreen = SpriteRenderer.isItOnScreen;
+    const colActive = Collider.active;
     const shapeType = Collider.shapeType;
     const isTrigger = Collider.isTrigger;
     const radius = Collider.radius;
@@ -109,6 +112,7 @@ export class PhysicsDebugRenderer {
     const offsetX = Collider.offsetX;
     const offsetY = Collider.offsetY;
     const rotation = Transform.rotation;
+    const n = Math.min(active.length, x.length);
 
     const viewLeft = camera.x - 100;
     const viewRight = camera.x + canvas.width / zoom + 100;
@@ -117,8 +121,8 @@ export class PhysicsDebugRenderer {
 
     ctx.lineWidth = 2;
 
-    for (let i = 0; i < active.length; i++) {
-      if (!active[i]) continue;
+    for (let i = 0; i < n; i++) {
+      if (!active[i] || !colActive?.[i]) continue;
       const entityX = x[i];
       const entityY = y[i];
       const onScreen = isOnScreen[i] || (entityX >= viewLeft && entityX <= viewRight && entityY >= viewTop && entityY <= viewBottom);
@@ -127,18 +131,19 @@ export class PhysicsDebugRenderer {
       const ox = offsetX?.[i] || 0;
       const oy = offsetY?.[i] || 0;
       const shape = shapeType[i];
+      const th = rotation[i] || 0;
+      const c = Math.cos(th);
+      const s = Math.sin(th);
 
+      // Rotate offset for Box and Polygon (Circle keeps axis-aligned offset)
       let posX;
       let posY;
-      if (shape === 2) {
-        const th = rotation[i];
-        const c = Math.cos(th);
-        const s = Math.sin(th);
-        posX = entityX + c * ox - s * oy;
-        posY = entityY + s * ox + c * oy;
-      } else {
+      if (shape === ShapeType.Circle) {
         posX = entityX + ox;
         posY = entityY + oy;
+      } else {
+        posX = entityX + c * ox - s * oy;
+        posY = entityY + s * ox + c * oy;
       }
 
       const sx = (posX - camera.x) * zoom;
@@ -146,22 +151,19 @@ export class PhysicsDebugRenderer {
 
       ctx.strokeStyle = isTrigger[i] ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
 
-      if (shape === 0) {
+      if (shape === ShapeType.Circle) {
         const r = radius[i];
-        if (r === 0) continue;
+        if (!(r > 0)) continue;
         ctx.beginPath();
         ctx.arc(sx, sy, r * zoom, 0, Math.PI * 2);
         ctx.stroke();
-      } else if (shape === 1) {
+      } else if (shape === ShapeType.Box) {
         const w = width[i];
         const h = height[i];
-        if (w === 0 || h === 0) continue;
-        ctx.strokeRect(sx - (w / 2) * zoom, sy - (h / 2) * zoom, w * zoom, h * zoom);
-      } else if (shape === 2) {
+        if (!(w > 0) || !(h > 0)) continue;
+        this._strokeOrientedBox(ctx, sx, sy, w * zoom, h * zoom, c, s);
+      } else if (shape === ShapeType.Polygon) {
         const count = Collider.polyCount?.[i] || 0;
-        const th = rotation[i];
-        const c = Math.cos(th);
-        const s = Math.sin(th);
         if (count >= 3) {
           const base = i * 8;
           const vx = Collider.polyVertexX;
@@ -180,23 +182,29 @@ export class PhysicsDebugRenderer {
         } else {
           const w = width[i];
           const h = height[i];
-          if (w === 0 || h === 0) continue;
-          const hw = (w / 2) * zoom;
-          const hh = (h / 2) * zoom;
-          const x0 = -hw, y0 = -hh;
-          const x1 = hw, y1 = -hh;
-          const x2 = hw, y2 = hh;
-          const x3 = -hw, y3 = hh;
-          ctx.beginPath();
-          ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
-          ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
-          ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
-          ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
-          ctx.closePath();
-          ctx.stroke();
+          if (!(w > 0) || !(h > 0)) continue;
+          this._strokeOrientedBox(ctx, sx, sy, w * zoom, h * zoom, c, s);
         }
       }
     }
+  }
+
+  /** Stroke a width×height box centered at (sx,sy), oriented by cos/sin. */
+  _strokeOrientedBox(ctx, sx, sy, wZoom, hZoom, c, s, fill = false) {
+    const hw = wZoom * 0.5;
+    const hh = hZoom * 0.5;
+    const x0 = -hw, y0 = -hh;
+    const x1 = hw, y1 = -hh;
+    const x2 = hw, y2 = hh;
+    const x3 = -hw, y3 = hh;
+    ctx.beginPath();
+    ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
+    ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
+    ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
+    ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    ctx.stroke();
   }
 
   // ------- entity origins -------
@@ -242,7 +250,8 @@ export class PhysicsDebugRenderer {
     const isOnScreen = SpriteRenderer.isItOnScreen;
     const vx = RigidBody.vx;
     const vy = RigidBody.vy;
-    const scale = 10;
+    // vx/vy are px/s (Box2D); old scale=10 assumed tiny frame units
+    const scale = 0.05;
 
     ctx.save();
     ctx.strokeStyle = 'rgba(0, 136, 255, 0.9)';
@@ -322,6 +331,7 @@ export class PhysicsDebugRenderer {
     const sleeping = RigidBody.sleeping;
     if (!sleeping) return;
 
+    const colActive = Collider.active;
     const shapeType = Collider.shapeType;
     const radius = Collider.radius;
     const width = Collider.width;
@@ -329,51 +339,47 @@ export class PhysicsDebugRenderer {
     const offsetX = Collider.offsetX;
     const offsetY = Collider.offsetY;
     const rotation = Transform.rotation;
+    const n = Math.min(active.length, x.length);
 
     ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
     ctx.fillStyle = 'rgba(255, 0, 255, 0.2)';
     ctx.lineWidth = 3 / zoom;
 
-    for (let i = 0; i < active.length; i++) {
+    for (let i = 0; i < n; i++) {
       if (!active[i] || !isOnScreen[i]) continue;
       if (!rigidBodyActive[i] || !sleeping[i]) continue;
+      if (colActive && !colActive[i]) continue;
 
       const ox = offsetX?.[i] || 0;
       const oy = offsetY?.[i] || 0;
       const shape = shapeType?.[i];
+      const th = rotation[i] || 0;
+      const c = Math.cos(th);
+      const s = Math.sin(th);
 
       let posX;
       let posY;
-      if (shape === 2) {
-        const th = rotation[i];
-        const c = Math.cos(th);
-        const s = Math.sin(th);
-        posX = x[i] + c * ox - s * oy;
-        posY = y[i] + s * ox + c * oy;
-      } else {
+      if (shape === ShapeType.Circle) {
         posX = x[i] + ox;
         posY = y[i] + oy;
+      } else {
+        posX = x[i] + c * ox - s * oy;
+        posY = y[i] + s * ox + c * oy;
       }
       const sx = (posX - camera.x) * zoom;
       const sy = (posY - camera.y) * zoom;
 
-      if (shape === 0) {
+      if (shape === ShapeType.Circle) {
         const r = radius?.[i] || 10;
-        if (r === 0) continue;
+        if (!(r > 0)) continue;
         ctx.beginPath(); ctx.arc(sx, sy, r * zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      } else if (shape === 1) {
+      } else if (shape === ShapeType.Box) {
         const w = width?.[i] || 20;
         const h = height?.[i] || 20;
-        if (w === 0 || h === 0) continue;
-        const halfW = (w / 2) * zoom;
-        const halfH = (h / 2) * zoom;
-        ctx.fillRect(sx - halfW, sy - halfH, w * zoom, h * zoom);
-        ctx.strokeRect(sx - halfW, sy - halfH, w * zoom, h * zoom);
-      } else if (shape === 2) {
+        if (!(w > 0) || !(h > 0)) continue;
+        this._strokeOrientedBox(ctx, sx, sy, w * zoom, h * zoom, c, s, true);
+      } else if (shape === ShapeType.Polygon) {
         const count = Collider.polyCount?.[i] || 0;
-        const th = rotation[i];
-        const c = Math.cos(th);
-        const s = Math.sin(th);
         if (count >= 3) {
           const base = i * 8;
           const vx = Collider.polyVertexX;
@@ -393,18 +399,8 @@ export class PhysicsDebugRenderer {
         } else {
           const w = width?.[i] || 20;
           const h = height?.[i] || 20;
-          if (w === 0 || h === 0) continue;
-          const hw = (w / 2) * zoom;
-          const hh = (h / 2) * zoom;
-          const x0 = -hw, y0 = -hh, x1 = hw, y1 = -hh, x2 = hw, y2 = hh, x3 = -hw, y3 = hh;
-          ctx.beginPath();
-          ctx.moveTo(sx + c * x0 - s * y0, sy + s * x0 + c * y0);
-          ctx.lineTo(sx + c * x1 - s * y1, sy + s * x1 + c * y1);
-          ctx.lineTo(sx + c * x2 - s * y2, sy + s * x2 + c * y2);
-          ctx.lineTo(sx + c * x3 - s * y3, sy + s * x3 + c * y3);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
+          if (!(w > 0) || !(h > 0)) continue;
+          this._strokeOrientedBox(ctx, sx, sy, w * zoom, h * zoom, c, s, true);
         }
       } else {
         ctx.beginPath(); ctx.arc(sx, sy, 10 * zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -425,7 +421,8 @@ export class PhysicsDebugRenderer {
     const mySx = (myX - camera.x) * zoom;
     const mySy = (myY - camera.y) * zoom;
 
-    const highlightRadius = (Collider.radius[closest] * 1.5 || 10) * zoom;
+    getColliderBounds(closest, _boundsResult);
+    const highlightRadius = (Math.max(_boundsResult.halfW, _boundsResult.halfH) * 1.5 || 10) * zoom;
     ctx.strokeStyle = 'rgba(255, 255, 0, 1.0)';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(mySx, mySy, highlightRadius, 0, Math.PI * 2); ctx.stroke();

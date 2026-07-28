@@ -6,7 +6,7 @@ import { Transform } from '../components/Transform.js';
 import { Collider } from '../components/Collider.js';
 import { Grid } from './Grid.js';
 import { rayCircleIntersect, rayBoxIntersect, rayPolygonIntersect } from './utils.js';
-import { MAX_POLYGON_VERTICES } from './ConfigDefaults.js';
+import { MAX_POLYGON_VERTICES, ShapeType } from './ConfigDefaults.js';
 
 /**
  * Ray - Static class for raycasting against entities in the spatial grid
@@ -43,9 +43,9 @@ import { MAX_POLYGON_VERTICES } from './ConfigDefaults.js';
  */
 export class Ray {
   // Shape type constants (must match Collider.js / ShapeType enum)
-  static SHAPE_CIRCLE = 0;
-  static SHAPE_BOX = 1;
-  static SHAPE_POLYGON = 2;
+  static SHAPE_BOX = ShapeType.Box;
+  static SHAPE_CIRCLE = ShapeType.Circle;
+  static SHAPE_POLYGON = ShapeType.Polygon;
 
   // GC Optimization: Reusable objects to avoid GC pressure
   static _tempResult = { entityIndex: -1, distance: Infinity };

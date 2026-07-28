@@ -558,16 +558,6 @@ class SpatialWorker extends AbstractWorker {
   findNeighborsForOwnedEntities() {
     const visualRange = Collider.visualRange;
     const active = Transform.active;
-    const x = Transform.x;
-    const y = Transform.y;
-    const offsetX = Collider.offsetX;
-    const offsetY = Collider.offsetY;
-    const colliderActive = Collider.active;
-    const shapeType = Collider.shapeType;
-    const radius = Collider.radius;
-    const width = Collider.width;
-    const height = Collider.height;
-    const SHAPE_CIRCLE = 0;
 
     const gridWidth = this.gridWidth;
     const gridHeight = this.gridHeight;

@@ -5,7 +5,7 @@ import { Ball } from '/demos/gameObjects/ball.js';
 import { Floor } from '/demos/gameObjects/floor.js';
 
 import WEED from '/src/index.js';
-const { Scene, Camera, Mouse, Constraint, RigidBody, Transform, Grid, Collider, distanceSq2D } = WEED;
+const { Scene, Camera, Mouse, Constraint, RigidBody, Transform, Grid, Collider, distanceSq2D, ShapeType } = WEED;
 
 export class ConstraintsTestScene extends Scene {
     // ========================================
@@ -524,7 +524,7 @@ export class ConstraintsTestScene extends Scene {
             if (!active[i]) continue;
 
             // Check if it's a Ball (has Collider with circle shape)
-            if (!Collider.active[i] || Collider.shapeType[i] !== 0) continue;
+            if (!Collider.active[i] || Collider.shapeType[i] !== ShapeType.Circle) continue;
 
             const dx = ex[i] - x;
             const dy = ey[i] - y;

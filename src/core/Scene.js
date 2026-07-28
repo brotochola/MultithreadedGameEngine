@@ -143,6 +143,9 @@ class Scene {
       y: 0,
     };
 
+    /** @type {object|null} Last box2dReady payload (HEAP sab + channelOffsets) */
+    this.box2dHotFields = null;
+
     // Workers
     this.workers = {
       spatialWorkers: [], // Multiple spatial workers for parallel neighbor detection
@@ -1436,6 +1439,7 @@ class Scene {
         eventHeaderIntCount: e.data.eventHeaderIntCount || 8,
       };
       rebindBox2dHotFields(payload);
+      this.box2dHotFields = payload;
       if (payload.commandSab) {
         bindCommandRing(payload.commandSab);
       }

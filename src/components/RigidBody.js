@@ -6,6 +6,7 @@
 import { Component } from '../core/Component.js';
 import { Collider } from './Collider.js';
 import { updateMassFromCircle, updateMassFromBox } from '../core/utils.js';
+import { ShapeType } from '../core/ConfigDefaults.js';
 
 export class RigidBody extends Component {
   // Array schema - defines all physics properties
@@ -75,7 +76,7 @@ export class RigidBody extends Component {
 
     if (Collider.active && Collider.active[index]) {
       shapeType = Collider.shapeType[index];
-      if (shapeType === 0) {
+      if (shapeType === ShapeType.Circle) {
         const radius = Collider.radius[index];
         if (radius > 0) {
           if (isStatic) {
@@ -86,7 +87,7 @@ export class RigidBody extends Component {
           }
           massInitialized = true;
         }
-      } else if (shapeType === 1) {
+      } else if (shapeType === ShapeType.Box) {
         // Box — rectangle area mass
         const width = Collider.width[index];
         const height = Collider.height[index];
@@ -99,7 +100,7 @@ export class RigidBody extends Component {
           }
           massInitialized = true;
         }
-      } else if (shapeType === 2) {
+      } else if (shapeType === ShapeType.Polygon) {
         // Convex polygon — shoelace area
         const area = Collider.polygonArea(index);
         if (area > 0) {
@@ -144,14 +145,14 @@ export class RigidBody extends Component {
     const mass = RigidBody.mass[index];
     let inertia = 0;
 
-    if (shapeType === 0) {
+    if (shapeType === ShapeType.Circle) {
       const r = Collider.radius[index];
       if (r > 0 && mass > 0) inertia = 0.5 * mass * r * r;
-    } else if (shapeType === 1) {
+    } else if (shapeType === ShapeType.Box) {
       const w = Collider.width[index];
       const h = Collider.height[index];
       if (w > 0 && h > 0 && mass > 0) inertia = (mass * (w * w + h * h)) / 12;
-    } else if (shapeType === 2) {
+    } else if (shapeType === ShapeType.Polygon) {
       if (mass > 0) inertia = Collider.polygonInertia(index, mass);
     }
 

@@ -19,7 +19,7 @@ class Collider extends Component {
     active: Uint8Array, // 0 = entity doesn't have this component, 1 = active
 
     // Shape type
-    shapeType: Uint8Array, // 0=Circle, 1=Box (AABB), 2=Polygon
+    shapeType: Uint8Array, // ShapeType: Box=0, Circle=1, Polygon=2 (WASM C)
 
     // Offset from entity position
     offsetX: Float32Array,
@@ -222,6 +222,8 @@ class Collider extends Component {
   }
   set radius(value) {
     Collider.radius[this.index] = value;
+    // Authoring sugar: positive radius ⇒ circle (SAB default 0 is now Box in C numbering)
+    if (value > 0) Collider.shapeType[this.index] = ShapeType.Circle;
     RigidBody.syncMassFromCollider(this.index);
   }
 
@@ -230,6 +232,9 @@ class Collider extends Component {
   }
   set width(value) {
     Collider.width[this.index] = value;
+    if (value > 0 && Collider.shapeType[this.index] !== ShapeType.Polygon) {
+      Collider.shapeType[this.index] = ShapeType.Box;
+    }
     RigidBody.syncMassFromCollider(this.index);
   }
 
@@ -238,6 +243,9 @@ class Collider extends Component {
   }
   set height(value) {
     Collider.height[this.index] = value;
+    if (value > 0 && Collider.shapeType[this.index] !== ShapeType.Polygon) {
+      Collider.shapeType[this.index] = ShapeType.Box;
+    }
     RigidBody.syncMassFromCollider(this.index);
   }
 

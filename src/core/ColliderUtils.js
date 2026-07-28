@@ -7,14 +7,15 @@
 
 import { Transform } from '../components/Transform.js';
 import { Collider } from '../components/Collider.js';
-import { MAX_POLYGON_VERTICES } from '../core/ConfigDefaults.js';
+import { MAX_POLYGON_VERTICES, ShapeType } from './ConfigDefaults.js';
 
 /**
- * Shape type constants (matches Collider.shapeType values)
+ * Shape type constants — aliases for ShapeType (Box2D / WASM C numbers).
  */
-export const SHAPE_CIRCLE = 0;
-export const SHAPE_BOX = 1;
-export const SHAPE_POLYGON = 2;
+export { ShapeType };
+export const SHAPE_BOX = ShapeType.Box;
+export const SHAPE_CIRCLE = ShapeType.Circle;
+export const SHAPE_POLYGON = ShapeType.Polygon;
 
 /**
  * Pre-allocated result objects for zero-GC operations
@@ -89,11 +90,18 @@ export function getColliderBounds(idx, result) {
       result.halfH = as * hw + ac * hh + skin;
     }
   } else {
-    // AABB Box (and unknown fallback)
-    result.posX = tx + ox;
-    result.posY = ty + oy;
-    result.halfW = (Collider.width[idx] || 0) * 0.5;
-    result.halfH = (Collider.height[idx] || 0) * 0.5;
+    // Box — world AABB of oriented width×height (Box2D rotates boxes)
+    const th = Transform.rotation[idx] || 0;
+    const c = Math.cos(th);
+    const s = Math.sin(th);
+    result.posX = tx + c * ox - s * oy;
+    result.posY = ty + s * ox + c * oy;
+    const hw = (Collider.width[idx] || 0) * 0.5;
+    const hh = (Collider.height[idx] || 0) * 0.5;
+    const ac = c < 0 ? -c : c;
+    const as = s < 0 ? -s : s;
+    result.halfW = ac * hw + as * hh;
+    result.halfH = as * hw + ac * hh;
   }
 
   return result;

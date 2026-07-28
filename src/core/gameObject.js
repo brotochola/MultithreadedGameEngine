@@ -13,6 +13,7 @@ import { LightOccluder } from '../components/LightOccluder.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { Layer } from './Layer.js';
 import { Grid } from './Grid.js';
+import { ShapeType } from './ConfigDefaults.js';
 import { collectComponents, cantorPair, distanceSq2D } from './utils.js';
 import {
   resetFreeList,
@@ -700,7 +701,13 @@ export class GameObject {
 
   set radius(value) {
     if (!this._hasComponents.Collider) return;
+    // Delegate so Collider radius setter can set ShapeType.Circle
+    if (this.collider) {
+      this.collider.radius = value;
+      return;
+    }
     Collider.radius[this.index] = value;
+    if (value > 0) Collider.shapeType[this.index] = ShapeType.Circle;
     if (this._hasComponents.RigidBody) {
       RigidBody.syncMassFromCollider(this.index);
     }
@@ -713,7 +720,14 @@ export class GameObject {
   }
   set width(value) {
     if (!this._hasComponents.Collider) return;
+    if (this.collider) {
+      this.collider.width = value;
+      return;
+    }
     Collider.width[this.index] = value;
+    if (value > 0 && Collider.shapeType[this.index] !== ShapeType.Polygon) {
+      Collider.shapeType[this.index] = ShapeType.Box;
+    }
     if (this._hasComponents.RigidBody) {
       RigidBody.syncMassFromCollider(this.index);
     }
@@ -726,7 +740,14 @@ export class GameObject {
   }
   set height(value) {
     if (!this._hasComponents.Collider) return;
+    if (this.collider) {
+      this.collider.height = value;
+      return;
+    }
     Collider.height[this.index] = value;
+    if (value > 0 && Collider.shapeType[this.index] !== ShapeType.Polygon) {
+      Collider.shapeType[this.index] = ShapeType.Box;
+    }
     if (this._hasComponents.RigidBody) {
       RigidBody.syncMassFromCollider(this.index);
     }

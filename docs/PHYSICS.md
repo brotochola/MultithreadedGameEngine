@@ -25,9 +25,11 @@ Soft spring bias (`contactHertz` / damping / maxBias) is **not used** by the cur
 
 | Value | Name     | Notes                                                                 |
 | ----: | -------- | --------------------------------------------------------------------- |
-|   `0` | Circle   | Uses `radius`                                                         |
-|   `1` | Box      | Box2D box (`width`/`height` local AABB); rotates with `Transform.rotation` unless `fixedRotation` / static |
+|   `0` | Box      | Box2D box (`width`/`height` local AABB); rotates with `Transform.rotation` unless `fixedRotation` / static |
+|   `1` | Circle   | Uses `radius`                                                         |
 |   `2` | Polygon  | Convex polygon: local verts/normals via `Collider.makePolygon`, max 8 verts; oriented by `Transform.rotation`. |
+
+Numbers match WASM C `b2_game_shape_*` (Box2D language).
 
 Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 

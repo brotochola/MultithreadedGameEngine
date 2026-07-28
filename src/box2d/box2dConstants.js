@@ -7,7 +7,6 @@ export const ShapeType = C.ShapeType;
 export const Box2dBodyType = C.Box2dBodyType;
 export const BODY_TYPE = C.BODY_TYPE;
 export const SHAPE_TYPE = C.SHAPE_TYPE;
-export const WEED_TO_C_SHAPE = C.WEED_TO_C_SHAPE;
 export const META_FLAG = C.META_FLAG;
 export const STATE_CHANNELS = C.STATE_CHANNELS;
 export const STATE_CHANNEL_COUNT = C.STATE_CHANNEL_COUNT;

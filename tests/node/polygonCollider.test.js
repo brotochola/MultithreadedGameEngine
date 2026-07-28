@@ -17,6 +17,23 @@ function initComponents(count = 4) {
   }
 }
 
+test('ShapeType uses WASM C numbering (Box=0, Circle=1, Polygon=2)', () => {
+  assert.equal(ShapeType.Box, 0);
+  assert.equal(ShapeType.Circle, 1);
+  assert.equal(ShapeType.Polygon, 2);
+});
+
+test('radius setter sets ShapeType.Circle; width setter sets ShapeType.Box', () => {
+  initComponents();
+  const c = Object.create(Collider.prototype);
+  c.index = 0;
+  c.radius = 5;
+  assert.equal(Collider.shapeType[0], ShapeType.Circle);
+  c.width = 10;
+  c.height = 12;
+  assert.equal(Collider.shapeType[0], ShapeType.Box);
+});
+
 test('ShapeType.Box + width/height syncs mass from rectangle area', () => {
   initComponents();
   assert.equal(MAX_POLYGON_VERTICES, 8);

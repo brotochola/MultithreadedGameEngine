@@ -1,14 +1,17 @@
 // Shared Box2D / Weed layout constants (classic globals for importScripts).
 // ESM: imported as side-effect by box2dConstants.js
 (function (global) {
-  /** Collider shape — same numbers as ConfigDefaults.ShapeType */
+  /**
+   * Collider shape — WASM C b2_game_shape_* numbers (single source for Weed + glue).
+   * Box=0, Circle=1, Polygon=2.
+   */
   var ShapeType = Object.freeze({
-    Circle: 0,
-    Box: 1,
+    Box: 0,
+    Circle: 1,
     Polygon: 2,
     // aliases for classic glue
-    CIRCLE: 0,
-    BOX: 1,
+    BOX: 0,
+    CIRCLE: 1,
     POLYGON: 2,
   });
 
@@ -24,16 +27,6 @@
 
   /** @deprecated use ShapeType */
   var SHAPE_TYPE = ShapeType;
-
-  /**
-   * WASM meta shapeType uses C b2_game_shape_* (box=0, circle=1, polygon=2).
-   * Private map Weed ShapeType → C — do not expose as a second public enum.
-   */
-  var WEED_TO_C_SHAPE = Object.freeze({
-    0: 1, // Circle → circle
-    1: 0, // Box → box
-    2: 2, // Polygon → polygon
-  });
 
   var META_FLAG = Object.freeze({
     STATIC: 1,
@@ -92,7 +85,6 @@
     Box2dBodyType: Box2dBodyType,
     BODY_TYPE: BODY_TYPE,
     SHAPE_TYPE: SHAPE_TYPE,
-    WEED_TO_C_SHAPE: WEED_TO_C_SHAPE,
     META_FLAG: META_FLAG,
     STATE_CHANNELS: STATE_CHANNELS,
     STATE_CHANNEL_COUNT: STATE_CHANNEL_COUNT,
@@ -108,7 +100,6 @@
   global.Box2dBodyType = Box2dBodyType;
   global.BODY_TYPE = BODY_TYPE;
   global.SHAPE_TYPE = SHAPE_TYPE;
-  global.WEED_TO_C_SHAPE = WEED_TO_C_SHAPE;
   global.META_FLAG = META_FLAG;
   global.STATE_CHANNELS = STATE_CHANNELS;
   global.STATE_CHANNEL_COUNT = STATE_CHANNEL_COUNT;
