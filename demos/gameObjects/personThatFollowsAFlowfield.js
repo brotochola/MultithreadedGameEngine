@@ -92,7 +92,6 @@ export class PersonThatFollowsAFlowfield extends GameObject {
   }
 
   onCollisionEnter(other) {
-    console.log('onCollisionEnter', other);
     if (Transform.entityType[other] != CarPart.entityType) return;
 
     const carVx = CarComponent.vx[other];
