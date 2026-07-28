@@ -67,7 +67,7 @@ pnpm exec node tests/bench/run-headed-median.mjs --runs 7
 
 Default warmup/duration are in `tests/bench/benchmarkDefaults.mjs` (long warmup after spawn pile-up). Methodology: [tests/bench/BENCHMARK_METHODOLOGY.md](tests/bench/BENCHMARK_METHODOLOGY.md).
 
-Each worker in the benchmark JSON may include `statsEnd` and `statsSamplesAverage` for comparing work done, not only FPS. **Only compare FPS across builds when `COLLISION_CHECKS` is similar** (same workload).
+Each worker in the benchmark JSON may include `statsEnd` and `statsSamplesAverage` for comparing work done, not only FPS. **Only compare FPS across builds when `BODY_COUNT` is similar** (same workload).
 
 ## Output summary template
 

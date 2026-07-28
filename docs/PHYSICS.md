@@ -144,14 +144,16 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 
 Written to `physicsStats` via indices in `src/workers/workers-utils.js` (`PHYSICS_STATS`):
 
-| Key                   | Meaning                                                                     |
-| --------------------- | --------------------------------------------------------------------------- |
-| FPS                   | Instantaneous FPS slot (via frame timing)                                   |
-| `COLLISION_CHECKS`    | Collision tests performed                                                   |
-| `COLLISIONS_RESOLVED` | Resolutions applied                                                         |
-| `COLLISION_PAIRS`     | Pairs considered                                                            |
-| `CONSTRAINT_MS`       | Time spent in distance constraint solving this frame (ms)                   |
-| `MSG_MS`              | Time spent handling incoming messages this frame (ms); see `AbstractWorker` |
+| Key | Meaning |
+| --- | --- |
+| `FPS` | Instantaneous FPS slot (via frame timing) |
+| `STEP_MS` | Outer physics worker: wall time for Box2D Atomics step roundtrip (ms) |
+| `MSG_MS` | Time spent handling incoming messages this frame (ms); see `AbstractWorker` |
+| `BODY_COUNT` | Nested weedjs: dense Box2D bodies after `syncBodies` |
+| `JOINT_COUNT` | Nested weedjs: `world.getJointCount()` (WASM joint table high-water) |
+| `CONTACT_BEGIN` / `CONTACT_END` | Box2D contact begin/end event counts this step (`EVENT_HEADER`) |
+| `SENSOR_BEGIN` / `SENSOR_END` | Box2D sensor begin/end event counts this step |
+| `WEED_JOINTS` | Dense active count from Weed `Joint` SAB (when joints enabled) |
 
 Other workers expose `MSG_MS` similarly for comparable overhead profiling.
 

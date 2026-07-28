@@ -458,7 +458,7 @@ All use a strided `Float32Array` layout: **16 floats (64 bytes) per worker slot*
 | ----------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rendererStats`   | 1                        | FPS, DRAW_CALLS, VISIBLE_SPRITES, SPRITES_CREATED, DECORATION_SPRITES, VISIBLE_DECORATIONS, VISIBLE_ENTITIES, VISIBLE_PARTICLES, ACTIVE_DECORATIONS |
 | `particleStats`   | 1                        | FPS, ACTIVE_PARTICLES, TOTAL_PARTICLES, PARTICLES_STAMPED, FLASHES_UPDATED, SHADOWS_UPDATED, ACTIVE_ENTITIES, TOTAL_ENTITIES                        |
-| `physicsStats`    | 1                        | FPS, COLLISION_CHECKS, COLLISIONS_RESOLVED, COLLISION_PAIRS                                                                                         |
+| `physicsStats`    | 1                        | FPS, STEP_MS, MSG_MS, BODY_COUNT, JOINT_COUNT, CONTACT_*, SENSOR_*, WEED_JOINTS                                                                      |
 | `spatialStats`    | N (1 per spatial worker) | FPS, NEIGHBOR_CHECKS, GRID_CELLS_CHECKED, ENTITIES_PROCESSED                                                                                        |
 | `logicStats`      | N (1 per logic worker)   | FPS, ENTITIES_PROCESSED, SYSTEMS_EXECUTED                                                                                                           |
 | `navigationStats` | 1                        | FPS, FLOWFIELDS_COMPUTED, PATHS_COMPUTED, FLOWFIELDS_CACHED, PATHS_CACHED, PENDING counts, GRID_WIDTH/HEIGHT                                        |

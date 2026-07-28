@@ -123,6 +123,7 @@ class PhysicsWorker extends AbstractWorker {
       subSteps: s.subStepCount,
       controlSab: this._controlSab,
       commandSab: this._commandSab,
+      stats: this.stats ? packView(this.stats) : null,
       views: {
         x: packView(Transform.x),
         y: packView(Transform.y),
@@ -262,6 +263,7 @@ class PhysicsWorker extends AbstractWorker {
    */
   _stepBox2d(dtSec) {
     if (!this._box2dReady || !this._ctrlI32) return;
+    const t0 = performance.now();
     this._ctrlF32[0] = dtSec;
     Atomics.store(this._ctrlI32, CTRL.SUBSTEPS, this.settings.subStepCount | 0);
     Atomics.store(this._ctrlI32, CTRL.STATE, 1);
@@ -272,6 +274,9 @@ class PhysicsWorker extends AbstractWorker {
     }
     const state = Atomics.load(this._ctrlI32, CTRL.STATE);
     Atomics.store(this._ctrlI32, CTRL.STATE, 0);
+    if (this.stats) {
+      this.stats[PHYSICS_STATS.STEP_MS] = performance.now() - t0;
+    }
     if (state === 3) {
       console.error('[physics] Box2D step reported fatal');
     }

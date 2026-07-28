@@ -51,8 +51,8 @@ const { runs, warmupMs, durationMs } = parseArgs(process.argv.slice(2));
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weed-cell-'));
 
 const physicsFps = [];
-const collisionChecks = [];
-const collisionMs = [];
+const bodyCounts = [];
+const stepMsArr = [];
 
 console.log(
   `BallsScene benchmark: ${runs} run(s) | headless | warmup ${warmupMs}ms measure ${durationMs}ms\n` +
@@ -77,8 +77,8 @@ for (let r = 0; r < runs; r++) {
   const j = JSON.parse(fs.readFileSync(file, 'utf8'));
   const ph = j.workers.find((w) => w.id === 'physics');
   physicsFps.push(ph.averageFPS);
-  collisionChecks.push(ph.statsSamplesAverage?.COLLISION_CHECKS ?? 0);
-  collisionMs.push(ph.statsSamplesAverage?.COLLISION_MS ?? 0);
+  bodyCounts.push(ph.statsSamplesAverage?.BODY_COUNT ?? 0);
+  stepMsArr.push(ph.statsSamplesAverage?.STEP_MS ?? 0);
 }
 
 try {
@@ -89,21 +89,21 @@ try {
 
 const row = {
   physicsFps: { median: median(physicsFps), mean: mean(physicsFps), stdev: stdev(physicsFps), samples: physicsFps },
-  collisionChecks: {
-    median: median(collisionChecks),
-    mean: mean(collisionChecks),
-    stdev: stdev(collisionChecks),
-    samples: collisionChecks,
+  bodyCounts: {
+    median: median(bodyCounts),
+    mean: mean(bodyCounts),
+    stdev: stdev(bodyCounts),
+    samples: bodyCounts,
   },
-  collisionMs: {
-    median: median(collisionMs),
-    mean: mean(collisionMs),
-    samples: collisionMs,
+  stepMs: {
+    median: median(stepMsArr),
+    mean: mean(stepMsArr),
+    samples: stepMsArr,
   },
 };
 
 console.log(
-  `physics FPS median ${row.physicsFps.median.toFixed(2)} | checks median ${row.collisionChecks.median.toFixed(0)}`
+  `physics FPS median ${row.physicsFps.median.toFixed(2)} | BODY_COUNT median ${row.bodyCounts.median.toFixed(0)}`
 );
 
 const payload = {

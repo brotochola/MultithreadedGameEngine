@@ -52,18 +52,20 @@ export const PARTICLE_STATS = Object.freeze({
 });
 
 /**
- * Physics Worker Stats Schema
- * Single physics worker with collision metrics
+ * Physics Worker Stats Schema (Box2D)
+ * Outer worker writes FPS / STEP_MS / MSG_MS; nested weedjs writes body/joint/contact counts.
  */
 export const PHYSICS_STATS = Object.freeze({
   FPS: 0,
-  COLLISION_CHECKS: 1,
-  COLLISIONS_RESOLVED: 2,
-  COLLISION_PAIRS: 3,
-  CONSTRAINT_MS: 4,
-  MSG_MS: 5,
-  MOVE_MS: 6,
-  COLLISION_MS: 7,
+  STEP_MS: 1,
+  MSG_MS: 2,
+  BODY_COUNT: 3,
+  JOINT_COUNT: 4,
+  CONTACT_BEGIN: 5,
+  CONTACT_END: 6,
+  SENSOR_BEGIN: 7,
+  SENSOR_END: 8,
+  WEED_JOINTS: 9,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE: 16 * 4,
 });
@@ -195,34 +197,15 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'physics',
     stats: [
       { key: 'FPS', format: (v) => v.toFixed(2) },
-      {
-        key: 'COLLISION_CHECKS',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'COLLISIONS_RESOLVED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'COLLISION_PAIRS',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'CONSTRAINT_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'MSG_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'MOVE_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'COLLISION_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
+      { key: 'STEP_MS', format: (v) => v.toFixed(2) + 'ms' },
+      { key: 'MSG_MS', format: (v) => v.toFixed(2) + 'ms' },
+      { key: 'BODY_COUNT', format: (v) => formatNumber(v), label: 'Bodies' },
+      { key: 'JOINT_COUNT', format: (v) => formatNumber(v), label: 'B2Joints' },
+      { key: 'CONTACT_BEGIN', format: (v) => formatNumber(v), label: 'Contact+' },
+      { key: 'CONTACT_END', format: (v) => formatNumber(v), label: 'Contact-' },
+      { key: 'SENSOR_BEGIN', format: (v) => formatNumber(v), label: 'Sensor+' },
+      { key: 'SENSOR_END', format: (v) => formatNumber(v), label: 'Sensor-' },
+      { key: 'WEED_JOINTS', format: (v) => formatNumber(v), label: 'WeedJoints' },
     ],
   },
   spatial: {

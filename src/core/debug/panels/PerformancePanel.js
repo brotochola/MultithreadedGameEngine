@@ -189,7 +189,7 @@ export class PerformancePanel {
     for (const stat of config.stats) {
       const cell = document.createElement('div');
       cell.className = `debug-ui-worker-cell stat debug-ui-stat ${config.color}`;
-      cell.textContent = `${stat.key}: --`;
+      cell.textContent = `${stat.label || stat.key}: --`;
       row.appendChild(cell);
       elements[stat.key] = cell;
     }
@@ -325,7 +325,7 @@ export class PerformancePanel {
       const rounded = (rawValue * 100) | 0;
       if (prevCache[stat.key] === rounded) continue;
       prevCache[stat.key] = rounded;
-      elements[stat.key].textContent = stat.key + ': ' + stat.format(rawValue);
+      elements[stat.key].textContent = (stat.label || stat.key) + ': ' + stat.format(rawValue);
     }
   }
 
@@ -353,7 +353,7 @@ export class PerformancePanel {
         const rounded = (rawValue * 100) | 0;
         if (prevCache[stat.key] === rounded) continue;
         prevCache[stat.key] = rounded;
-        elements[stat.key].textContent = stat.key + ': ' + stat.format(rawValue);
+        elements[stat.key].textContent = (stat.label || stat.key) + ': ' + stat.format(rawValue);
       }
     }
   }

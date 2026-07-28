@@ -121,36 +121,36 @@ function printSpatialSummary(spatialAcc, runs) {
   }
 }
 
-function printPhysicsSummary(physicsFps, collisionChecks, collisionMs, runs) {
+function printPhysicsSummary(physicsFps, bodyCounts, stepMs, runs) {
   const mm = minMax(physicsFps);
   console.log('\n--- Summary (physics worker) ---');
   console.log(
     `averageFPS: median ${median(physicsFps).toFixed(2)} | mean ${mean(physicsFps).toFixed(2)} | ` +
       `stdev ${stdevSample(physicsFps).toFixed(2)} | CV ${fmtPct(cv(physicsFps))} | min ${mm.min.toFixed(2)} | max ${mm.max.toFixed(2)}`
   );
-  if (collisionChecks.length === runs) {
-    const cmm = minMax(collisionChecks);
+  if (bodyCounts.length === runs) {
+    const cmm = minMax(bodyCounts);
     console.log(
-      `COLLISION_CHECKS: median ${median(collisionChecks).toFixed(0)} | mean ${mean(collisionChecks).toFixed(0)} | ` +
-        `stdev ${stdevSample(collisionChecks).toFixed(0)} | CV ${fmtPct(cv(collisionChecks))} | min ${cmm.min.toFixed(0)} | max ${cmm.max.toFixed(0)}`
+      `BODY_COUNT: median ${median(bodyCounts).toFixed(0)} | mean ${mean(bodyCounts).toFixed(0)} | ` +
+        `stdev ${stdevSample(bodyCounts).toFixed(0)} | CV ${fmtPct(cv(bodyCounts))} | min ${cmm.min.toFixed(0)} | max ${cmm.max.toFixed(0)}`
     );
     console.log(
-      'Interpretation: compare builds only when COLLISION_CHECKS mean/median are similar (same workload). High CV ⇒ noisy phase; more runs or longer duration.'
+      'Interpretation: compare builds only when BODY_COUNT mean/median are similar (same workload). High CV ⇒ noisy phase; more runs or longer duration.'
     );
   }
-  if (collisionMs.length === runs) {
-    const mmm = minMax(collisionMs);
+  if (stepMs.length === runs) {
+    const mmm = minMax(stepMs);
     console.log(
-      `COLLISION_MS: median ${median(collisionMs).toFixed(3)} | mean ${mean(collisionMs).toFixed(3)} | ` +
-        `stdev ${stdevSample(collisionMs).toFixed(3)} | CV ${fmtPct(cv(collisionMs))} | min ${mmm.min.toFixed(3)} | max ${mmm.max.toFixed(3)}`
+      `STEP_MS: median ${median(stepMs).toFixed(3)} | mean ${mean(stepMs).toFixed(3)} | ` +
+        `stdev ${stdevSample(stepMs).toFixed(3)} | CV ${fmtPct(cv(stepMs))} | min ${mmm.min.toFixed(3)} | max ${mmm.max.toFixed(3)}`
     );
   }
 }
 
 function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
   const physicsFps = [];
-  const collisionChecks = [];
-  const collisionMs = [];
+  const bodyCounts = [];
+  const stepMs = [];
   const spatialAcc = Object.create(null);
   let runsCompleted = 0;
 
@@ -178,14 +178,14 @@ function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
     recordSpatialFromReport(j, spatialAcc);
     physicsFps.push(ph.averageFPS);
     if (ph.statsSamplesAverage) {
-      collisionChecks.push(ph.statsSamplesAverage.COLLISION_CHECKS || 0);
-      collisionMs.push(ph.statsSamplesAverage.COLLISION_MS || 0);
+      bodyCounts.push(ph.statsSamplesAverage.BODY_COUNT || 0);
+      stepMs.push(ph.statsSamplesAverage.STEP_MS || 0);
     }
     runsCompleted++;
     let line =
       `  [${i + 1}/${runs}] physics avg FPS ${ph.averageFPS.toFixed(2)}` +
       (ph.statsSamplesAverage
-        ? ` | COLLISION_CHECKS ${(ph.statsSamplesAverage.COLLISION_CHECKS || 0).toFixed(0)} | COLLISION_MS ${(ph.statsSamplesAverage.COLLISION_MS || 0).toFixed(3)}`
+        ? ` | BODY_COUNT ${(ph.statsSamplesAverage.BODY_COUNT || 0).toFixed(0)} | STEP_MS ${(ph.statsSamplesAverage.STEP_MS || 0).toFixed(3)}`
         : '');
     for (const id of Object.keys(spatialAcc).sort()) {
       const lastFps = spatialAcc[id].fps[spatialAcc[id].fps.length - 1];
@@ -197,7 +197,7 @@ function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix) {
     console.log(line);
   }
 
-  return { physicsFps, collisionChecks, collisionMs, spatialAcc, runsCompleted };
+  return { physicsFps, bodyCounts, stepMs, spatialAcc, runsCompleted };
 }
 
 const { runs, warmupMs, durationMs, jsonOut } = parseArgs(process.argv.slice(2));
@@ -214,7 +214,7 @@ try {
   const block = runMedianBlock(runs, warmupMs, durationMs, tmpDir, 'run');
   if (block.physicsFps.length === 0) exitCode = 1;
   else {
-    printPhysicsSummary(block.physicsFps, block.collisionChecks, block.collisionMs, block.runsCompleted);
+    printPhysicsSummary(block.physicsFps, block.bodyCounts, block.stepMs, block.runsCompleted);
     printSpatialSummary(block.spatialAcc, block.runsCompleted);
 
     if (jsonOut) {
@@ -228,14 +228,14 @@ try {
           note: 'Scene config from demos/scenes/BallsScene.js only.',
         },
         physicsFps: block.physicsFps,
-        collisionChecks: block.collisionChecks,
-        collisionMs: block.collisionMs,
+        bodyCounts: block.bodyCounts,
+        stepMs: block.stepMs,
         spatialPerRun: block.spatialAcc,
         summary: {
           physics: {
             averageFPS: summaryForSeries(block.physicsFps, block.runsCompleted),
-            COLLISION_CHECKS: summaryForSeries(block.collisionChecks, block.collisionChecks.length),
-            COLLISION_MS: summaryForSeries(block.collisionMs, block.collisionMs.length),
+            BODY_COUNT: summaryForSeries(block.bodyCounts, block.bodyCounts.length),
+            STEP_MS: summaryForSeries(block.stepMs, block.stepMs.length),
           },
         },
       };

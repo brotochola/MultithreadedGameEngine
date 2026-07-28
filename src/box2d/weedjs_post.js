@@ -47,6 +47,18 @@
   let angChan = null;
   let sleepingU8 = null;
   let running = false;
+  let statsF32 = null;
+
+  // Mirrors PHYSICS_STATS in src/workers/workers-utils.js (nested classic worker — no ESM import).
+  const PS = {
+    BODY_COUNT: 3,
+    JOINT_COUNT: 4,
+    CONTACT_BEGIN: 5,
+    CONTACT_END: 6,
+    SENSOR_BEGIN: 7,
+    SENSOR_END: 8,
+    WEED_JOINTS: 9,
+  };
 
   function viewFromDesc(desc, TypedArray) {
     return new TypedArray(desc.sab, desc.byteOffset, desc.length);
@@ -515,6 +527,29 @@
     clampMaxVel();
   }
 
+  function writePhysicsStats() {
+    if (!statsF32) return;
+    statsF32[PS.BODY_COUNT] = denseCount;
+    statsF32[PS.JOINT_COUNT] = world ? world.getJointCount() : 0;
+    const hdr = world && world._eventHeader;
+    if (hdr) {
+      statsF32[PS.CONTACT_BEGIN] = hdr[EVENT_HEADER.CONTACT_BEGIN_COUNT] | 0;
+      statsF32[PS.CONTACT_END] = hdr[EVENT_HEADER.CONTACT_END_COUNT] | 0;
+      statsF32[PS.SENSOR_BEGIN] = hdr[EVENT_HEADER.SENSOR_BEGIN_COUNT] | 0;
+      statsF32[PS.SENSOR_END] = hdr[EVENT_HEADER.SENSOR_END_COUNT] | 0;
+    } else {
+      statsF32[PS.CONTACT_BEGIN] = 0;
+      statsF32[PS.CONTACT_END] = 0;
+      statsF32[PS.SENSOR_BEGIN] = 0;
+      statsF32[PS.SENSOR_END] = 0;
+    }
+    if (jointViews && jointViews.activeCount) {
+      statsF32[PS.WEED_JOINTS] = Atomics.load(jointViews.activeCount, 0) | 0;
+    } else {
+      statsF32[PS.WEED_JOINTS] = 0;
+    }
+  }
+
   function doStep() {
     const entityCount = Atomics.load(ctrlI32, CTRL.ENTITY_COUNT) | 0;
     // Honor scene physics.subStepCount (BallsScene = 4) — do not inflate
@@ -529,6 +564,7 @@
     applyForcesAndTorque();
     world.step(dt, solverSteps);
     afterStep();
+    writePhysicsStats();
   }
 
   function controlLoop() {
@@ -619,6 +655,11 @@
 
     bindWeedViews(data.views);
     bindJointViews(data.jointViews, data.maxJoints | 0);
+    if (data.stats) {
+      statsF32 = viewFromDesc(data.stats, Float32Array);
+    } else {
+      statsF32 = null;
+    }
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
     denseList = new Uint16Array(entityCount);
