@@ -89,8 +89,8 @@ class Zombie extends GameObject {
   setup() {
     this.collider.radius = 12;
     this.collider.visualRange = 160;
-    this.rigidBody.maxVel = 2.5;
-    this.rigidBody.friction = 0.02;
+    this.rigidBody.maxLinearSpeed = 2.5;
+    this.rigidBody.linearDamping = 0.02;
   }
 
   onSpawned({ x = 0, y = 0 } = {}) {
@@ -143,7 +143,7 @@ WeedJS is intended to be a full 2D game runtime, not just a renderer. The major 
 - **Particle emitter**: `ParticleEmitter.emit()` supports sparks, smoke, blood, muzzle effects, floor decals, alpha/scale/tint controls, gravity, blending, and worker-side particle simulation.
 - **Bullets and projectile trails**: `BulletPool` and `BulletComponent` provide lightweight projectile slots, impact reporting, damage payloads, trail rendering, and visibility culling without turning every shot into a full entity.
 - **Decorations and attachments**: `DecorationPool` handles trees, rocks, props, child decorations attached to entities, sway animation, custom anchors, tint, alpha, and Y-sort ordering.
-- **Physics**: the physics worker uses Verlet integration, velocity/friction/drag controls, gravity, circle and AABB collisions, triggers, static bodies, sleeping bodies, collision layers/masks, and distance constraints for ropes, links, springs, and rigid connections.
+- **Physics**: Box2D via nested WASM worker — gravity, circles/boxes/polygons, sensors, static bodies, sleeping, collision layers/masks/groupIndex, `linearDamping` / `angularDamping` / `Collider.friction`, optional `maxLinearSpeed` clamp. Weed distance `Constraint` demos still exist separately from Box2D joints.
 - **Spatial hashing**: row-owned spatial workers rebuild the grid, cache entity positions, reuse neighbor results when cells have not changed, and expose nearby entities through `this.neighborCount` / `this.getNeighbor(i)`.
 - **Ray casting**: `Ray.cast`, `Ray.castWithInfo`, `Ray.castAll`, `Ray.linecast`, and line-of-sight helpers traverse the spatial grid with DDA and support collision layer masks.
 - **Point lights and shadows**: `LightEmitter`, `ShadowCaster`, `LightOccluder`, `Flash`, and `Sun` support point lights, glow sprites, temporary flashes, ambient lighting, day/night-style sun control, and shadow queues.

@@ -53,9 +53,8 @@ export class PersonThatFollowsAFlowfield extends GameObject {
 
     super.onSpawned(spawnConfig);
 
-    this.rigidBody.maxVel = 180;
-    this.rigidBody.minSpeed = 0;
-    this.rigidBody.friction = PersonThatFollowsAFlowfield.defaultFriction;
+    this.rigidBody.maxLinearSpeed = 180;
+    this.rigidBody.linearDamping = PersonThatFollowsAFlowfield.defaultFriction;
     this.setFixedRotation(1);
 
     this.collider.radius = 10;
@@ -130,7 +129,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
   die() {
     if (PersonComponent.dead[this.index] === 1) return;
 
-    this.rigidBody.friction = 0.9;
+    this.rigidBody.linearDamping = 0.9;
     PersonComponent.dead[this.index] = 1;
 
     const deathSounds = ['dolor1', 'dolor2', 'dolor3', 'dolor4'];

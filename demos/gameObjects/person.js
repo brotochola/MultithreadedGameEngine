@@ -84,9 +84,8 @@ export class Person extends Lootable {
 
   setup() {
     // Physics properties
-    this.rigidBody.maxVel = 180;
-    this.rigidBody.minSpeed = 0;
-    this.rigidBody.friction = Person.defaultFriction;
+    this.rigidBody.maxLinearSpeed = 180;
+    this.rigidBody.linearDamping = Person.defaultFriction;
 
     // Collision/perception
     this.collider.radius = 10;
@@ -392,7 +391,7 @@ export class Person extends Lootable {
     // - anchorY = 0.5 (center vertically)
     const lineAngle = Math.atan2(dy, dx); // Angle for horizontal line (no HALF_PI offset)
 
-    // this.rigidBody.friction = 0.5;
+    // this.rigidBody.linearDamping = 0.5;
     const direction = getDirectionFromAngle(angle);
 
     const dirIndex = DIRECTION_NAMES.indexOf(direction);
@@ -633,7 +632,7 @@ export class Person extends Lootable {
   die() {
     // Already dead? Don't trigger again
     if (PersonComponent.dead[this.index] === 1) return;
-    this.rigidBody.friction = 0.9;
+    this.rigidBody.linearDamping = 0.9;
     // Mark as dead immediately - prevents firing and other actions
     PersonComponent.dead[this.index] = 1;
 

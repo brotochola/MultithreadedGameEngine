@@ -41,8 +41,8 @@ class Collider extends Component {
     collisionMask: Uint32Array,
     collisionGroupIndex: Int32Array,
 
-    // Contact grip (vs RigidBody.friction air drag). Pair μ = min(μi, μj); 0 = off
-    contactFriction: Float32Array,
+    // Box2D fixture friction (μ). Pair μ = min(μi, μj); 0 = off
+    friction: Float32Array,
 
     // Perception (for spatial queries)
     visualRange: Float32Array,

@@ -5,6 +5,7 @@ Since Box2d:
 -debug colliders/neighbours not updating
 -unify ShapeType and config
 -update tests
+-remove polyVertexX? or not?
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar

@@ -69,9 +69,10 @@ export class AdobeAnimateCharacter extends GameObject {
       tint: 0xffffff// randomColor({ min: 0x000000, max: 0xffffff }) //spawnConfig.tint ?? 0xffffff,
     });
 
-    this.rigidBody.maxVel = 600;
+    this.rigidBody.maxLinearSpeed = 600;
     this.collider.radius = 16;
-
+    this.setFixedRotation(1);
+    this.rigidBody.linearDamping = 0.5;
     this.collider.visualRange = 50;
     this.adobeAnimComponent.rotation = spawnConfig.localRotation ?? 0;
   }

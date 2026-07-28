@@ -33,16 +33,15 @@ export class BoxPart extends GameObject {
 
         this.collider.radius = radius;
         this.collider.isTrigger = 0;
-        this.collider.contactFriction = 11// spawnConfig.contactFriction ?? 0.4;
+        this.collider.friction = 11// spawnConfig.friction ?? 0.4;
         this.collider.visualRange = radius * 3;
         // Same-box siblings share a negative groupIndex (set by ConstraintBox); default 0
         if (spawnConfig.collisionGroupIndex !== undefined) {
             this.collider.collisionGroupIndex = spawnConfig.collisionGroupIndex;
         }
 
-        this.rigidBody.maxVel = 6000;
-        this.rigidBody.minSpeed = 0;
-        this.rigidBody.friction = 0.001;
+        this.rigidBody.maxLinearSpeed = 6000;
+        this.rigidBody.linearDamping = 0.001;
 
         this.rigidBody.sleeping = 0;
         this.rigidBody.stillnessTime = 0;

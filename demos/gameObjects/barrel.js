@@ -23,8 +23,8 @@ export class Barrel extends GameObject {
 
   setup() {
     // Override Boid's physics properties for prey behavior
-    this.rigidBody.maxVel = 120;
-    this.rigidBody.friction = 0.8;
+    this.rigidBody.maxLinearSpeed = 120;
+    this.rigidBody.linearDamping = 0.8;
     this.setSprite('barrel' + Math.floor(Math.random() * 3 + 1));
 
     this.setScale(Math.random() > 0.5 ? 1 : 1);

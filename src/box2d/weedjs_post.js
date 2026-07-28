@@ -60,9 +60,9 @@
       angularVelocity: viewFromDesc(desc.angularVelocity, Float32Array),
       angularAccel: viewFromDesc(desc.angularAccel, Float32Array),
       mass: viewFromDesc(desc.mass, Float32Array),
-      maxVel: viewFromDesc(desc.maxVel, Float32Array),
-      friction: viewFromDesc(desc.friction, Float32Array),
-      angularDrag: viewFromDesc(desc.angularDrag, Float32Array),
+      maxLinearSpeed: viewFromDesc(desc.maxLinearSpeed, Float32Array),
+      linearDamping: viewFromDesc(desc.linearDamping, Float32Array),
+      angularDamping: viewFromDesc(desc.angularDamping, Float32Array),
       sleeping: viewFromDesc(desc.sleeping, Uint8Array),
       fixedRotation: desc.fixedRotation
         ? viewFromDesc(desc.fixedRotation, Uint8Array)
@@ -76,7 +76,7 @@
       collisionLayer: viewFromDesc(desc.collisionLayer, Uint8Array),
       collisionMask: viewFromDesc(desc.collisionMask, Uint32Array),
       collisionGroupIndex: viewFromDesc(desc.collisionGroupIndex, Int32Array),
-      contactFriction: viewFromDesc(desc.contactFriction, Float32Array),
+      friction: viewFromDesc(desc.friction, Float32Array),
       polyCount: viewFromDesc(desc.polyCount, Uint8Array),
       polyVertexX: viewFromDesc(desc.polyVertexX, Float32Array),
       polyVertexY: viewFromDesc(desc.polyVertexY, Float32Array),
@@ -135,9 +135,9 @@
     const isStatic = views.rbStatic[i] !== 0;
     const type = isStatic ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC;
     const shape = views.shapeType[i] | 0;
-    const friction = views.contactFriction[i] || 0.3;
-    const linearDamping = views.friction[i] || 0;
-    const angularDamping = views.angularDrag[i] || 0;
+    const friction = views.friction[i] || 0.3;
+    const linearDamping = views.linearDamping[i] || 0;
+    const angularDamping = views.angularDamping[i] || 0;
     const angle = isFixedRotation(i) ? 0 : views.rotation[i];
     const opts = {
       type,
@@ -293,7 +293,7 @@
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
       if (views.rbStatic[i] || !hasBody[i]) continue;
-      const maxV = views.maxVel[i];
+      const maxV = views.maxLinearSpeed[i];
       if (!(maxV > 0)) continue;
       const vx = vxChan[i];
       const vy = vyChan[i];

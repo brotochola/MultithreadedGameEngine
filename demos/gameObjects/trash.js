@@ -31,7 +31,7 @@ export class Trash extends Lootable {
         this.spriteRenderer.anchorX = 0.5
 
         this.collider.shapeType = ShapeType.Circle;
-        this.rigidBody.friction = 0.8;
+        this.rigidBody.linearDamping = 0.8;
         this.collider.radius = 30
 
         this.collider.visualRange = this.collider.radius * 2

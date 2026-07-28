@@ -107,7 +107,7 @@ class PanicCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) {
     RigidBody.sleeping[i] = 0;
     RigidBody.stillnessTime[i] = 0;
-    owner.rigidBody.maxVel = PANIC_MAX_VEL;
+    owner.rigidBody.maxLinearSpeed = PANIC_MAX_VEL;
   }
 
   static onUpdate(owner, i, dt, totalTime) {
@@ -135,7 +135,7 @@ class PanicCivilianBehaviorState extends FSMState {
   }
 
   static onExit(owner, i, toState) {
-    owner.rigidBody.maxVel = NORMAL_MAX_VEL;
+    owner.rigidBody.maxLinearSpeed = NORMAL_MAX_VEL;
   }
 }
 

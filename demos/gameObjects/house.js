@@ -22,7 +22,7 @@ export class House extends GameObject {
 
   setup() {
     // Override Boid's physics properties for prey behavior
-    // this.rigidBody.maxVel = 0;
+    // this.rigidBody.maxLinearSpeed = 0;
     // this.rigidBody.static = 1; // Static body - nothing can move it
     const type = Math.random() > 0.5 ? 1 : 2;
     this.setSprite('house' + type);

@@ -13,9 +13,8 @@ class WaterBall extends GameObject {
   setup() { }
 
   onSpawned(spawnConfig = {}) {
-    this.rigidBody.maxVel = 7200;
-    this.rigidBody.minSpeed = 0;
-    this.rigidBody.friction = 0.02
+    this.rigidBody.maxLinearSpeed = 7200;
+    this.rigidBody.linearDamping = 0.02
 
     this.spriteRenderer.anchorX = 0.5;
     this.spriteRenderer.anchorY = 0.5;
@@ -41,7 +40,7 @@ class WaterBall extends GameObject {
   }
 
   tick(dtRatio) {
-    const speedFactor = Math.min(1, (this.rigidBody.speed) / (this.rigidBody.maxVel));
+    const speedFactor = Math.min(1, (this.rigidBody.speed) / (this.rigidBody.maxLinearSpeed));
     const tint = mixTint(BASE_WATER_TINT, SPLASH_TINT, speedFactor * 0.25);
 
     // this.setTint(tint);

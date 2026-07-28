@@ -1016,8 +1016,8 @@ export class GameObject {
   }
 
   /**
-   * Scale velocity (multiplicative) - useful for friction/drag
-   * @param {number} factor - Multiplier (0.95 = 5% friction)
+   * Scale velocity (multiplicative) - useful for linearDamping-style slowdown
+   * @param {number} factor - Multiplier (0.95 = 5% slowdown)
    * @returns {this} For chaining
    */
   scaleVelocity(factor) {
@@ -1298,7 +1298,7 @@ export class GameObject {
    *
    * Example:
    *   setup() {
-   *     this.rigidBody.maxVel = 10;
+   *     this.rigidBody.maxLinearSpeed = 10;
    *     this.collider.radius = 15;
    *     this.flocking.centeringFactor = 0.001;
    *   }
@@ -1854,7 +1854,7 @@ export class GameObject {
       Collider.collisionLayer[i] = 0;
       Collider.collisionMask[i] = 0xFFFFFFFF;
       Collider.collisionGroupIndex[i] = 0;
-      Collider.contactFriction[i] = 0;
+      Collider.friction[i] = 0;
     }
 
     if (has.LightEmitter) {

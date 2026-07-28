@@ -20,8 +20,8 @@ export class BluePlatformerPlayer extends GameObject {
 
   setup() {
     this.rigidBody.static = 0;
-    this.rigidBody.maxVel = 7200;
-    this.rigidBody.friction = 0.001;
+    this.rigidBody.maxLinearSpeed = 7200;
+    this.rigidBody.linearDamping = 0.001;
 
     this.collider.radius = 30;
     this.collider.visualRange = 120;

@@ -10,16 +10,16 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 
 ## Responsibilities (per frame)
 
-1. **Verlet integration** — advance positions from acceleration, velocity caps, friction, and gravity (config-driven). Also integrates `angularVelocity` into `Transform.rotation` and applies `angularDrag`.
-2. **Collision resolution** — positional PBD with coupled `λ = correction / invMassAng`. The correction moves `x`, and `contactSyncFraction()` decides how much of it also moves the invent `px` — **restitution 0**: sync only the part that cancels the approach, so contacts never invent separation velocity (jumps) but a correction too small to stop the approach still propagates shock up a stack. **Δθ** only when `|r × n| > crossEps` (a flat floor hit must not spin); spin decay is `angularDrag`'s job, once per tick. Circles force `invI = 0`. Friction: Coulomb on `px`, clamped by `μ · max(correction, g·n · dtRatio²)` — both terms in step-displacement units. No soft-contact bias.
-3. **Distance constraints** (optional) — position-based corrections for active constraints when constraints are enabled in scene config.
+1. **Box2D step** — nested WASM worker advances bodies; Weed hot fields (`Transform` / `RigidBody` pose & vel) live on HEAP. Post-step clamp uses `RigidBody.maxLinearSpeed`. Body damping: `linearDamping` / `angularDamping`.
+2. **Contacts** — Box2D owns narrowphase; fixture μ from `Collider.friction` (pair uses engine convention `min(μi, μj)` where applicable).
+3. **Distance constraints** (optional Weed SAB) — not Box2D joints; demos may still author `Constraint.add` (solver path TBD if disabled).
 4. **Stats** — write counters and timing into `physicsStats` (see [Worker stats](#worker-stats)).
 
 The worker does **not** build the spatial grid or neighbor lists; it **reads** `Grid.neighborData` produced by spatial workers.
 
 ### Soft contact knobs
 
-Soft spring bias (`contactHertz` / damping / maxBias) is **not used** by the current resolve path. Prefer tuning `collisionResponseStrength`, `subStepCount`, and `angularDrag` instead.
+Soft spring bias (`contactHertz` / damping / maxBias) is **not used** by the current resolve path. Prefer tuning `subStepCount`, `linearDamping`, and `angularDamping` instead.
 
 ### Collider shape types
 
@@ -38,7 +38,7 @@ Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 - Polygon: shoelace area mass; inertia about centroid (Box2D-style)
 - Static: `invInertia = 0`
 
-`angularDrag` damps spin each move step: `ω *= max(0, 1 - angularDrag * dtRatio)`. Sprite facing follows `Transform.rotation` via the render queue. Spin settle uses contact friction + optional `angularDrag`.
+`angularDamping` is Box2D body angular damping. Sprite facing follows `Transform.rotation` via the render queue. Spin settle uses `Collider.friction` + `angularDamping`.
 
 ### Sleeping
 

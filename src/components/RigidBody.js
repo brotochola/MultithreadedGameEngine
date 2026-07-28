@@ -1,7 +1,7 @@
 // RigidBody.js - Physics component for entity motion and dynamics
 // Handles velocity, acceleration, mass, and physics properties
 // Position and rotation are stored in Transform component
-// Units (Box2D): vx/vy px/s, ax/ay px/s², angularVelocity rad/s, maxVel px/s
+// Units (Box2D): vx/vy px/s, ax/ay px/s², angularVelocity rad/s, maxLinearSpeed px/s
 
 import { Component } from '../core/Component.js';
 import { Collider } from './Collider.js';
@@ -30,14 +30,12 @@ export class RigidBody extends Component {
     inertia: Float32Array,
     invInertia: Float32Array,
 
-    // Damping
-    drag: Float32Array,
-    angularDrag: Float32Array,
+    // Damping (Box2D body linearDamping / angularDamping)
+    linearDamping: Float32Array,
+    angularDamping: Float32Array,
 
-    // Constraints
-    maxVel: Float32Array,
-    minSpeed: Float32Array,
-    friction: Float32Array,
+    // Weed post-step speed clamp (px/s); 0 = no clamp
+    maxLinearSpeed: Float32Array,
 
     /** 1 = lock Box2D angular DOF (motionLocks.angularZ); sprite stays upright */
     fixedRotation: Uint8Array,

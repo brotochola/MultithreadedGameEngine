@@ -39,9 +39,8 @@ export class Bug extends GameObject {
         this.spriteRenderer.anchorX = 0.5;
         this.spriteRenderer.anchorY = 0.5;
 
-        this.rigidBody.maxVel = 300;
-        this.rigidBody.minSpeed = 0;
-        this.rigidBody.friction = 0.04;
+        this.rigidBody.maxLinearSpeed = 300;
+        this.rigidBody.linearDamping = 0.04;
 
         // Store current facing direction
         this._facingDirection = 's';

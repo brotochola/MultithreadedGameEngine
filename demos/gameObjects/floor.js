@@ -48,7 +48,7 @@ class Floor extends GameObject {
         this.collider.width = width;
         this.collider.height = height;
         this.collider.radius = 0; // Not used for boxes
-        this.collider.contactFriction = 0.6;
+        this.collider.friction = 0.6;
 
         // Update visual range based on size
         const halfDiagonal = Math.hypot(width, height) / 2;
