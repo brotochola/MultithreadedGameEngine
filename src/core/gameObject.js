@@ -454,30 +454,23 @@ export class GameObject {
 
   /**
    * Position X - forwards to Transform
-   * NOTE: Setting position also updates RigidBody.px to prevent Verlet velocity
    */
   get x() {
     return Transform.x[this.index];
   }
   set x(value) {
     Transform.x[this.index] = value;
-    if (this._hasComponents.RigidBody) {
-      RigidBody.px[this.index] = value;
-    }
+    // Box2D: mid-sim teleport needs command ring (STOP 3). Pose copy may overwrite until then.
   }
 
   /**
    * Position Y - forwards to Transform
-   * NOTE: Setting position also updates RigidBody.py to prevent Verlet velocity
    */
   get y() {
     return Transform.y[this.index];
   }
   set y(value) {
     Transform.y[this.index] = value;
-    if (this._hasComponents.RigidBody) {
-      RigidBody.py[this.index] = value;
-    }
   }
 
   /** Rotation in radians */
@@ -500,8 +493,7 @@ export class GameObject {
   set vx(value) {
     if (this._hasComponents.RigidBody) {
       RigidBody.vx[this.index] = value;
-      // Sync previous position for Verlet: physics computes velocity as (x - px)
-      RigidBody.px[this.index] = Transform.x[this.index] - value;
+      // Box2D: SoA write only until command ring (STOP 3) pushes to body.
     }
   }
 
@@ -513,8 +505,6 @@ export class GameObject {
   set vy(value) {
     if (this._hasComponents.RigidBody) {
       RigidBody.vy[this.index] = value;
-      // Sync previous position for Verlet: physics computes velocity as (y - py)
-      RigidBody.py[this.index] = Transform.y[this.index] - value;
     }
   }
 
@@ -886,28 +876,19 @@ export class GameObject {
   setPosition(x, y) {
     Transform.x[this.index] = x;
     Transform.y[this.index] = y;
-    if (this._hasComponents.RigidBody) {
-      RigidBody.px[this.index] = x;
-      RigidBody.py[this.index] = y;
-    }
     return this;
   }
 
   /**
-   * Set velocity (absolute)
-   * Syncs previous position for Verlet integration (physics computes vel from x - px)
+   * Set velocity (absolute). Box2D body sync via command ring comes in STOP 3.
    * @param {number} vx - Velocity X
    * @param {number} vy - Velocity Y
    * @returns {this} For chaining
    */
   setVelocity(vx, vy) {
     if (this._hasComponents.RigidBody) {
-      const i = this.index;
-      RigidBody.vx[i] = vx;
-      RigidBody.vy[i] = vy;
-      // Sync previous position for Verlet: physics computes velocity as (pos - prev)
-      RigidBody.px[i] = Transform.x[i] - vx;
-      RigidBody.py[i] = Transform.y[i] - vy;
+      RigidBody.vx[this.index] = vx;
+      RigidBody.vy[this.index] = vy;
     }
     return this;
   }
@@ -936,33 +917,22 @@ export class GameObject {
   addVelocity(dvx, dvy) {
     if (this._hasComponents.RigidBody) {
       const i = this.index;
-      const newVx = RigidBody.vx[i] + dvx;
-      const newVy = RigidBody.vy[i] + dvy;
-      RigidBody.vx[i] = newVx;
-      RigidBody.vy[i] = newVy;
-      // Sync previous position for Verlet
-      RigidBody.px[i] = Transform.x[i] - newVx;
-      RigidBody.py[i] = Transform.y[i] - newVy;
+      RigidBody.vx[i] += dvx;
+      RigidBody.vy[i] += dvy;
     }
     return this;
   }
 
   /**
    * Scale velocity (multiplicative) - useful for friction/drag
-   * Syncs previous position for Verlet integration
    * @param {number} factor - Multiplier (0.95 = 5% friction)
    * @returns {this} For chaining
    */
   scaleVelocity(factor) {
     if (this._hasComponents.RigidBody) {
       const i = this.index;
-      const newVx = RigidBody.vx[i] * factor;
-      const newVy = RigidBody.vy[i] * factor;
-      RigidBody.vx[i] = newVx;
-      RigidBody.vy[i] = newVy;
-      // Sync previous position for Verlet
-      RigidBody.px[i] = Transform.x[i] - newVx;
-      RigidBody.py[i] = Transform.y[i] - newVy;
+      RigidBody.vx[i] *= factor;
+      RigidBody.vy[i] *= factor;
     }
     return this;
   }

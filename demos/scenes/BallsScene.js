@@ -19,7 +19,7 @@ export class BallsScene extends Scene {
 
     // Spatial hash grid configuration
     spatial: {
-      numberOfSpatialWorkers: 2,
+      numberOfSpatialWorkers: 1,
       cellSize: 100,
       maxNeighbors: 512,
       noLimitFPS: true,

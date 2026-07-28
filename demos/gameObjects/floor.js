@@ -12,15 +12,14 @@ class Floor extends GameObject {
     static instances = []; // Instance tracking for this class
 
     // Define components this entity uses
-    static components = [Collider, SpriteRenderer];
+    static components = [RigidBody, Collider, SpriteRenderer];
 
     /**
      * LIFECYCLE: Configure this entity TYPE - runs ONCE per instance
      * All components are guaranteed to be initialized at this point
      */
     setup() {
-        // Floor is static - it doesn't move
-        // this.rigidBody.static = 1;
+        this.rigidBody.static = 1;
 
         // Set collider shape type to Box
         this.collider.shapeType = ShapeType.Box;
@@ -28,7 +27,7 @@ class Floor extends GameObject {
         // Enable sprite renderer to make floor/walls visible
         this.spriteRenderer.active = 1;
         // Set visual range for spatial queries
-        this.collider.visualRange = 0; // Large range to ensure collisions are detected
+        this.collider.visualRange = 0;
     }
 
     /**
@@ -38,6 +37,8 @@ class Floor extends GameObject {
      */
     onSpawned(spawnConfig = {}) {
         const config = spawnConfig || {};
+
+        this.rigidBody.static = 1;
 
         // Get dimensions from spawn config
         const width = config.width || 100;

@@ -1415,6 +1415,23 @@ class Scene {
 
       // Show a visible error message on the page
       this._showFatalErrorMessage(workerName, title, message);
+    } else if (e.data.msg === 'box2dReady') {
+      const payload = {
+        msg: 'box2dReady',
+        sab: e.data.sab,
+        eventHeaderBaseIndex: e.data.eventHeaderBaseIndex,
+        contactBeginBaseIndex: e.data.contactBeginBaseIndex,
+        contactEndBaseIndex: e.data.contactEndBaseIndex,
+        sensorBeginBaseIndex: e.data.sensorBeginBaseIndex,
+        sensorEndBaseIndex: e.data.sensorEndBaseIndex,
+        contactEventCapacity: e.data.contactEventCapacity,
+        sensorEventCapacity: e.data.sensorEventCapacity,
+        contactPairIntStride: e.data.contactPairIntStride || 2,
+        eventHeaderIntCount: e.data.eventHeaderIntCount || 8,
+      };
+      for (const worker of this.workers.logicWorkers || []) {
+        worker.postMessage(payload);
+      }
     } else if (e.data.msg === 'backgroundReady') {
       Layer.resolveBackgroundReady(e.data.layerId, e.data.requestId);
     } else if (e.data.msg === 'messageFromGameObject') {

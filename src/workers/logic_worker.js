@@ -65,6 +65,16 @@ class LogicWorker extends AbstractWorker {
     // previousCollisions/currentCollisions swap every frame, so entity ticks
     // (which run after processCollisionCallbacks) must query through this alias.
     this.frameCollisions = this.currentCollisions;
+    this._beginSet = new Set();
+
+    // Box2D WASM contact/sensor views (msg box2dReady)
+    this.box2dEventHeader = null;
+    this.box2dContactBegin = null;
+    this.box2dContactEnd = null;
+    this.box2dSensorBegin = null;
+    this.box2dSensorEnd = null;
+    this.box2dPairStride = 2;
+    this.useBox2dContacts = false;
 
     // Screen visibility tracking (for onScreenEnter/Exit lifecycle methods)
     // Track previous frame's visibility state to detect transitions
@@ -457,7 +467,7 @@ class LogicWorker extends AbstractWorker {
 
     // Process collision callbacks BEFORE entity logic (Unity-style)
     // Skip entirely if no entity type has CollisionListener component
-    if (this.collisionData && this.anyTypeNeedsCollisions) {
+    if (this.anyTypeNeedsCollisions && (this.useBox2dContacts || this.collisionData)) {
       this.processCollisionCallbacks();
       this.systemsExecutedThisFrame++;
     }
@@ -623,7 +633,15 @@ class LogicWorker extends AbstractWorker {
    * OPTIMIZED: Normalized (min,max) ordering - ONE key per collision pair (half the storage)
    * ZERO ALLOC: Cantor pairing (exact float math, no Int32 overflow) + inline min/max, no string concat
    */
+  /**
+   * Unity-style Enter/Stay/Exit from Box2D begin/end (Delta Stay) or legacy collisionData.
+   */
   processCollisionCallbacks() {
+    if (this.useBox2dContacts) {
+      this._processBox2dCollisionCallbacks();
+      return;
+    }
+
     const pairCount = this.collisionData[0];
 
     this.currentCollisions.clear();
@@ -644,19 +662,12 @@ class LogicWorker extends AbstractWorker {
       const minE = rawA < rawB ? rawA : rawB;
       const maxE = rawA < rawB ? rawB : rawA;
 
-      // IMPORTANT: must match utils.cantorPair(minE, maxE) exactly.
-      // Float division is exact here (sum*(sum+1) is even and < 2^53);
-      // the previous `>> 1` version overflowed Int32 for minE+maxE >= 46341.
       const key = cantorPair(minE, maxE);
 
-      // Record ALL pairs (even non-owned / non-listening ones) so
-      // isCollidingWith() is accurate on every worker for every entity type.
       currCollisions.add(key);
 
-      // Callback dispatch is owned by exactly one worker per pair
       if (minE % totalWorkers !== myIndex) continue;
 
-      // Skip pairs where neither entity type has CollisionListener
       const aListens = collisionFlags[entityType[rawA]];
       const bListens = collisionFlags[entityType[rawB]];
       if (!aListens && !bListens) continue;
@@ -672,7 +683,6 @@ class LogicWorker extends AbstractWorker {
       }
     }
 
-    // OnCollisionExit - pairs that ended this frame
     for (const prevKey of prevCollisions) {
       if (!currCollisions.has(prevKey)) {
         cantorUnpair(prevKey, _cantorResult);
@@ -692,9 +702,83 @@ class LogicWorker extends AbstractWorker {
     this.previousCollisions = this.currentCollisions;
     this.currentCollisions = temp;
 
-    // After the swap, previousCollisions holds THIS frame's completed set.
-    // Entity ticks run after this method, so point the query alias at it.
     this.frameCollisions = this.previousCollisions;
+  }
+
+  _processBox2dCollisionCallbacks() {
+    const h = this.box2dEventHeader;
+    const stride = this.box2dPairStride;
+    // EVENT_HEADER: CONTACT_BEGIN=2, CONTACT_END=3, SENSOR_BEGIN=5, SENSOR_END=6
+    const beginCount = h[2] | 0;
+    const endCount = h[3] | 0;
+    const sensorBeginCount = h[5] | 0;
+    const sensorEndCount = h[6] | 0;
+
+    const totalWorkers = this.totalLogicWorkers;
+    const myIndex = this.workerIndex;
+    const gameObjects = this.gameObjects;
+    const active = this.previousCollisions;
+    const beginSet = this._beginSet;
+    const entityType = Transform.entityType;
+    const collisionFlags = this.collisionListenerByType;
+
+    beginSet.clear();
+
+    const applyEnd = (buf, count) => {
+      for (let i = 0; i < count; i++) {
+        const rawA = buf[i * stride];
+        const rawB = buf[i * stride + 1];
+        const minE = rawA < rawB ? rawA : rawB;
+        const maxE = rawA < rawB ? rawB : rawA;
+        const key = cantorPair(minE, maxE);
+        if (!active.has(key)) continue;
+        active.delete(key);
+        if (minE % totalWorkers !== myIndex) continue;
+        const aListens = collisionFlags[entityType[minE]];
+        const bListens = collisionFlags[entityType[maxE]];
+        if (aListens) gameObjects[minE]?.onCollisionExit(maxE);
+        if (bListens) gameObjects[maxE]?.onCollisionExit(minE);
+      }
+    };
+
+    const applyBegin = (buf, count) => {
+      for (let i = 0; i < count; i++) {
+        const rawA = buf[i * stride];
+        const rawB = buf[i * stride + 1];
+        const minE = rawA < rawB ? rawA : rawB;
+        const maxE = rawA < rawB ? rawB : rawA;
+        const key = cantorPair(minE, maxE);
+        const isNew = !active.has(key);
+        active.add(key);
+        beginSet.add(key);
+        if (!isNew) continue;
+        if (minE % totalWorkers !== myIndex) continue;
+        const aListens = collisionFlags[entityType[rawA]];
+        const bListens = collisionFlags[entityType[rawB]];
+        if (!aListens && !bListens) continue;
+        if (aListens) gameObjects[rawA]?.onCollisionEnter(rawB);
+        if (bListens) gameObjects[rawB]?.onCollisionEnter(rawA);
+      }
+    };
+
+    applyEnd(this.box2dContactEnd, endCount);
+    applyEnd(this.box2dSensorEnd, sensorEndCount);
+    applyBegin(this.box2dContactBegin, beginCount);
+    applyBegin(this.box2dSensorBegin, sensorBeginCount);
+
+    for (const key of active) {
+      if (beginSet.has(key)) continue;
+      cantorUnpair(key, _cantorResult);
+      const minE = _cantorResult.a;
+      const maxE = _cantorResult.b;
+      if (minE % totalWorkers !== myIndex) continue;
+      const aListens = collisionFlags[entityType[minE]];
+      const bListens = collisionFlags[entityType[maxE]];
+      if (aListens) gameObjects[minE]?.onCollisionStay(maxE);
+      if (bListens) gameObjects[maxE]?.onCollisionStay(minE);
+    }
+
+    this.frameCollisions = active;
   }
 
   /**
@@ -732,6 +816,41 @@ class LogicWorker extends AbstractWorker {
     const { msg } = data;
 
     switch (msg) {
+      case 'box2dReady': {
+        const sab = data.sab;
+        const stride = data.contactPairIntStride || 2;
+        const contactCap = data.contactEventCapacity || 0;
+        const sensorCap = data.sensorEventCapacity || 0;
+        this.box2dPairStride = stride;
+        this.box2dEventHeader = new Int32Array(
+          sab,
+          data.eventHeaderBaseIndex << 2,
+          data.eventHeaderIntCount || 8,
+        );
+        this.box2dContactBegin = new Int32Array(
+          sab,
+          data.contactBeginBaseIndex << 2,
+          contactCap * stride,
+        );
+        this.box2dContactEnd = new Int32Array(
+          sab,
+          data.contactEndBaseIndex << 2,
+          contactCap * stride,
+        );
+        this.box2dSensorBegin = new Int32Array(
+          sab,
+          data.sensorBeginBaseIndex << 2,
+          sensorCap * stride,
+        );
+        this.box2dSensorEnd = new Int32Array(
+          sab,
+          data.sensorEndBaseIndex << 2,
+          sensorCap * stride,
+        );
+        this.useBox2dContacts = true;
+        console.log(`LOGIC WORKER ${this.workerIndex}: Box2D contact views bound`);
+        break;
+      }
       case 'spawn': {
         // Only worker 0 handles spawn messages to avoid race conditions
         // All workers receive the broadcast, but only worker 0 actually spawns
