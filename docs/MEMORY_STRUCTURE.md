@@ -62,17 +62,17 @@ The world is divided into cells. Each cell stores a count + entity indices.
 
 ### `neighborData` -- Per-Entity Neighbor List
 
-Every entity gets a neighbor list, pre-sorted: collision candidates first, then visual-range neighbors.
+Every entity gets a visual-range neighbor list (Box2D owns contacts).
 
 | Property              | Value                                                                           |
 | --------------------- | ------------------------------------------------------------------------------- |
-| **Size**              | `totalEntityCount * (2 + maxNeighbors) * 2` bytes                               |
-| **Per-entity layout** | `[totalCount: Uint16, collisionCount: Uint16, neighbors[maxNeighbors]: Uint16]` |
+| **Size**              | `totalEntityCount * (1 + maxNeighbors) * 2` bytes                               |
+| **Per-entity layout** | `[totalCount: Uint16, neighbors[maxNeighbors]: Uint16]`                         |
 | **Typed array**       | `Uint16Array`                                                                   |
 
-| Writer                           | Reader                                                                     |
-| -------------------------------- | -------------------------------------------------------------------------- |
-| Spatial workers (per owned rows) | Physics (first `collisionCount` entries), logic (all `totalCount` entries) |
+| Writer                           | Reader                                      |
+| -------------------------------- | ------------------------------------------- |
+| Spatial workers (per owned rows) | Logic / AI / lights (`totalCount` entries) |
 
 ### `entityPosData` -- Cached Positions for Spatial
 

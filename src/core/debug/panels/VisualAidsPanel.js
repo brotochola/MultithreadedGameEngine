@@ -21,7 +21,6 @@ export class VisualAidsPanel {
       { key: 'velocity', label: 'Velocity', shortcut: '2' },
       { key: 'acceleration', label: 'Accel', shortcut: '3' },
       { key: 'neighbors', label: 'Neighbors', shortcut: '4' },
-      { key: 'collisionCandidates', label: 'Collision', shortcut: 'C' },
       { key: 'spatialGrid', label: 'Grid', shortcut: '5' },
       { key: 'entityIndices', label: 'Indices', shortcut: '6' },
       { key: 'debugDraws', label: 'Draws', shortcut: '7' },
@@ -104,7 +103,6 @@ export class VisualAidsPanel {
       velocity: 'showVelocity',
       acceleration: 'showAcceleration',
       neighbors: 'showNeighbors',
-      collisionCandidates: 'showCollisionCandidates',
       spatialGrid: 'showSpatialGrid',
       entityIndices: 'showEntityIndices',
       debugDraws: 'showDebugDraws',
@@ -121,7 +119,6 @@ export class VisualAidsPanel {
     if (key === 'debugDraws') flagName = 'SHOW_DEBUG_DRAWS';
     else if (key === 'sleepingEntities') flagName = 'SHOW_SLEEPING_ENTITIES';
     else if (key === 'sleepingCells') flagName = 'SHOW_SLEEPING_CELLS';
-    else if (key === 'collisionCandidates') flagName = 'SHOW_COLLISION_CANDIDATES';
     else if (key === 'constraints') flagName = 'SHOW_CONSTRAINTS';
     else if (key === 'entityOrigins') flagName = 'SHOW_ENTITY_ORIGINS';
 

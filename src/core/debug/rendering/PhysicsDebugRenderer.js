@@ -437,7 +437,7 @@ export class PhysicsDebugRenderer {
     ctx.lineWidth = 2;
 
     for (let n = 0; n < neighborCount; n++) {
-      const nIdx = Grid.neighborData[offset + 2 + n];
+      const nIdx = Grid.neighborData[offset + 1 + n];
       if (!Transform.active[nIdx]) continue;
       const nSx = (Transform.x[nIdx] - camera.x) * zoom;
       const nSy = (Transform.y[nIdx] - camera.y) * zoom;
@@ -448,45 +448,6 @@ export class PhysicsDebugRenderer {
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.beginPath(); ctx.arc(mySx, mySy - 20, 4 * zoom, 0, Math.PI * 2); ctx.fill();
-  }
-
-  // ------- collision candidates -------
-
-  drawCollisionCandidateConnections(ctx, canvas, camera, zoom) {
-    if (!Grid.neighborData || !Mouse.isPresent) return;
-
-    const closest = this._findClosestEntity(Mouse.x, Mouse.y, 150);
-    if (closest === -1) return;
-
-    const myX = Transform.x[closest];
-    const myY = Transform.y[closest];
-    const mySx = (myX - camera.x) * zoom;
-    const mySy = (myY - camera.y) * zoom;
-
-    const highlightRadius = (Collider.radius[closest] * 1.5 || 10) * zoom;
-    ctx.strokeStyle = 'rgba(255, 140, 0, 1.0)';
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(mySx, mySy, highlightRadius, 0, Math.PI * 2); ctx.stroke();
-
-    const offset = closest * Grid._stride;
-    const candidateCount = Grid.neighborData[offset + 1];
-
-    ctx.strokeStyle = 'rgba(255, 100, 0, 0.8)';
-    ctx.lineWidth = 2;
-
-    for (let n = 0; n < candidateCount; n++) {
-      const cIdx = Grid.neighborData[offset + 2 + n];
-      if (!Transform.active[cIdx]) continue;
-      const cSx = (Transform.x[cIdx] - camera.x) * zoom;
-      const cSy = (Transform.y[cIdx] - camera.y) * zoom;
-      ctx.beginPath(); ctx.moveTo(mySx, mySy); ctx.lineTo(cSx, cSy); ctx.stroke();
-      ctx.fillStyle = 'rgba(255, 100, 0, 0.6)';
-      ctx.beginPath(); ctx.arc(cSx, cSy, 4 * zoom, 0, Math.PI * 2); ctx.fill();
-    }
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.font = `${12 * zoom}px monospace`;
-    ctx.fillText(`${candidateCount} candidates`, mySx + 10, mySy - 10);
   }
 
   // ------- debug draw primitives -------

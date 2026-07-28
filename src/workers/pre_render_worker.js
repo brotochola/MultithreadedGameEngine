@@ -2343,7 +2343,7 @@ class PreRenderWorker extends AbstractWorker {
                 const offset = lightIdx * stride;
                 candidateCount = neighborData[offset];
                 candidateSource = neighborData;
-                candidateOffset = offset + 2;
+                    candidateOffset = offset + 1;
             }
 
             // ── Process candidates into shadow sprites ────────────────
@@ -2543,7 +2543,7 @@ class PreRenderWorker extends AbstractWorker {
                         occluderLimitHit = true;
                         break;
                     }
-                    const nIdx = neighborData[offset + 2 + k];
+                    const nIdx = neighborData[offset + 1 + k];
                     if (!transformActive[nIdx] || !occluderActive[nIdx]) continue;
                     const r = occluderRadius[nIdx];
                     if (r <= 0) continue;

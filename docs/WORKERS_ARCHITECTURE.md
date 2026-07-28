@@ -34,8 +34,7 @@ Rebuilds the spatial hash grid and computes neighbor lists. The foundation every
 1. Clear owned grid rows
 2. Insert active entities into grid cells
 3. For each entity in owned rows, find neighbors within `visualRange`
-4. Partition neighbors: collision candidates first, then visual-only
-5. Write `totalCount` + `collisionCount` + neighbor indices
+4. Write `totalCount` + neighbor indices
 
 **Row ownership:** `blockIndex = floor(row / rowsPerBlock)`, `owner = blockIndex % totalSpatialWorkers`
 
@@ -44,7 +43,7 @@ Each worker writes only its own rows. No overlap.
 | Buffer                              | Access                             | Notes                                        |
 | ----------------------------------- | ---------------------------------- | -------------------------------------------- |
 | `gridBuffer`                        | **Write** (owned rows)             | Cell counts + entity indices                 |
-| `neighborData`                      | **Write** (entities in owned rows) | `[totalCount, collisionCount, neighbors...]` |
+| `neighborData`                      | **Write** (entities in owned rows) | `[totalCount, neighbors...]`                 |
 | `entityPosData`                     | **Write**                          | Cached `[x, y, halfExtent, pad]` per entity  |
 | `activeEntitiesData`                | Read                               | Knows which entities exist                   |
 | Transform, Collider, SpriteRenderer | Read                               | Source positions, radii, visual ranges       |
@@ -71,7 +70,7 @@ Integrates rigid bodies and resolves collisions. Reads neighbor data from spatia
 | Transform (`x`, `y`)               | **Write**      | Position integration                                                                 |
 | RigidBody (`px`, `py`, `vx`, `vy`) | **Write**      | Velocity, previous position                                                          |
 | Collider                           | Read           | Shapes, radii, `contactFriction`, `collisionLayer` (Uint8 0-31), `collisionMask` (Uint32), `collisionGroupIndex` (Int32) |
-| `neighborData`                     | Read           | First `collisionCount` entries per entity                                            |
+| `neighborData`                     | Read           | Visual-range neighbors (`totalCount` entries)                                        |
 | `collisionData`                    | **Write**      | `[pairCount, A0, B0, A1, B1, ...]`                                                   |
 | `constraintData`                   | Read/**Write** | Solve + free constraints                                                             |
 | `constraintFreeList/Top`           | Read/**Write** | Return freed constraint slots                                                        |

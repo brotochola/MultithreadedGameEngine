@@ -132,7 +132,7 @@ function initializeCoreEntityAndComponentBuffers(scene) {
   buffers.gameObjectData = new SharedArrayBuffer(gameObjectBufferSize);
 
   const maxNeighbors = config.spatial.maxNeighbors;
-  const neighborBufferSize = totalEntityCount * (2 + maxNeighbors) * 2;
+  const neighborBufferSize = totalEntityCount * (1 + maxNeighbors) * 2;
   buffers.neighborData = new SharedArrayBuffer(neighborBufferSize);
 
   if (config.logic.staggeredUpdates) {

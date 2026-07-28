@@ -206,7 +206,6 @@ export const SPATIAL_DEFAULTS = Object.freeze({
   numberOfSpatialWorkers: 1,
   rowsPerBlock: 2,
   noLimitFPS: false,
-  collisionCandidateSearchMargin: 0.25,
 });
 
 // ============================================================================

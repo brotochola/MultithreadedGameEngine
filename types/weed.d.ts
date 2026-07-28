@@ -1300,13 +1300,11 @@ export declare class Grid {
   static get neighborData(): Uint16Array | null;
 
   static getNeighborCount(entityId: number): number;
-  static getCollisionCandidateCount(entityId: number): number;
   static getNeighbor(entityId: number, k: number): number;
   static getNeighborOffset(entityId: number): number;
   static getNeighborsOfEntityId(idx: number): Uint16Array;
 
   static setNeighborCount(entityId: number, count: number): void;
-  static setCollisionCandidateCount(entityId: number, count: number): void;
   static setNeighbor(entityId: number, k: number, neighborId: number): void;
 
   static getEntitiesInRadius(x: number, y: number, radius: number): GridRadiusQueryResult;

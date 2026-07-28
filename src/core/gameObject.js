@@ -351,7 +351,7 @@ export class GameObject {
       this._neighborOffset = index * Grid._stride;
       this._neighbors = new Uint16Array(
         Grid.neighborData.buffer,
-        Grid.neighborData.byteOffset + (this._neighborOffset + 2) * 2,
+        Grid.neighborData.byteOffset + (this._neighborOffset + 1) * 2,
         Grid.maxNeighbors
       );
     } else {

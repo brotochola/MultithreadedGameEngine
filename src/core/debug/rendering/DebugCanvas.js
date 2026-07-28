@@ -112,7 +112,6 @@ export class DebugCanvas {
       flags.isEnabled(DEBUG_FLAGS.SHOW_ACCELERATION) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_ENTITY_INDICES) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_NEIGHBORS) ||
-      flags.isEnabled(DEBUG_FLAGS.SHOW_COLLISION_CANDIDATES) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_SPATIAL_GRID) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_DEBUG_DRAWS) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_SLEEPING_ENTITIES) ||
@@ -190,10 +189,6 @@ export class DebugCanvas {
     // 8. Neighbors
     if (flags?.isEnabled(DEBUG_FLAGS.SHOW_NEIGHBORS))
       this.physics.drawNeighborConnections(ctx, canvas, camera, zoom);
-
-    // 8.5 Collision candidates
-    if (flags?.isEnabled(DEBUG_FLAGS.SHOW_COLLISION_CANDIDATES))
-      this.physics.drawCollisionCandidateConnections(ctx, canvas, camera, zoom);
 
     // 9. Debug draw primitives (lines, circles, text, etc. via DebugDraw API)
     if (flags?.isEnabled(DEBUG_FLAGS.SHOW_DEBUG_DRAWS))

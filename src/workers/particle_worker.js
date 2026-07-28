@@ -291,8 +291,8 @@ class NavScratch {
  * 2. Blood decal stamping
  * 3. Decoration sway animation
  * 4. Navigation (flowfields, A*, walkability grid)
- * 5. Derived properties (speed, velocityAngle, sleeping)
- * 6. Cell sleeping state updates
+ * 5. Derived properties (speed, velocityAngle) — sleeping owned by Box2D
+ * 6. Cell sleeping state updates (reads RigidBody.sleeping from Box2D HEAP)
  */
 class ParticleWorker extends AbstractWorker {
   constructor(selfRef) {
@@ -617,7 +617,7 @@ class ParticleWorker extends AbstractWorker {
     // Process navigation requests
     this.processNavigationRequests();
 
-    // Update derived properties (speed, velocityAngle, sleeping)
+    // Update derived properties (speed, velocityAngle). Sleeping: Box2D → RigidBody.sleeping
     this.updateDerivedProperties();
 
     // Update cell sleeping states
@@ -1924,17 +1924,9 @@ class ParticleWorker extends AbstractWorker {
     const rigidBodyActive = RigidBody.active;
     const vx = RigidBody.vx;
     const vy = RigidBody.vy;
-    const angularVelocity = RigidBody.angularVelocity;
     const velocityAngle = RigidBody.velocityAngle;
     const speed = RigidBody.speed;
     const minSpeedForRotation = this.minSpeedForRotation;
-    const sleepThreshold = this.sleepThreshold;
-    // Spin stillness: same threshold as linear (rad/frame-ish); tumbling sticks must not sleep
-    const angSleepThreshold = sleepThreshold;
-    const sleepDuration = this.sleepDuration;
-    const sleepingEnabled = this.sleepingEnabled;
-    const sleeping = RigidBody.sleeping;
-    const stillnessTime = RigidBody.stillnessTime;
     const isStatic = RigidBody.static;
 
     const physicsEntities = this.queryActiveEntities(this._queryRigidBody);
@@ -1947,22 +1939,7 @@ class ParticleWorker extends AbstractWorker {
       const currentSpeed = calculateSpeed(vx[i], vy[i]);
       speed[i] = currentSpeed;
 
-      if (sleepingEnabled) {
-        const omega = angularVelocity[i];
-        const absOmega = omega < 0 ? -omega : omega;
-        if (currentSpeed < sleepThreshold && absOmega < angSleepThreshold) {
-          stillnessTime[i]++;
-          if (stillnessTime[i] >= sleepDuration) {
-            sleeping[i] = 1;
-          }
-        } else {
-          sleeping[i] = 0;
-          stillnessTime[i] = 0;
-        }
-      } else {
-        sleeping[i] = 0;
-        stillnessTime[i] = 0;
-      }
+      // STOP 5: Box2D owns RigidBody.sleeping (HEAP export). Do not write sleep here.
 
       if (currentSpeed > minSpeedForRotation) {
         velocityAngle[i] = calculateVelocityAngle(vx[i], vy[i]);

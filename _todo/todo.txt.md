@@ -1,3 +1,11 @@
+Since Box2d:
+-clean up code, dead code.
+-make sure zero-copy
+-make sure no GC pressure
+-debug colliders/neighbours not updating
+-unify ShapeType and config
+-update tests
+
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar
 
@@ -18,8 +26,6 @@ JSDoc `@typedef`,
 ---
 
 7-poolsize variable, automatico.. no tener limite para la cantidad de gameobjects de tipo tal
-
-8-const { x, y } = Transform.getValues();
 
 ---
 

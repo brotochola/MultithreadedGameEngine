@@ -22,7 +22,6 @@ export class ConstraintsTestScene extends Scene {
             cellSize: 100,
             maxNeighbors: 512,
             noLimitFPS: true,
-            collisionCandidateSearchMargin: 0.5
         },
 
         // Logic configuration

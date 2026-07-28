@@ -29,7 +29,6 @@ This trades **strict global consistency** for **one-frame eventual consistency**
 2. **Find neighbors** (`findNeighborsForOwnedEntities`)
    - For each entity whose **home row** falls in an owned row, gather neighbors within `visualRange` using precomputed **circle patterns** over grid cells.
    - Reuse the previous `neighborData` for that entity when its position/range signature and every searched cell version are unchanged.
-   - Split results into **collision candidates** vs **visual-only** neighbors (see below).
    - Write `neighborData` for that entity.
 
 ---
@@ -41,10 +40,9 @@ Per entity `i`, layout is a fixed stride (see `Grid.neighborStride` / `Grid._str
 | Offset | Field |
 |--------|--------|
 | `i * stride + 0` | `totalCount` — total neighbors stored |
-| `i * stride + 1` | `collisionCount` — first `collisionCount` indices are physics collision candidates |
-| `i * stride + 2 + k` | Neighbor entity index |
+| `i * stride + 1 + k` | Neighbor entity index |
 
-The physics worker uses **`collisionCount`** and the dense collider optimization reads `neighborData[i * stride + 1]` to skip entities with no candidates (see [Physics pipeline](./PHYSICS.md)).
+Visual-range neighbors only. Physics contacts come from Box2D, not this buffer.
 
 ---
 
@@ -83,14 +81,9 @@ This preserves the no-barrier model: workers may read recent data, but reuse onl
 
 ---
 
-## Static and sleeping bodies (collision vs visual)
+## Sleeping bodies (visual neighbors)
 
-When two entities are close enough to be considered for **collision candidates**, the worker may **skip** writing them as a collision pair if:
-
-- **Both** are static (no rigidbody or `RigidBody.static`), or  
-- **Both** are sleeping (`RigidBody.sleeping`).
-
-Those pairs can still appear as **visual-only** neighbors (for rendering / culling / logic that only needs proximity), subject to neighbor buffer limits. This **reduces physics work** but assumes mutual sleep/static pairs do not need collision resolution. Scene knobs (`physics.sleeping`, thresholds) are documented in [Physics — Sleeping](./PHYSICS.md#sleeping).
+Spatial neighbor lists are **visual-range only**. Static/sleeping pairs are not filtered out of `neighborData` for collision anymore — Box2D owns contacts and sleep. Cell sleeping still skips rebuild work when every entity in a cell is sleeping or static (see particle / Box2D sleep ownership).
 
 ---
 
@@ -113,10 +106,9 @@ Spatial workers write into `spatialStats` (multi-worker layout). Relevant keys f
 
 - **`cellSize`, grid dimensions** — from scene `gridMetadata` (see `Scene` / config defaults).
 - **`maxNeighbors`** — bounds stride and buffer sizes; must stay consistent across `Grid` initialization.
-- **`collisionCandidateSearchMargin`** — scales an extra distance margin for collision candidacy vs physics timing (see `SPATIAL_DEFAULTS` / scene spatial config).
 
 ---
 
 ## Local scratch buffers
 
-The spatial worker keeps **pre-allocated** scratch space (e.g. local cell counts, visual-only buffer, deduplication markers) to avoid per-frame allocations in hot paths. Sizes tie to `globalEntityCount` and `maxNeighbors`.
+The spatial worker keeps **pre-allocated** scratch space (e.g. local cell counts, deduplication markers) to avoid per-frame allocations in hot paths. Sizes tie to `globalEntityCount` and `maxNeighbors`.

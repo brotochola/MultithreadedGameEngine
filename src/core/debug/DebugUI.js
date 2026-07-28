@@ -285,9 +285,6 @@ export class DebugUI {
       } else if (key === 'k') {
         e.preventDefault();
         this.panels.visual.toggleVisualAid('constraints');
-      } else if (key === 'c') {
-        e.preventDefault();
-        this.panels.visual.toggleVisualAid('collisionCandidates');
       } else if (key === 'o') {
         e.preventDefault();
         this.panels.visual.toggleVisualAid('entityOrigins');

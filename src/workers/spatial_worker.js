@@ -11,7 +11,8 @@
 // 1. Clear LOCAL cell counts (not shared buffer - avoids mid-clear race)
 // 2. Insert ALL active entities into grid (only to owned rows)
 // 3. Copy local counts to shared gridCounts (single write per cell)
-// 4. For each entity in owned rows: find neighbors using precomputed circle patterns
+// 4. For each entity in owned rows: find visual-range neighbors
+//    (Box2D owns contacts; no collision-candidate partition)
 //
 // MEMORY MODEL (1-frame eventual consistency):
 // - Grid: Single buffer, row ownership prevents write races
@@ -36,7 +37,6 @@ self.postMessage({
 import { Transform } from '../components/Transform.js';
 import { Collider } from '../components/Collider.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
-import { RigidBody } from '../components/RigidBody.js';
 import { AbstractWorker } from './AbstractWorker.js';
 import { Grid } from '../core/Grid.js';
 import {
@@ -97,15 +97,6 @@ class SpatialWorker extends AbstractWorker {
     // Uses frame counter approach to avoid fill() every frame
     this._entityProcessedMarker = null; // Uint32Array
     this._entityFrameCounter = 0;
-
-    // Scratch array for visual-only neighbors (partitioned after collision candidates)
-    // Pre-allocated to avoid per-frame allocation
-    this._visualOnlyBuffer = null; // Int32Array
-    this._visualOnlyCount = 0;
-
-    // Collision buffer: extra distance added to collision range to account for entity movement
-    // between spatial worker and physics worker (roughly half a cell size worth of movement)
-    this._collisionBuffer = 0;
 
     // Local cell counts for race-free grid rebuilding
     // We build counts locally, then copy to grid at the end (avoids mid-clear races)
@@ -200,18 +191,6 @@ class SpatialWorker extends AbstractWorker {
     // Initialize deduplication marker for source entities (entityA)
     // Prevents same entity from being processed multiple times when it spans multiple cells
     this._entityProcessedMarker = new Uint32Array(this.globalEntityCount);
-
-    // Initialize visual-only buffer (max size = maxNeighbors)
-    // Uses Uint16 since it stores entity IDs (max 65535)
-    const maxNeighbors = Grid.maxNeighbors || SPATIAL_DEFAULTS.maxNeighbors;
-    this._visualOnlyBuffer = new Uint16Array(maxNeighbors);
-
-    // DEBUG: Check if visualOnlyBuffer was created with correct size
-    // console.log(`SPATIAL WORKER ${this.workerId}: visualOnlyBuffer size = ${this._visualOnlyBuffer.length}, Grid.maxNeighbors = ${Grid.maxNeighbors}, SPATIAL_DEFAULTS.maxNeighbors = ${SPATIAL_DEFAULTS.maxNeighbors}`);
-
-    // Collision buffer: extra distance for entity movement between spatial and physics
-    const collisionMargin = this.config.spatial?.collisionCandidateSearchMargin ?? SPATIAL_DEFAULTS.collisionCandidateSearchMargin;
-    this._collisionBuffer = this.cellSize * collisionMargin;
 
     // Initialize local cell counts array for race-free grid rebuilding
     this._localCellCounts = new Uint8Array(this.totalCells);
@@ -590,10 +569,6 @@ class SpatialWorker extends AbstractWorker {
     const height = Collider.height;
     const SHAPE_CIRCLE = 0;
 
-    const rigidBodyActive = RigidBody.active;
-    const isStatic = RigidBody.static;
-    const sleeping = RigidBody.sleeping;
-
     const gridWidth = this.gridWidth;
     const gridHeight = this.gridHeight;
     const invCellSize = this.invCellSize;
@@ -684,24 +659,14 @@ class SpatialWorker extends AbstractWorker {
           const stampedA = processedFrameStamp | entityA;
           const myVisualRange = visualRange[entityA];
 
-          const iHasRigidBody = rigidBodyActive[entityA];
-          const iStatic = !iHasRigidBody || isStatic[entityA];
-          const iSleeping = iHasRigidBody && sleeping[entityA];
-
           // Neighbor write offset
           const neighborOffset = entityA * stride;
 
           // Skip entities with no visual range
           if (myVisualRange <= 0) {
-            neighborData[neighborOffset] = 0;     // totalCount
-            neighborData[neighborOffset + 1] = 0; // collisionCount
+            neighborData[neighborOffset] = 0; // totalCount
             continue;
           }
-
-          // NOTE: Sleeping optimization removed - stale RigidBody data from entity pooling
-          // caused false positives (entities without RigidBody were incorrectly detected
-          // as sleeping because their slot had old data from a previous entity).
-          // TODO: Re-enable once component data is properly cleared on entity despawn.
 
           // Calculate cell search radius (bitwise ceiling - avoids Math.ceil overhead in hot path)
           // Using (x | 0) + 1 always rounds up, may add one extra cell ring but negligible impact
@@ -732,16 +697,8 @@ class SpatialWorker extends AbstractWorker {
             continue;
           }
 
-          // =============================================================
-          // NEIGHBOR DETECTION with PARTITIONING
-          // =============================================================
-          // Partition neighbors into: collision candidates (first) + visual-only (after)
-          // Physics only iterates collision candidates, logic iterates all
-          // =============================================================
-          let collisionCount = 0;
-          let visualOnlyCount = 0;
-          const visualOnlyBuffer = this._visualOnlyBuffer;
-          const collisionBuffer = this._collisionBuffer;
+          // STOP 5: visual-range neighbors only (no collision-candidate partition)
+          let neighborCount = 0;
 
           for (let i = 0; i < neighborCellsLength; i++) {
             const checkCellIndex = neighborCells[i];
@@ -754,19 +711,14 @@ class SpatialWorker extends AbstractWorker {
 
             const checkEntityBase = (checkByteOffset >> 2) + 1;
 
-            // Check all entities in this cell
             for (let j = 0; j < checkCellCount; j++) {
               const entityB = gridEntities[checkEntityBase + j];
 
-              // Skip self
               if (entityA === entityB) continue;
 
-              // O(1) duplicate check: multi-cell entities appear in multiple cells
               if (processedMarker[entityB] === stampedA) continue;
               processedMarker[entityB] = stampedA;
 
-              // Calculate squared distance for range check
-              // Read directly from interleaved entityPosData for purely linear cache hits!
               const baseIdxB = entityB * 4;
               const bX = entityPosData[baseIdxB];
               const bY = entityPosData[baseIdxB + 1];
@@ -779,61 +731,20 @@ class SpatialWorker extends AbstractWorker {
               const effectiveRange = myVisualRange + bHalfExtent;
               const effectiveRangeSq = effectiveRange * effectiveRange;
 
-              // Check if within visual range
               if (distSq < effectiveRangeSq) {
-                // Check if within collision range (smaller, for physics)
-                // Collision range = sum of half-extents + buffer for entity movement
-                const collisionRange = myHalfExtent + bHalfExtent + collisionBuffer;
-                const collisionRangeSq = collisionRange * collisionRange;
-
-                if (distSq < collisionRangeSq) {
-                  // Static / Sleeping early rejection
-                  const jHasRigidBody = rigidBodyActive[entityB];
-                  const jStatic = !jHasRigidBody || isStatic[entityB];
-                  const jSleeping = jHasRigidBody && sleeping[entityB];
-                  const skipCollision = (iStatic && jStatic) || (iSleeping && jSleeping);
-
-                  if (!skipCollision) {
-                    // COLLISION CANDIDATE: Write directly to neighborData (first section)
-                    if (collisionCount < maxNeighbors) {
-                      neighborData[neighborOffset + 2 + collisionCount] = entityB;
-                      collisionCount++;
-                      this.neighborsFoundThisFrame++;
-                    }
-                  } else {
-                    // Demote to VISUAL-ONLY
-                    if (collisionCount + visualOnlyCount < maxNeighbors) {
-                      visualOnlyBuffer[visualOnlyCount] = entityB;
-                      visualOnlyCount++;
-                      this.neighborsFoundThisFrame++;
-                    }
-                  }
-                } else {
-                  // VISUAL-ONLY: Buffer for later (will be written after collision candidates)
-                  if (collisionCount + visualOnlyCount < maxNeighbors) {
-                    visualOnlyBuffer[visualOnlyCount] = entityB;
-                    visualOnlyCount++;
-                    this.neighborsFoundThisFrame++;
-                  }
+                if (neighborCount < maxNeighbors) {
+                  neighborData[neighborOffset + 1 + neighborCount] = entityB;
+                  neighborCount++;
+                  this.neighborsFoundThisFrame++;
                 }
-
-                if (collisionCount + visualOnlyCount >= maxNeighbors) break;
+                if (neighborCount >= maxNeighbors) break;
               }
             }
 
-            if (collisionCount + visualOnlyCount >= maxNeighbors) break;
+            if (neighborCount >= maxNeighbors) break;
           }
 
-          // Copy visual-only neighbors to after collision candidates
-          for (let i = 0; i < visualOnlyCount; i++) {
-            neighborData[neighborOffset + 2 + collisionCount + i] = visualOnlyBuffer[i];
-          }
-
-          const neighborCount = collisionCount + visualOnlyCount;
-
-          // Write counts: [totalCount, collisionCount, neighbors...]
           neighborData[neighborOffset] = neighborCount;
-          neighborData[neighborOffset + 1] = collisionCount;
           this._storeNeighborReuseSignature(
             entityA,
             myX,
@@ -844,12 +755,6 @@ class SpatialWorker extends AbstractWorker {
             cellRadius,
             dependencyHash
           );
-
-          // DEBUG: Log when we have visual-only neighbors but no collision candidates
-          // This is the case the user reports as failing
-          // if (collisionCount === 0 && visualOnlyCount > 0 && entityA % 100 === 0) {
-          //   console.log(`SPATIAL DEBUG: Entity ${entityA} has ${visualOnlyCount} visual-only neighbors, 0 collision. Writing to offset ${neighborOffset}. First neighbor: ${visualOnlyBuffer[0]}`);
-          // }
         }
       }
     }

@@ -83,15 +83,9 @@ See [Collision Filtering](./bible_of_weed_js.md#collision-filtering) in the bibl
 
 ## Dense collider list (`buildDenseColliders`)
 
-**Problem:** With fixed substeps, collision resolution can run many times per frame. Iterating _every_ entity that has a `Collider` but **zero** collision candidates wastes work in the inner loop.
+**Legacy (pre–Box2D):** Once per physics frame the Verlet path built a dense list of entities with `neighborData` collision candidates.
 
-**Approach:** Once per physics frame, the worker builds a **dense list** of entity indices:
-
-- Source: active entities with `Collider` (query cache).
-- Filter: collider active **and** `neighborData[i * stride + 1] > 0` (collision candidate count > 0).
-- Storage: reusable `Uint16Array` (`_denseColliders`), grown only when the collider count exceeds the current buffer (minimum capacity 1024).
-
-Substep collision loops iterate **`denseCount`** entries only, not the full collider query length.
+**Current:** Box2D owns contacts. Spatial `neighborData` is visual-range only; this dense-candidate filter is not part of the Box2D contact path.
 
 ---
 
