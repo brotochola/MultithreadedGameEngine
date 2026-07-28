@@ -51,6 +51,7 @@ import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
 import { LightEmitter } from '../components/LightEmitter.js';
 import { ShadowCaster } from '../components/ShadowCaster.js';
 import { FlashComponent } from '../components/FlashComponent.js';
+import { LightOccluder } from '../components/LightOccluder.js';
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
 import { ShapeType } from '../core/ConfigDefaults.js';
@@ -790,7 +791,7 @@ export class AbstractWorker {
       }
     }
 
-    // Always initialize core entity components if buffers exist, even when no entity uses them.
+    // Always initialize dense cores if buffers exist, even when no entity uses them.
     // Workers receive componentPools as { name: { count, componentId } } (no ComponentClass ref).
     // Without this, scenes whose entities don't use RigidBody/Collider crash in spatial/physics/logic
     // because those workers access .active, .collisionCount etc. which are undefined typed arrays.
@@ -805,6 +806,30 @@ export class AbstractWorker {
           ComponentClass.initializeArrays(buffer, totalEntityCount);
           if (pool?.componentId !== undefined) ComponentClass.componentId = pool.componentId;
         }
+      }
+    }
+
+    // Optional SoA: connect when allocated, else drop stale views from a prior scene
+    const optionalComponents = [
+      AdobeAnimComponent,
+      LightEmitter,
+      ShadowCaster,
+      FlashComponent,
+      LightOccluder,
+    ];
+    for (const ComponentClass of optionalComponents) {
+      const name = ComponentClass.name;
+      const buffer = componentData?.[name];
+      const pool = componentPools?.[name];
+      if (buffer) {
+        const alreadyInit = ComponentClass.active && ComponentClass.active.length === totalEntityCount;
+        if (!alreadyInit) {
+          ComponentClass.initializeArrays(buffer, totalEntityCount);
+          if (pool?.componentId !== undefined) ComponentClass.componentId = pool.componentId;
+        }
+      } else {
+        ComponentClass.clearArrays();
+        ComponentClass.componentId = null;
       }
     }
   }

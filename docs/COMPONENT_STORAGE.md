@@ -9,6 +9,32 @@ WeedJS currently uses dense component arrays: most entity components allocate on
 
 That layout is intentional for hot components such as `Transform`, `RigidBody`, `Collider`, and `SpriteRenderer`.
 
+## Allocation Policy
+
+**Always seeded + allocated** (every scene):
+
+- `Transform`
+- `RigidBody`
+- `Collider`
+- `SpriteRenderer`
+
+**Always seeded IDs, no SAB** (`ARRAY_SCHEMA = {}` / `getBufferSize === 0`):
+
+- `CameraInOutListener`
+- `CollisionListener`
+
+**Optional SoA** — enter `componentPools` only when an entity lists the component, or when lighting/flash config needs them (`Scene.ensureOptionalComponentPools()`):
+
+| Component | Allocate when |
+|-----------|----------------|
+| `AdobeAnimComponent` | Any registered entity lists it |
+| `LightEmitter` | Entity lists it, or `lighting.enabled`, or `maxFlashes > 0` |
+| `ShadowCaster` | Entity lists it, or `lighting.shadowsEnabled` |
+| `LightOccluder` | Entity lists it, or `lighting.raycasted` |
+| `FlashComponent` | Entity lists it, or `maxFlashes > 0` |
+
+Scenes that never use lighting/Adobe (e.g. BallsScene) should show those components absent from `buffers.componentData` (or 0 bytes), so Memory tab waste shrinks.
+
 ## Memory Report First
 
 Do not migrate components to sparse storage by guesswork. Use the scene memory report first:
@@ -28,7 +54,7 @@ Each component allocation includes:
 - `estimatedUnusedSlots` / `estimatedUnusedBytes` — dense slots allocated for entity types that do not use the component
 - `dedicatedPool` — true for non-entity pools such as particles, decorations, and bullets
 
-The `estimatedUnused*` fields are an estimate for entity-indexed dense components. They are not a bug by themselves; they are a signal for design work.
+The `estimatedUnused*` fields are an estimate for entity-indexed dense components. They are not a bug by themselves; they are a signal for design work. Skipping unused optional SABs reduces that waste without sparse storage.
 
 ## Keep Dense
 
@@ -61,4 +87,4 @@ Sparse storage must preserve the gameplay shape (`this.someComponent`) while hid
 
 ## Current Policy
 
-For now, dense storage remains the engine default. The next step is measurement, not migration.
+Dense storage remains the engine default for allocated components. Optional SoA classes are allocated on demand (entity registration or lighting/flash flags), not seeded into every scene.

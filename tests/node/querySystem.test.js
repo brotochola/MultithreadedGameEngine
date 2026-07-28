@@ -190,6 +190,37 @@ test('definePrecomputedQueries covers all built-in entity components as single-c
   }
 });
 
+test('definePrecomputedQueries skips optional components without componentId', () => {
+  const previousLog = console.log;
+  console.log = () => {};
+  const querySystem = new QuerySystem();
+  const adobeWithoutId = class AdobeAnimComponent {};
+  adobeWithoutId.componentId = null;
+  try {
+    querySystem.definePrecomputedQueries({
+      Transform: PrecomputedTransform,
+      RigidBody: PrecomputedRigidBody,
+      Collider: PrecomputedCollider,
+      SpriteRenderer: PrecomputedSpriteRenderer,
+      AdobeAnimComponent: adobeWithoutId,
+      LightEmitter: undefined,
+      ShadowCaster: undefined,
+      FlashComponent: undefined,
+      LightOccluder: undefined,
+      CameraInOutListener: PrecomputedCameraInOutListener,
+      CollisionListener: PrecomputedCollisionListener,
+    });
+
+    const queryNames = new Set(querySystem.precomputedQueries.map((query) => query.name));
+    assert.equal(queryNames.has('AdobeAnimComponent'), false);
+    assert.equal(queryNames.has('LightEmitter'), false);
+    assert.equal(queryNames.has('Transform'), true);
+    assert.equal(queryNames.has('RigidBody+Collider'), true);
+  } finally {
+    console.log = previousLog;
+  }
+});
+
 test('definePrecomputedQueries merges scene-declared custom active queries and dedupes overlaps', () => {
   const previousLog = console.log;
   const previousTransformComponentId = Transform.componentId;

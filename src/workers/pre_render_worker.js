@@ -686,7 +686,10 @@ class PreRenderWorker extends AbstractWorker {
         // Cache per-frame camera bounds and adobe entity query (avoids redundant recomputation)
         this._frameCameraBoundsValid = this.cameraData !== null;
         if (this._frameCameraBoundsValid) this.calculateCameraBounds();
-        this._frameAdobeEntities = this.queryActiveEntities(this._queryAdobeAnim || [AdobeAnimComponent]);
+        // Optional SoA: skip Adobe query when scene never allocated AdobeAnimComponent
+        this._frameAdobeEntities = AdobeAnimComponent.active
+            ? this.queryActiveEntities(this._queryAdobeAnim || [AdobeAnimComponent])
+            : (this._emptyAdobeEntities || (this._emptyAdobeEntities = []));
 
         this.advanceAdobeAnimations(deltaTime);
 
@@ -2132,9 +2135,9 @@ class PreRenderWorker extends AbstractWorker {
         const worldY = Transform.y;
         const transformActive = Transform.active;
         const lightEnabled = LightEmitter.active;
-        const lightIntensity = LightEmitter.lightIntensity;
-        const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
-        const lightHeight = LightEmitter.height;
+        const lightIntensity = lightEnabled ? LightEmitter.lightIntensity : null;
+        const sqrtLightIntensity = lightEnabled ? LightEmitter.sqrtLightIntensity : null;
+        const lightHeight = lightEnabled ? LightEmitter.height : null;
         const flashActive = FlashComponent.active;
 
         // Sun shadows: use fused pass from collectVisibleEntities, or skip if not done
@@ -2156,30 +2159,32 @@ class PreRenderWorker extends AbstractWorker {
         const viewMaxY = worldBounds.maxY;
 
         // Compute visible lights FIRST -- needed by both shadow system and buildVisibilityPolygons
-        const lightEntitiesRaw = this.queryActiveEntities(this._queryLightEmitter);
         const lightEntities = this._sortedLightEntities;
         lightEntities.length = 0;
-        for (let i = 0; i < lightEntitiesRaw.length; i++) {
-            const lightIdx = lightEntitiesRaw[i];
-            if (!lightEnabled[lightIdx]) continue;
+        if (lightEnabled) {
+            const lightEntitiesRaw = this.queryActiveEntities(this._queryLightEmitter);
+            for (let i = 0; i < lightEntitiesRaw.length; i++) {
+                const lightIdx = lightEntitiesRaw[i];
+                if (!lightEnabled[lightIdx]) continue;
 
-            const intensity = lightIntensity[lightIdx];
-            if (intensity <= 0) continue;
+                const intensity = lightIntensity[lightIdx];
+                if (intensity <= 0) continue;
 
-            const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
-            if (!isFlash) {
-                const lightX = worldX[lightIdx];
-                const lightY = worldY[lightIdx];
-                const lightInfluenceRadius = sqrtLightIntensity[lightIdx] * 10;
-                if (lightX + lightInfluenceRadius < viewMinX || lightX - lightInfluenceRadius > viewMaxX ||
-                    lightY + lightInfluenceRadius < viewMinY || lightY - lightInfluenceRadius > viewMaxY) {
-                    continue;
+                const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
+                if (!isFlash) {
+                    const lightX = worldX[lightIdx];
+                    const lightY = worldY[lightIdx];
+                    const lightInfluenceRadius = sqrtLightIntensity[lightIdx] * 10;
+                    if (lightX + lightInfluenceRadius < viewMinX || lightX - lightInfluenceRadius > viewMaxX ||
+                        lightY + lightInfluenceRadius < viewMinY || lightY - lightInfluenceRadius > viewMaxY) {
+                        continue;
+                    }
                 }
-            }
 
-            lightEntities.push(lightIdx);
+                lightEntities.push(lightIdx);
+            }
+            lightEntities.sort(this._lightYComparator);
         }
-        lightEntities.sort(this._lightYComparator);
 
         if (this.visibleLightsData) {
             const maxWrite = this.visibleLightsData.length - 1;
@@ -2194,7 +2199,7 @@ class PreRenderWorker extends AbstractWorker {
             for (let w = 0; w < n; w++) this.visibleLightsData[1 + w] = lightEntities[w];
         }
 
-        // Shadow-specific: bail if no ShadowCaster entities exist
+        // Shadow-specific: bail if no ShadowCaster SoA (optional) or no entities
         const shadowCasterActive = ShadowCaster.active;
         if (!shadowCasterActive) {
             this.shadowRenderQueueCount[0] = writeIdx;
@@ -2480,6 +2485,12 @@ class PreRenderWorker extends AbstractWorker {
 
         const buf = this._vpWriteBuffer;
         if (!buf) { return; }
+
+        // Optional SoA may be absent when scene never registered LightEmitter / LightOccluder
+        if (!LightEmitter.active || !LightOccluder.active) {
+            buf.header[0] = 0;
+            return;
+        }
 
         const worldX = Transform.x;
         const worldY = Transform.y;

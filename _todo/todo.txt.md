@@ -2,8 +2,6 @@ Since Box2d:
 -clean up code, dead code.
 -make sure zero-copy
 -make sure no GC pressure
--debug colliders/neighbours not updating
--unify ShapeType and config
 -update tests
 -remove polyVertexX? or not?
 

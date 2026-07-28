@@ -409,7 +409,9 @@ export class QuerySystem {
       { name: 'LightOccluder', components: [LightOccluder] },
       { name: 'CameraInOutListener', components: [CameraInOutListener] },
       { name: 'CollisionListener', components: [CollisionListener] },
-    ].filter((q) => q.components.every((c) => c !== undefined));
+    ].filter((q) =>
+      q.components.every((c) => c !== undefined && typeof c.componentId === 'number')
+    );
 
     // Define common multi-component queries
     const multiComponentQueries = [
@@ -417,7 +419,9 @@ export class QuerySystem {
       { name: 'LightEmitter+ShadowCaster', components: [LightEmitter, ShadowCaster] },
       { name: 'LightEmitter+FlashComponent', components: [LightEmitter, FlashComponent] },
       { name: 'SpriteRenderer+RigidBody', components: [SpriteRenderer, RigidBody] },
-    ].filter((q) => q.components.every((c) => c !== undefined));
+    ].filter((q) =>
+      q.components.every((c) => c !== undefined && typeof c.componentId === 'number')
+    );
 
     const customQueries = sceneQueries
       .filter((components) => Array.isArray(components) && components.length > 0)
@@ -425,7 +429,9 @@ export class QuerySystem {
         name: components.map((ComponentClass) => ComponentClass?.name || 'unknown').join('+'),
         components,
       }))
-      .filter((q) => q.components.every((c) => c !== undefined));
+      .filter((q) =>
+        q.components.every((c) => c !== undefined && typeof c.componentId === 'number')
+      );
 
     const allQueries = [...singleComponentQueries, ...multiComponentQueries, ...customQueries];
 

@@ -234,33 +234,35 @@ class Scene {
     // Component type ID tracking (similar to entityType)
     this.nextComponentId = 0;
 
-    // Component pool tracking - assign componentId IDs to core and engine components
+    // Always-dense cores + zero-size markers. Optional SoA (Adobe/Light/Shadow/Flash/Occluder)
+    // enter componentPools only via entity registration or ensureOptionalComponentPools().
     this.componentPools = {
       Transform: { ComponentClass: Transform },
       RigidBody: { ComponentClass: RigidBody },
       Collider: { ComponentClass: Collider },
       SpriteRenderer: { ComponentClass: SpriteRenderer },
-      AdobeAnimComponent: { ComponentClass: AdobeAnimComponent },
-      LightEmitter: { ComponentClass: LightEmitter },
-      ShadowCaster: { ComponentClass: ShadowCaster },
-      FlashComponent: { ComponentClass: FlashComponent },
-      LightOccluder: { ComponentClass: LightOccluder },
       CameraInOutListener: { ComponentClass: CameraInOutListener },
       CollisionListener: { ComponentClass: CollisionListener },
     };
 
-    // Assign componentId IDs to core and engine components
+    // Assign componentId IDs to always-seeded components
     Transform.componentId = this.nextComponentId++;
     RigidBody.componentId = this.nextComponentId++;
     Collider.componentId = this.nextComponentId++;
     SpriteRenderer.componentId = this.nextComponentId++;
-    AdobeAnimComponent.componentId = this.nextComponentId++;
-    LightEmitter.componentId = this.nextComponentId++;
-    ShadowCaster.componentId = this.nextComponentId++;
-    FlashComponent.componentId = this.nextComponentId++;
-    LightOccluder.componentId = this.nextComponentId++;
     CameraInOutListener.componentId = this.nextComponentId++;
     CollisionListener.componentId = this.nextComponentId++;
+    // Clear stale IDs/views from a previous scene (realloc only if pooled again)
+    AdobeAnimComponent.componentId = null;
+    AdobeAnimComponent.clearArrays();
+    LightEmitter.componentId = null;
+    LightEmitter.clearArrays();
+    ShadowCaster.componentId = null;
+    ShadowCaster.clearArrays();
+    FlashComponent.componentId = null;
+    FlashComponent.clearArrays();
+    LightOccluder.componentId = null;
+    LightOccluder.clearArrays();
 
     // Typed array views
     this.views = {
@@ -390,6 +392,48 @@ class Scene {
     for (const [EntityClass, poolSize] of this.constructor.entities) {
       this.registerEntityClass(EntityClass, poolSize);
     }
+
+    // Lighting / flash flags may need optional SoA even with no entity listing them yet
+    this.ensureOptionalComponentPools();
+  }
+
+  /**
+   * Add a component class to componentPools (allocates SAB later) and assign componentId if needed.
+   * @param {Function} ComponentClass
+   */
+  _ensureComponentPool(ComponentClass) {
+    if (!ComponentClass) return;
+    const componentName = ComponentClass.name;
+    if (!this.componentPools[componentName]) {
+      this.componentPools[componentName] = { ComponentClass };
+    }
+    if (ComponentClass.componentId == null || typeof ComponentClass.componentId !== 'number') {
+      ComponentClass.componentId = this.nextComponentId++;
+    }
+  }
+
+  /**
+   * Ensure optional SoA components are pooled when lighting/flash config requires them.
+   * Entity registration already adds comps listed on entity classes.
+   */
+  ensureOptionalComponentPools() {
+    const lighting = this.config?.lighting || {};
+    const maxFlashes = lighting.maxFlashes | 0;
+
+    if (lighting.enabled || maxFlashes > 0) {
+      this._ensureComponentPool(LightEmitter);
+    }
+    if (maxFlashes > 0) {
+      this._ensureComponentPool(FlashComponent);
+    }
+    if (lighting.shadowsEnabled) {
+      this._ensureComponentPool(ShadowCaster);
+    }
+    if (lighting.raycasted) {
+      this._ensureComponentPool(LightOccluder);
+      // Raycasted lighting needs LightEmitter for light sources
+      this._ensureComponentPool(LightEmitter);
+    }
   }
 
   /**
@@ -422,17 +466,7 @@ class Scene {
 
     // Register custom components and assign componentId IDs
     for (const ComponentClass of components) {
-      const componentName = ComponentClass.name;
-      if (!this.componentPools[componentName]) {
-        this.componentPools[componentName] = {
-          ComponentClass: ComponentClass,
-        };
-        // Assign unique componentId ID (similar to entityType)
-        // Check for null, undefined, or non-number
-        if (ComponentClass.componentId == null || typeof ComponentClass.componentId !== 'number') {
-          ComponentClass.componentId = this.nextComponentId++;
-        }
-      }
+      this._ensureComponentPool(ComponentClass);
     }
 
     this.registeredClasses.push({
@@ -739,17 +773,7 @@ class Scene {
         const parentComponents = GameObject._collectComponents(ParentClass);
 
         for (const ComponentClass of parentComponents) {
-          const componentName = ComponentClass.name;
-          if (!this.componentPools[componentName]) {
-            this.componentPools[componentName] = {
-              ComponentClass: ComponentClass,
-            };
-            // Assign unique componentId ID (similar to entityType)
-            // Check for null, undefined, or non-number
-            if (ComponentClass.componentId == null || typeof ComponentClass.componentId !== 'number') {
-              ComponentClass.componentId = this.nextComponentId++;
-            }
-          }
+          this._ensureComponentPool(ComponentClass);
         }
 
         const entityTypeId = this.registeredClasses.length;

@@ -81,6 +81,18 @@ export class Component {
   }
 
   /**
+   * Drop SoA views when this component has no SAB in the current scene.
+   * Prevents stale arrays from a previous scene leaking into workers/main.
+   */
+  static clearArrays() {
+    this.sharedBuffer = null;
+    this.globalEntityCount = 0;
+    for (const name of Object.keys(this.ARRAY_SCHEMA)) {
+      this[name] = null;
+    }
+  }
+
+  /**
    * Automatically create instance getters/setters from ARRAY_SCHEMA
    * This makes component instances have properties that forward to static arrays
    * Skips properties that already have custom getters/setters defined in subclasses
