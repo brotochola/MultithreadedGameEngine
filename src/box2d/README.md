@@ -56,4 +56,8 @@ Weed builds use fixed `INITIAL_MEMORY=256MB` (`ALLOW_MEMORY_GROWTH=0`) so the HE
 
 Live allocator occupancy is exported as `_weedjs_heap_bytes_used` (`mallinfo().uordblks`) and published each physics step into `PHYSICS_STATS.HEAP_USED_KB` / `HEAP_HIGH_WATER_KB`. MemoryPanel shows **used / reserved** plus high-water.
 
-Measured (BallsScene integrated bench, ~9k bodies): high-water ≈ **45 MB**. 256 MB reserved ≈ 5× headroom for typical demos. Extrapolating linearly toward `MAX_ENTITIES` (65k) can approach ~300 MB — raise `INITIAL_MEMORY` again if MemoryPanel high-water climbs near the reserved size.
+Measured:
+- BallsScene integrated bench (~9k bodies): high-water ≈ **39–45 MB**
+- PredatorScene integrated bench (~14k bodies): high-water ≈ **23 MB**
+
+256 MB reserved leaves large headroom for typical demos. Extrapolating toward `MAX_ENTITIES` (65k) can still approach hundreds of MB depending on contacts/joints — raise `INITIAL_MEMORY` again if MemoryPanel high-water climbs near the reserved size.
