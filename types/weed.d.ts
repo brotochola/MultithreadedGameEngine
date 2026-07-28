@@ -1170,6 +1170,87 @@ export declare class Mouse {
   static setCanvasPosition(canvasX: number, canvasY: number, camera: Vec2Mutable & { zoom: number }): void;
 }
 
+/** Multipad gamepad input (W3C standard mapping). SharedArrayBuffer-backed like Mouse. */
+export declare class Gamepad {
+  static readonly MAX_PADS: 4;
+  static readonly AXES_PER_PAD: 4;
+  static readonly BUTTONS_PER_PAD: 17;
+  static readonly STRIDE: number;
+  static readonly BUFFER_SIZE: number;
+  static readonly DEADZONE: number;
+  static readonly BUTTON_DOWN_THRESHOLD: number;
+
+  static readonly A: 0;
+  static readonly B: 1;
+  static readonly X: 2;
+  static readonly Y: 3;
+  static readonly LB: 4;
+  static readonly RB: 5;
+  static readonly LT: 6;
+  static readonly RT: 7;
+  static readonly SELECT: 8;
+  static readonly START: 9;
+  static readonly L3: 10;
+  static readonly R3: 11;
+  static readonly UP: 12;
+  static readonly DOWN: 13;
+  static readonly LEFT: 14;
+  static readonly RIGHT: 15;
+  static readonly HOME: 16;
+
+  static initialize(buffer: SharedArrayBuffer | Float32Array | null): void;
+  static get isInitialized(): boolean;
+  static poll(): void;
+  static updateEdgeFlags(): void;
+
+  static isConnected(pad?: number): boolean;
+  static getAxis(pad: number, axis: number): number;
+  static getButton(pad: number, button: number): number;
+  static isButtonDown(pad: number, button: number): boolean;
+  static isButtonPressed(pad: number, button: number): boolean;
+
+  static get leftX(): number;
+  static get leftY(): number;
+  static get rightX(): number;
+  static get rightY(): number;
+
+  static get isADown(): boolean;
+  static get isBDown(): boolean;
+  static get isXDown(): boolean;
+  static get isYDown(): boolean;
+  static get isLBDown(): boolean;
+  static get isRBDown(): boolean;
+  static get isLTDown(): boolean;
+  static get isRTDown(): boolean;
+  static get isSelectDown(): boolean;
+  static get isStartDown(): boolean;
+  static get isL3Down(): boolean;
+  static get isR3Down(): boolean;
+  static get isUpDown(): boolean;
+  static get isDownDown(): boolean;
+  static get isLeftDown(): boolean;
+  static get isRightDown(): boolean;
+  static get isHomeDown(): boolean;
+
+  static get isAPressed(): boolean;
+  static get isBPressed(): boolean;
+  static get isXPressed(): boolean;
+  static get isYPressed(): boolean;
+  static get isLBPressed(): boolean;
+  static get isRBPressed(): boolean;
+  static get isLTPressed(): boolean;
+  static get isRTPressed(): boolean;
+  static get isSelectPressed(): boolean;
+  static get isStartPressed(): boolean;
+  static get isL3Pressed(): boolean;
+  static get isR3Pressed(): boolean;
+  static get isUpPressed(): boolean;
+  static get isDownPressed(): boolean;
+  static get isLeftPressed(): boolean;
+  static get isRightPressed(): boolean;
+  static get isHomePressed(): boolean;
+}
+
 export declare class Camera {
   static readonly IDX_ZOOM: 0;
   static readonly IDX_X: 1;
@@ -2642,6 +2723,7 @@ export interface WeedNamespace {
   DebugUI: typeof DebugUI;
   DebugDraw: typeof DebugDraw;
   Mouse: typeof Mouse;
+  Gamepad: typeof Gamepad;
   Camera: typeof Camera;
   Ray: typeof Ray;
   NavGrid: typeof NavGrid;

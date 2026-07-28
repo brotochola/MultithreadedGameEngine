@@ -19,6 +19,7 @@ export { DebugFlags, DEBUG_FLAGS, DEBUG_SELECTED_ENTITY_OFFSET } from './core/de
 export { DebugUI } from './core/debug/DebugUI.js';
 export { DebugDraw } from './core/debug/DebugDraw.js';
 export { Mouse } from './core/Mouse.js';
+export { Gamepad } from './core/Gamepad.js';
 export { Camera } from './core/Camera.js';
 export { Ray } from './core/Ray.js';
 export { NavGrid } from './core/NavGrid.js';
@@ -216,6 +217,7 @@ const WEED = Object.freeze({
   DebugUI,
   DebugDraw,
   Mouse,
+  Gamepad,
   Camera,
   Ray,
   NavGrid,

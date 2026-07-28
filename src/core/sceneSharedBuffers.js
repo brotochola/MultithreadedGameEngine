@@ -19,6 +19,7 @@ import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { AdobeAnimRegistry } from './AdobeAnimRegistry.js';
 import { DebugFlags } from './debug/DebugFlags.js';
 import { Mouse } from './Mouse.js';
+import { Gamepad } from './Gamepad.js';
 import Keyboard from './Keyboard.js';
 import { Flash } from './Flash.js';
 import { Camera } from './Camera.js';
@@ -130,6 +131,9 @@ function initializeCoreEntityAndComponentBuffers(scene) {
 
   buffers.mouseData = new SharedArrayBuffer(Mouse.BUFFER_SIZE);
   Mouse.initialize(buffers.mouseData);
+
+  buffers.gamepadData = new SharedArrayBuffer(Gamepad.BUFFER_SIZE);
+  Gamepad.initialize(buffers.gamepadData);
 
   const gameObjectBufferSize = GameObject.getBufferSize(totalEntityCount);
   buffers.gameObjectData = new SharedArrayBuffer(gameObjectBufferSize);
@@ -699,6 +703,7 @@ export function teardownSceneSharedState(scene) {
 
   Camera._data = null;
   Mouse._data = null;
+  Gamepad.initialize(null);
   Ray.debugFlags = null;
   Ray.debugBuffer = null;
   NavGrid.reset();

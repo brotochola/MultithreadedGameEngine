@@ -149,6 +149,7 @@ function buildSceneSharedBuffers(scene) {
     navigationData: scene.buffers.navigationData || null,
     nextTickData: scene.buffers.nextTickData || null,
     mouseData: scene.buffers.mouseData,
+    gamepadData: scene.buffers.gamepadData,
     queryEntityMetadata: scene.buffers.queryEntityMetadata,
     queryCache: scene.buffers.queryCache,
     queryResults: scene.buffers.queryResults,

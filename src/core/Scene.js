@@ -37,6 +37,7 @@ import {
 } from './utils.js';
 import { DebugFlags } from './debug/DebugFlags.js';
 import { Mouse } from './Mouse.js';
+import { Gamepad } from './Gamepad.js';
 import Keyboard from './Keyboard.js';
 import { Flash } from './Flash.js';
 import { BigAtlasInspector } from './BigAtlasInspector.js';
@@ -1801,8 +1802,10 @@ class Scene {
 
     // Update input edge flags on the main thread so Scene.update() can use them
     // the same way entity tick() does in workers.
+    Gamepad.poll();
     Keyboard.updateEdgeFlags();
     Mouse.updateEdgeFlags();
+    Gamepad.updateEdgeFlags();
 
     // Call user's update hook
     this.update(dtRatio, deltaTime, performance.now(), this.mainFrameNumber);

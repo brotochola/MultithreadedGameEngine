@@ -5,6 +5,7 @@ import { GameObject, SpriteSheetRegistry } from '../core/gameObject.js';
 import { AdobeAnimRegistry } from '../core/AdobeAnimRegistry.js';
 import Keyboard from '../core/Keyboard.js';
 import { Mouse } from '../core/Mouse.js';
+import { Gamepad } from '../core/Gamepad.js';
 import { ParticleEmitter } from '../core/ParticleEmitter.js';
 import { DecorationPool } from '../core/DecorationPool.js';
 import { Decoration } from '../core/Decoration.js';
@@ -243,8 +244,9 @@ export class AbstractWorker {
     this.frameNumber++;
     const timing = this.updateFrameTiming();
 
-    // Snapshot keyboard press edges once per frame for the current worker.
+    // Snapshot keyboard / gamepad press edges once per frame for the current worker.
     Keyboard.updateEdgeFlags();
+    Gamepad.updateEdgeFlags();
 
     // Call the worker-specific update logic
     this.update(timing.deltaTime, timing.dtRatio, resuming);
@@ -500,6 +502,11 @@ export class AbstractWorker {
     // Initialize Mouse static class (input state shared across workers)
     if (data.buffers?.mouseData) {
       Mouse.initialize(data.buffers.mouseData);
+    }
+
+    // Initialize Gamepad static class (multipad state shared across workers)
+    if (data.buffers?.gamepadData) {
+      Gamepad.initialize(data.buffers.gamepadData);
     }
 
     // Initialize Sun static class (directional light shared across workers)
