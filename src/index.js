@@ -138,6 +138,7 @@ import { DebugFlags, DEBUG_FLAGS, DEBUG_SELECTED_ENTITY_OFFSET } from './core/de
 import { DebugUI } from './core/debug/DebugUI.js';
 import { DebugDraw } from './core/debug/DebugDraw.js';
 import { Mouse } from './core/Mouse.js';
+import { Gamepad } from './core/Gamepad.js';
 import { Camera } from './core/Camera.js';
 import { Ray } from './core/Ray.js';
 import { NavGrid } from './core/NavGrid.js';
