@@ -49,9 +49,9 @@ export class Ball extends GameObject {
     this.spriteRenderer.anchorY = 0.5;
     this.setAlpha(1.0);
 
-    this.setSprite('ball');
+    this.setSprite('_whiteCircle');
 
-    const actualBallSize = 14;
+    const actualBallSize = 8; // built-in _whiteCircle is 8x8
     const ballRadius = spawnConfig.radius || rng() * 20 + 10;
     this.collider.radius = ballRadius;
     this.collider.visualRange = spawnConfig.visualRange || ballRadius * 3;
@@ -177,12 +177,6 @@ export class Floor extends GameObject {
         },
         renderer: { noLimitFPS: false },
         lighting: { enabled: false },
-      };
-
-      static assets = {
-        textures: {
-          ball: '/demos/img/bola.png',
-        },
       };
 
       static entities = [
