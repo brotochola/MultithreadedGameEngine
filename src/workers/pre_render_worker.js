@@ -2331,7 +2331,7 @@ class PreRenderWorker extends AbstractWorker {
                         const cellCount = gridCounts[byteOff];
                         if (cellCount === 0) continue;
 
-                        const entityBase = (byteOff >> 2) + 1;
+                        const entityBase = Grid.getCellBase(cellIndex);
                         for (let j = 0; j < cellCount; j++) {
                             const eid = gridEntities[entityBase + j];
                             if (flashDedupMarker[eid] === dedupTag) continue;

@@ -1178,6 +1178,12 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
           PHYSICS_DEFAULTS.box2dWorkerCount) | 0
       )
     ),
+    contactRingCapacity: Math.max(
+      256,
+      (newConfig.contactRingCapacity ??
+        current.contactRingCapacity ??
+        PHYSICS_DEFAULTS.contactRingCapacity) | 0
+    ),
   };
 }
 

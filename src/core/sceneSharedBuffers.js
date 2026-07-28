@@ -549,7 +549,7 @@ function initializeInputCameraDebugSpatialAndStatsBuffers(scene) {
   const gridRows = Math.ceil(config.worldHeight / cellSize);
   const totalCells = gridCols * gridRows;
   const maxEntitiesPerCell = config.spatial.maxEntitiesPerCell;
-  const cellByteSize = 4 + maxEntitiesPerCell * 4;
+  const cellByteSize = 4 + maxEntitiesPerCell * 2; // [count:u8][pad:3][entities:u16×mec]
 
   buffers.gridBuffer = new SharedArrayBuffer(totalCells * cellByteSize);
   buffers.cellSleepingBuffer = new SharedArrayBuffer(totalCells);

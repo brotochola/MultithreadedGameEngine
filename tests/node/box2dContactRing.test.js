@@ -5,6 +5,7 @@ import {
   bindContactRing,
   publishContactEvent,
   drainContactRing,
+  initialContactCursor,
   BOX2D_CONTACT_KIND,
 } from '../../src/box2d/box2dContactRing.js';
 
@@ -58,6 +59,42 @@ test('contact ring: overrun jumps cursor when consumer lags past capacity', () =
   assert.equal(r.overrun, true);
   assert.equal(r.count, 0);
   assert.ok(r.nextCursor >= cap + 10);
+});
+
+test('contact ring: late bind always snaps to write head', () => {
+  const sab = createContactRingSab(256);
+  bindContactRing(sab);
+  const i32 = new Int32Array(sab);
+
+  publishContactEvent(BOX2D_CONTACT_KIND.CONTACT_BEGIN, 1, 2, 0, 0);
+  publishContactEvent(BOX2D_CONTACT_KIND.CONTACT_BEGIN, 3, 4, 0, 0);
+
+  const cursor = initialContactCursor(i32);
+  assert.equal(cursor, 2);
+  const r = drainContactRing(i32, cursor, () => {
+    assert.fail('snapped cursor should skip backlog');
+  });
+  assert.equal(r.overrun, false);
+  assert.equal(r.count, 0);
+});
+
+test('contact ring: late bind snaps past overwritten backlog', () => {
+  const cap = 256;
+  const sab = createContactRingSab(cap);
+  bindContactRing(sab);
+  const i32 = new Int32Array(sab);
+
+  for (let i = 0; i < cap + 10; i++) {
+    publishContactEvent(BOX2D_CONTACT_KIND.SENSOR_BEGIN, i, i + 1, 0, 0);
+  }
+
+  const cursor = initialContactCursor(i32);
+  assert.ok(cursor > cap);
+  const r = drainContactRing(i32, cursor, () => {
+    assert.fail('snapped cursor should see empty backlog');
+  });
+  assert.equal(r.overrun, false);
+  assert.equal(r.count, 0);
 });
 
 test('contact ring: two consumers with independent cursors', () => {

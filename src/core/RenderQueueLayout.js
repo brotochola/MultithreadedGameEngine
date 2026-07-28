@@ -29,7 +29,7 @@ const FIELDS = [
     ['anchorX',     Float32Array,           4,   0],
     ['anchorY',     Float32Array,           4,   0],
     ['type',        Uint8Array,             1,   0],
-    ['entityIndex', Int32Array,             4,   0],
+    ['entityIndex', Uint16Array,            2,   0],
 ];
 
 function align4(n) { return (n + 3) & ~3; }

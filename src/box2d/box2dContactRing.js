@@ -13,3 +13,4 @@ export const isContactRingBound = R.isContactRingBound;
 export const publishContactEvent = R.publishContactEvent;
 export const drainContactRing = R.drainContactRing;
 export const getContactRingOverflow = R.getContactRingOverflow;
+export const initialContactCursor = R.initialContactCursor;

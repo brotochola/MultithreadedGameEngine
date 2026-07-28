@@ -1,3 +1,12 @@
+import {
+  MAX_ENTITIES,
+  QUERY_SNAPSHOT_COUNT,
+  calculateQueryResultsSABSize,
+  getQuerySnapshotElements,
+} from './QuerySystem.js';
+import { STATE_CHANNEL_COUNT } from '../box2d/box2dConstants.js';
+import { PHYSICS_STATS } from '../workers/workers-utils.js';
+
 function summarizeBufferNode(value, path, flatBreakdown) {
   if (value instanceof SharedArrayBuffer) {
     const bytes = value.byteLength;
@@ -164,5 +173,92 @@ export function buildSceneMemoryUsageReport(scene) {
   return {
     ...summary,
     componentAllocations,
+    capacityInsights: buildCapacityInsights(scene),
+    box2dHeap: buildBox2dHeapInsight(scene),
   };
+}
+
+function buildBox2dHeapInsight(scene) {
+  const hot = scene.box2dHotFields;
+  if (!hot?.sab) {
+    return {
+      ready: false,
+      reservedBytes: 0,
+      reservedFormatted: '0 B',
+      usedBytes: 0,
+      usedFormatted: '0 B',
+      highWaterBytes: 0,
+      highWaterFormatted: '0 B',
+      bodyChannelBytes: 0,
+      bodyChannelFormatted: '0 B',
+      bodyCapacity: 0,
+    };
+  }
+
+  const reservedBytes = hot.sab.byteLength || 0;
+  const bodyCapacity = hot.bodyCapacity | 0;
+  // 6× f32 state channels + 1× u8 sleeping
+  const bodyChannelBytes =
+    bodyCapacity > 0
+      ? bodyCapacity * STATE_CHANNEL_COUNT * 4 + bodyCapacity
+      : 0;
+
+  let usedBytes = 0;
+  let highWaterBytes = 0;
+  const physSab = scene.buffers?.physicsStats;
+  if (physSab) {
+    const f32 = new Float32Array(physSab);
+    usedBytes = ((f32[PHYSICS_STATS.HEAP_USED_KB] || 0) * 1024) | 0;
+    highWaterBytes = ((f32[PHYSICS_STATS.HEAP_HIGH_WATER_KB] || 0) * 1024) | 0;
+  }
+
+  return {
+    ready: true,
+    reservedBytes,
+    reservedFormatted: formatBytes(reservedBytes),
+    usedBytes,
+    usedFormatted: formatBytes(usedBytes),
+    highWaterBytes,
+    highWaterFormatted: formatBytes(highWaterBytes),
+    bodyChannelBytes,
+    bodyChannelFormatted: formatBytes(bodyChannelBytes),
+    bodyCapacity,
+    note: 'used = dlmalloc uordblks; reserved = WASM SharedArrayBuffer size; body channels = pose/vel/sleep tables inside HEAP',
+  };
+}
+
+function buildCapacityInsights(scene) {
+  const insights = [];
+  const N = scene.totalEntityCount || 0;
+  const maxNeighbors = scene.config?.spatial?.maxNeighbors || 0;
+  const neighborBytes = scene.buffers?.neighborData?.byteLength || 0;
+  if (neighborBytes > 0 && N > 0) {
+    const bytesPerEntity = neighborBytes / N;
+    insights.push({
+      key: 'neighborData',
+      bytes: neighborBytes,
+      formatted: formatBytes(neighborBytes),
+      detail: `${N} entities × (1+${maxNeighbors}) u16 ≈ ${bytesPerEntity.toFixed(0)} B/entity`,
+    });
+  }
+
+  const queryBytes = scene.buffers?.queryResults?.byteLength || 0;
+  const querySystem = scene.querySystem;
+  if (queryBytes > 0) {
+    const capacity = querySystem?.queryEntityCapacity || N || MAX_ENTITIES;
+    const numQueries = querySystem?.getPrecomputedQueryCount?.() || 0;
+    const fullCapBytes = calculateQueryResultsSABSize(numQueries || 1, MAX_ENTITIES);
+    const scaledBytes = calculateQueryResultsSABSize(numQueries || 1, capacity);
+    const savedVsMax =
+      numQueries > 0 ? Math.max(0, fullCapBytes - scaledBytes) : 0;
+    insights.push({
+      key: 'queryResults',
+      bytes: queryBytes,
+      formatted: formatBytes(queryBytes),
+      detail: `${numQueries} queries × ${QUERY_SNAPSHOT_COUNT} snapshots × ${getQuerySnapshotElements(capacity)} u16 (cap ${capacity}); saved vs 65535-wide: ${formatBytes(savedVsMax)}`,
+      savedVsMaxBytes: savedVsMax,
+    });
+  }
+
+  return insights;
 }

@@ -47,7 +47,7 @@ export class RigidBody extends Component {
 
     // Sleeping optimization (gated by physics.sleeping config)
     sleeping: Uint8Array, // 0 = awake, 1 = sleeping
-    stillnessTime: Float32Array, // Consecutive still frames (particle ticks), not seconds
+    stillnessTime: Uint16Array, // Consecutive still frames (particle ticks), not seconds
   };
 
   // ═══════════════════════════════════════════════════════════════════════════

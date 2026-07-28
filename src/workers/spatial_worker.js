@@ -473,8 +473,7 @@ class SpatialWorker extends AbstractWorker {
           if (localCount < Grid.maxEntitiesPerCell) {
             // Write entity data to grid immediately (overwrites old data)
             const byteOffset = cellIndex * Grid.cellByteSize;
-            const uint32Offset = (byteOffset >> 2) + 1 + localCount;
-            gridEntities[uint32Offset] = i;
+            gridEntities[Grid.getCellBase(cellIndex) + localCount] = i;
             localCounts[cellIndex] = localCount + 1;
             localHashes[cellIndex] = Math.imul(localHashes[cellIndex] ^ (i + 1), 16777619) >>> 0;
           }
@@ -613,7 +612,7 @@ class SpatialWorker extends AbstractWorker {
         if (cellCount === 0) continue;
 
         // Process each entity in this cell
-        const cellEntityBase = (byteOffset >> 2) + 1;
+        const cellEntityBase = Grid.getCellBase(cellIndex);
 
         for (let k = 0; k < cellCount; k++) {
           const entityA = gridEntities[cellEntityBase + k];
@@ -699,7 +698,7 @@ class SpatialWorker extends AbstractWorker {
 
             this.cellsCheckedThisFrame++;
 
-            const checkEntityBase = (checkByteOffset >> 2) + 1;
+            const checkEntityBase = Grid.getCellBase(checkCellIndex);
 
             for (let j = 0; j < checkCellCount; j++) {
               const entityB = gridEntities[checkEntityBase + j];

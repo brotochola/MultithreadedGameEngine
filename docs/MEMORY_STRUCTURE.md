@@ -51,9 +51,9 @@ The world is divided into cells. Each cell stores a count + entity indices.
 
 | Property           | Value                                                                |
 | ------------------ | -------------------------------------------------------------------- |
-| **Cell byte size** | `4 + maxEntitiesPerCell * 4` (default 64 entities = 260 bytes/cell)  |
+| **Cell byte size** | `4 + maxEntitiesPerCell * 2` (default 64 entities = 132 bytes/cell; entity slots are Uint16)  |
 | **Total size**     | `totalCells * cellByteSize`                                          |
-| **Cell layout**    | `[count: Uint8, pad: 3 bytes, entities[maxEntitiesPerCell]: Uint32]` |
+| **Cell layout**    | `[count: Uint8, pad: 3 bytes, entities[maxEntitiesPerCell]: Uint16]` |
 | **Typed arrays**   | `Uint8Array` (counts), `Uint32Array` (entity indices)                |
 
 | Writer                                                                                              | Reader                   |
@@ -66,7 +66,7 @@ Every entity gets a visual-range neighbor list (Box2D owns contacts).
 
 | Property              | Value                                                                           |
 | --------------------- | ------------------------------------------------------------------------------- |
-| **Size**              | `totalEntityCount * (1 + maxNeighbors) * 2` bytes                               |
+| **Size**              | `totalEntityCount * (1 + maxNeighbors) * 2` bytes (default `maxNeighbors` = 128) |
 | **Per-entity layout** | `[totalCount: Uint16, neighbors[maxNeighbors]: Uint16]`                         |
 | **Typed array**       | `Uint16Array`                                                                   |
 
@@ -465,12 +465,12 @@ All use a strided `Float32Array` layout: **16 floats (64 bytes) per worker slot*
 
 ## 12. Query System Buffers
 
-| Buffer                | Size                         | Layout                                                                           |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------- |
-| `queryEntityMetadata` | `16 + numTypes * 16`         | `[numTypes, pad, per-type: componentMask, startIndex, endIndex]`                 |
-| `queryCacheSAB`       | `8 + maxQueries * 16`        | `[numQueries, maxQueries, pad, per-query: queryMask, typeMask]`                  |
-| `queryResultsSAB`     | `numQueries * (2 + 65535*2)` | Per query: `[count: Uint16, entityIndices: Uint16[65535]]`                       |
-| `queryVersionSAB`     | `4`                          | `[activeQueryVersion: Int32]` bumped whenever logic 0 mutates active/query lists |
+| Buffer                | Size | Layout |
+| --------------------- | ---- | ------ |
+| `queryEntityMetadata` | `16 + numTypes * 16` | `[numTypes, pad, per-type: componentMask, startIndex, endIndex]` |
+| `queryCacheSAB`       | `8 + maxQueries * 16` | `[numQueries, maxQueries, pad, per-query: queryMask, typeMask]` |
+| `queryResultsSAB`     | `numQueries * (16 + 3 * (1+N) * 2)` | Per query: Int32 header `[publishedSnapshot, publishedCount, publishedFrame, reserved]` + **3** Uint16 snapshots of `[count, entityIndices…]` sized to scene `N = totalEntityCount` (≤ 65535). Triple buffering avoids torn reads when a reader lags one publish. |
+| `queryVersionSAB`     | `4` | `[activeQueryVersion: Int32]` bumped whenever logic 0 mutates active/query lists |
 
 | Writer                                                                                                   | Reader                    |
 | -------------------------------------------------------------------------------------------------------- | ------------------------- |

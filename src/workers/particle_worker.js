@@ -1981,7 +1981,7 @@ class ParticleWorker extends AbstractWorker {
         continue;
       }
 
-      const cellEntityBase = (byteOffset >> 2) + 1;
+      const cellEntityBase = Grid.getCellBase(cellIndex);
 
       let allEntitiesSleeping = true;
 

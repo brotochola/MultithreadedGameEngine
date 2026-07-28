@@ -13,7 +13,9 @@
 
   var BOX2D_CONTACT_HEADER_I32 = 4;
   var BOX2D_CONTACT_STRIDE_I32 = 6; // seq, kind, a, b, genA, genB
-  var BOX2D_CONTACT_DEFAULT_CAPACITY = 8192;
+  // Dense spawn scenes (10k+ bodies) can emit >>8k begin/end events before
+  // logic drains once; 64k ≈ 1.5MB SAB and covers Predator-scale bursts.
+  var BOX2D_CONTACT_DEFAULT_CAPACITY = 65536;
 
   var HDR_WRITE = 0;
   var HDR_CAP = 1;
@@ -107,6 +109,16 @@
     return Atomics.load(i32, HDR_OVERFLOW) | 0;
   }
 
+  /**
+   * Snap consumer cursor to producer write head (late bind / cold start).
+   * Logic has no pair state yet — replaying a partial backlog is worse than
+   * starting clean (End without Begin, or Begin for contacts already settled).
+   */
+  function initialContactCursor(i32) {
+    if (!i32) return 0;
+    return Atomics.load(i32, HDR_WRITE) | 0;
+  }
+
   global.Box2dContactRing = {
     BOX2D_CONTACT_KIND: BOX2D_CONTACT_KIND,
     BOX2D_CONTACT_HEADER_I32: BOX2D_CONTACT_HEADER_I32,
@@ -118,5 +130,6 @@
     publishContactEvent: publishContactEvent,
     drainContactRing: drainContactRing,
     getContactRingOverflow: getContactRingOverflow,
+    initialContactCursor: initialContactCursor,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

@@ -34,7 +34,7 @@ export const MAX_ENTITIES = 65535;
 export const MAX_PRECOMPUTED_QUERIES = 64;
 
 /** Complete snapshots per pre-computed active query (readers may lag without seeing torn writes) */
-const QUERY_SNAPSHOT_COUNT = 3;
+export const QUERY_SNAPSHOT_COUNT = 3;
 
 /** Bytes per entity type metadata entry (aligned to 16 bytes) */
 const ENTITY_TYPE_ENTRY_SIZE = 16;
@@ -46,13 +46,27 @@ const QUERY_CACHE_ENTRY_SIZE = 16;
 const QUERY_RESULT_HEADER_INTS = 4;
 const QUERY_RESULT_HEADER_BYTES = QUERY_RESULT_HEADER_INTS * Int32Array.BYTES_PER_ELEMENT;
 
-/** Uint16 entries per snapshot: [count, entity0, entity1, ...] */
-const QUERY_RESULT_SNAPSHOT_ELEMENTS = 1 + MAX_ENTITIES;
-const QUERY_RESULT_SNAPSHOT_BYTES = QUERY_RESULT_SNAPSHOT_ELEMENTS * Uint16Array.BYTES_PER_ELEMENT;
+/**
+ * Uint16 entries per snapshot: [count, entity0, ...]
+ * Sized to scene entity capacity (not always MAX_ENTITIES).
+ * @param {number} entityCapacity
+ */
+export function getQuerySnapshotElements(entityCapacity) {
+  const n = Math.max(0, Math.min(entityCapacity | 0, MAX_ENTITIES));
+  return 1 + n;
+}
 
-/** Bytes per pre-computed query: atomic header + complete active-list snapshots */
-const QUERY_RESULT_BUFFER_SIZE =
-  QUERY_RESULT_HEADER_BYTES + QUERY_SNAPSHOT_COUNT * QUERY_RESULT_SNAPSHOT_BYTES;
+/** Bytes for one complete snapshot at the given entity capacity. */
+export function getQuerySnapshotBytes(entityCapacity) {
+  return getQuerySnapshotElements(entityCapacity) * Uint16Array.BYTES_PER_ELEMENT;
+}
+
+/** Bytes per pre-computed query: atomic header + QUERY_SNAPSHOT_COUNT snapshots (4-byte aligned). */
+export function calculateQueryResultBufferSize(entityCapacity) {
+  const raw =
+    QUERY_RESULT_HEADER_BYTES + QUERY_SNAPSHOT_COUNT * getQuerySnapshotBytes(entityCapacity);
+  return (raw + 3) & ~3;
+}
 
 /** Bytes in the shared active-query version counter */
 const QUERY_VERSION_BUFFER_SIZE = Int32Array.BYTES_PER_ELEMENT;
@@ -102,15 +116,17 @@ export function calculateQueryCacheSABSize(maxQueries) {
 /**
  * Calculate total size needed for queryResultsSAB
  * Layout:
- *   Per pre-computed query (QUERY_RESULT_BUFFER_SIZE bytes each):
+ *   Per pre-computed query (calculateQueryResultBufferSize(entityCapacity) bytes each):
  *     [0-15]  Int32 header [publishedSnapshot, publishedCount, publishedFrame, reserved]
  *     [16+]   QUERY_SNAPSHOT_COUNT snapshots, each [count, entity indices...]
+ *             snapshot length = 1 + min(entityCapacity, MAX_ENTITIES)
  *
  * @param {number} numQueries - Number of pre-computed queries
+ * @param {number} [entityCapacity=MAX_ENTITIES] - Scene total entity slots
  * @returns {number} Buffer size in bytes
  */
-export function calculateQueryResultsSABSize(numQueries) {
-  return numQueries * QUERY_RESULT_BUFFER_SIZE;
+export function calculateQueryResultsSABSize(numQueries, entityCapacity = MAX_ENTITIES) {
+  return numQueries * calculateQueryResultBufferSize(entityCapacity);
 }
 
 function copyTypeActiveListToBuffer(typeActiveList, buffer, writeIndex) {
@@ -202,15 +218,17 @@ function updateCachedQueryEntry(entry, count, version) {
   return entry.subarray;
 }
 
-function createQuerySnapshotViews(sab, queryIndex) {
-  const baseOffset = queryIndex * QUERY_RESULT_BUFFER_SIZE;
+function createQuerySnapshotViews(sab, queryIndex, entityCapacity) {
+  const bufferSize = calculateQueryResultBufferSize(entityCapacity);
+  const snapshotElements = getQuerySnapshotElements(entityCapacity);
+  const snapshotBytes = getQuerySnapshotBytes(entityCapacity);
+  const baseOffset = queryIndex * bufferSize;
   const header = new Int32Array(sab, baseOffset, QUERY_RESULT_HEADER_INTS);
   const snapshots = [];
 
   for (let i = 0; i < QUERY_SNAPSHOT_COUNT; i++) {
-    const snapshotOffset =
-      baseOffset + QUERY_RESULT_HEADER_BYTES + i * QUERY_RESULT_SNAPSHOT_BYTES;
-    snapshots.push(new Uint16Array(sab, snapshotOffset, QUERY_RESULT_SNAPSHOT_ELEMENTS));
+    const snapshotOffset = baseOffset + QUERY_RESULT_HEADER_BYTES + i * snapshotBytes;
+    snapshots.push(new Uint16Array(sab, snapshotOffset, snapshotElements));
   }
 
   return {
@@ -293,6 +311,9 @@ export class QuerySystem {
     this.queryCacheSAB = null;
     this.queryResultsSAB = null;
     this.queryVersionSAB = null;
+
+    /** Entity slots used to size query result snapshots (≤ MAX_ENTITIES). */
+    this.queryEntityCapacity = 0;
 
     /**
      * Cache for queryMask generation to avoid repeated BigInt allocations
@@ -438,6 +459,9 @@ export class QuerySystem {
     // Compute queryMask and typeMask for each
     this.precomputedQueries = [];
     this.queryMaskToIndex.clear();
+    const entityCapacity = this.entityMetadata.reduce((sum, meta) => sum + (meta.poolSize || 0), 0);
+    this.queryEntityCapacity = Math.min(entityCapacity, MAX_ENTITIES);
+    const resultBufferSize = calculateQueryResultBufferSize(this.queryEntityCapacity);
     let resultOffset = 0;
     const seenQueryMasks = new Set();
 
@@ -458,7 +482,7 @@ export class QuerySystem {
       this.queryMaskToIndex.set(queryMask, this.precomputedQueries.length - 1);
       this.queryToTypeMask.set(queryMask, typeMask);
 
-      resultOffset += QUERY_RESULT_BUFFER_SIZE;
+      resultOffset += resultBufferSize;
     }
 
     console.log(`[QuerySystem] Defined ${this.precomputedQueries.length} pre-computed queries:`);
@@ -493,8 +517,17 @@ export class QuerySystem {
     this.queryVersionData = new Int32Array(this.queryVersionSAB);
     this.queryVersionData[0] = 1;
 
-    // Create queryResultsSAB
-    const queryResultsSize = calculateQueryResultsSABSize(numPrecomputed);
+    // Create queryResultsSAB (triple snapshots sized to scene entity capacity)
+    if (!this.queryEntityCapacity) {
+      this.queryEntityCapacity = Math.min(
+        this.entityMetadata.reduce((sum, meta) => sum + (meta.poolSize || 0), 0),
+        MAX_ENTITIES
+      );
+    }
+    const queryResultsSize = calculateQueryResultsSABSize(
+      numPrecomputed,
+      this.queryEntityCapacity
+    );
     this.queryResultsSAB = new SharedArrayBuffer(queryResultsSize);
     this._initializeQueryResultViews();
 
@@ -504,7 +537,7 @@ export class QuerySystem {
       `  - queryCacheSAB: ${queryCacheSize} bytes (${numPrecomputed}/${MAX_PRECOMPUTED_QUERIES} queries)`
     );
     console.log(
-      `  - queryResultsSAB: ${queryResultsSize} bytes (${numPrecomputed} result buffers)`
+      `  - queryResultsSAB: ${queryResultsSize} bytes (${numPrecomputed} result buffers × ${this.queryEntityCapacity} entity cap)`
     );
     console.log(`  - queryVersionSAB: ${QUERY_VERSION_BUFFER_SIZE} bytes (shared invalidation counter)`);
 
@@ -575,9 +608,12 @@ export class QuerySystem {
    */
   _initializeQueryResultViews() {
     this.queryResultViews = [];
+    const capacity = this.queryEntityCapacity || MAX_ENTITIES;
 
     for (let i = 0; i < this.precomputedQueries.length; i++) {
-      this.queryResultViews.push(createQuerySnapshotViews(this.queryResultsSAB, i));
+      this.queryResultViews.push(
+        createQuerySnapshotViews(this.queryResultsSAB, i, capacity)
+      );
     }
   }
 
@@ -839,6 +875,7 @@ export class QuerySystem {
         endIndex: meta.endIndex,
         poolSize: meta.poolSize,
       })),
+      queryEntityCapacity: this.queryEntityCapacity || MAX_ENTITIES,
       precomputedQueries: this.precomputedQueries.map((q) => ({
         name: q.name,
         queryMask: q.queryMask.toString(),
@@ -926,8 +963,11 @@ export function createWorkerQueryFunctions(queryData, buffers, activeEntitiesDat
   });
 
   // Create result views for pre-computed queries
+  const queryEntityCapacity =
+    queryData.queryEntityCapacity ??
+    entityMetadata.reduce((sum, m) => sum + (m.poolSize || 0), 0);
   const queryResultViews = precomputedQueries.map((q, i) => {
-    return createQuerySnapshotViews(buffers.queryResultsSAB, i);
+    return createQuerySnapshotViews(buffers.queryResultsSAB, i, queryEntityCapacity);
   });
 
   // OPTIMIZATION: Cache queryMask generation to avoid repeated BigInt allocations

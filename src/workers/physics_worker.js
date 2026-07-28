@@ -103,7 +103,11 @@ class PhysicsWorker extends AbstractWorker {
 
     this._commandSab = createCommandRingSab();
     bindCommandRing(this._commandSab);
-    this._contactSab = createContactRingSab();
+    this._contactSab = createContactRingSab(
+      this.settings.contactRingCapacity ??
+        this.config.physics?.contactRingCapacity ??
+        PHYSICS_DEFAULTS.contactRingCapacity,
+    );
 
     const s = this.settings;
     this._pendingModule = {

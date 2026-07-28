@@ -346,7 +346,13 @@ test('precomputed active queries read only published complete snapshots', () => 
     }];
     querySystem.queryMaskToIndex.set(queryMask, 0);
     querySystem.queryToTypeMask.set(queryMask, typeMask);
-    querySystem.queryResultsSAB = new SharedArrayBuffer(calculateQueryResultsSABSize(1));
+    querySystem.queryEntityCapacity = Math.min(
+      metadata.reduce((sum, meta) => sum + (meta.poolSize || 0), 0),
+      65535
+    );
+    querySystem.queryResultsSAB = new SharedArrayBuffer(
+      calculateQueryResultsSABSize(1, querySystem.queryEntityCapacity)
+    );
     querySystem._initializeQueryResultViews();
 
     assert.deepEqual(

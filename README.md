@@ -71,6 +71,26 @@ For local experiments or advanced integrations, the package also exposes the unb
 import { Scene, GameObject } from '@weed.js/engine/src';
 ```
 
+### CDN (jsDelivr)
+
+No install — import the prod ESM build from a module script. Your page still needs COOP/COEP for `SharedArrayBuffer`.
+
+```html
+<script type="module">
+  import WEED from 'https://cdn.jsdelivr.net/npm/@weed.js/engine/dist/weed.prod.bundle.esm.min.js';
+
+  const { GameEngine, Scene, GameObject } = WEED;
+</script>
+```
+
+Or a classic script tag (UMD, sets `window.WEED`):
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@weed.js/engine/dist/weed.prod.bundle.min.js"></script>
+```
+
+Pin a version for real apps (`@0.6.4/...`). Bare `/npm/@weed.js/engine/...` tracks latest. Debug builds (debug UI included) use `weed.bundle*.min.js` instead of `weed.prod.bundle*.min.js`.
+
 ---
 
 ## Minimal Entity Example
@@ -112,7 +132,7 @@ class ZombieScene extends Scene {
   static config = {
     worldWidth: 5000,
     worldHeight: 3000,
-    spatial: { cellSize: 128, maxNeighbors: 500 },
+    spatial: { cellSize: 128, maxNeighbors: 128 },
     logic: { numberOfLogicWorkers: 2 },
   };
 

@@ -7,6 +7,7 @@ import {
   formatBytes,
   getSharedBufferSize,
 } from '../../src/core/sceneBufferMemory.js';
+import { PHYSICS_STATS } from '../../src/workers/workers-utils.js';
 
 test('buildMemoryUsageSummary summarizes nested SharedArrayBuffer trees', () => {
   const buffers = {
@@ -149,4 +150,25 @@ test('buildSceneMemoryUsageReport includes component allocation metadata', () =>
   assert.equal(report.componentAllocations.ParticleComponent.estimatedUsedSlots, 20);
   assert.equal(report.componentAllocations.ParticleComponent.estimatedUnusedSlots, 0);
   assert.equal(report.componentAllocations.ParticleComponent.dedicatedPool, true);
+});
+
+test('buildSceneMemoryUsageReport reads Box2D HEAP used from physics stats', () => {
+  const physicsStats = new SharedArrayBuffer(PHYSICS_STATS.BUFFER_SIZE);
+  const f32 = new Float32Array(physicsStats);
+  f32[PHYSICS_STATS.HEAP_USED_KB] = 48 * 1024; // 48 MB
+  f32[PHYSICS_STATS.HEAP_HIGH_WATER_KB] = 64 * 1024; // 64 MB
+
+  const sab = new SharedArrayBuffer(512 * 1024 * 1024);
+  const report = buildSceneMemoryUsageReport({
+    totalEntityCount: 0,
+    config: {},
+    registeredClasses: [],
+    buffers: { physicsStats },
+    box2dHotFields: { sab, bodyCapacity: 1000, channelOffsets: {} },
+  });
+
+  assert.equal(report.box2dHeap.ready, true);
+  assert.equal(report.box2dHeap.reservedBytes, sab.byteLength);
+  assert.equal(report.box2dHeap.usedBytes, 48 * 1024 * 1024);
+  assert.equal(report.box2dHeap.highWaterBytes, 64 * 1024 * 1024);
 });

@@ -25,13 +25,23 @@ export class MemoryPanel {
     this.elements.total = createStat('SAB total: --');
     this.elements.bufferCount = createStat('Buffers: --');
     this.elements.wasmHeap = createStat('Box2D WASM HEAP: --');
+    this.elements.wasmHeapHigh = createStat('Box2D WASM HEAP high-water: --');
+    this.elements.wasmChannels = createStat('Box2D body channels: --');
     this.elements.jsHeap = createStat('JS heap: --');
     this.elements.jsHeap.style.display = 'none';
     totals.appendChild(this.elements.total);
     totals.appendChild(this.elements.bufferCount);
     totals.appendChild(this.elements.wasmHeap);
+    totals.appendChild(this.elements.wasmHeapHigh);
+    totals.appendChild(this.elements.wasmChannels);
     totals.appendChild(this.elements.jsHeap);
     container.appendChild(totals);
+
+    container.appendChild(this._sectionTitle('Capacity insights'));
+    this.elements.insights = document.createElement('div');
+    this.elements.insights.style.cssText =
+      'display:flex;flex-direction:column;gap:2px;max-height:120px;overflow:auto';
+    container.appendChild(this.elements.insights);
 
     container.appendChild(this._sectionTitle('Categories'));
     this.elements.categories = document.createElement('div');
@@ -65,11 +75,18 @@ export class MemoryPanel {
     this.elements.total.textContent = `SAB total: ${report.totalFormatted || '--'}`;
     this.elements.bufferCount.textContent = `Buffers: ${report.bufferCount ?? '--'}`;
 
-    const sab = scene.box2dHotFields?.sab;
-    if (sab && typeof sab.byteLength === 'number') {
-      this.elements.wasmHeap.textContent = `Box2D WASM HEAP: ${formatBytes(sab.byteLength)}`;
+    const heap = report.box2dHeap;
+    if (heap?.ready) {
+      const usedLabel = heap.usedBytes > 0 ? heap.usedFormatted : '?';
+      this.elements.wasmHeap.textContent = `Box2D WASM HEAP: ${usedLabel} used / ${heap.reservedFormatted} reserved`;
+      this.elements.wasmHeapHigh.textContent = `Box2D WASM HEAP high-water: ${
+        heap.highWaterBytes > 0 ? heap.highWaterFormatted : '--'
+      }`;
+      this.elements.wasmChannels.textContent = `Box2D body channels: ${heap.bodyChannelFormatted} (${heap.bodyCapacity} bodies)`;
     } else {
       this.elements.wasmHeap.textContent = 'Box2D WASM HEAP: (not ready)';
+      this.elements.wasmHeapHigh.textContent = 'Box2D WASM HEAP high-water: (not ready)';
+      this.elements.wasmChannels.textContent = 'Box2D body channels: (not ready)';
     }
 
     const mem = typeof performance !== 'undefined' ? performance.memory : null;
@@ -79,6 +96,16 @@ export class MemoryPanel {
     } else {
       this.elements.jsHeap.style.display = 'none';
     }
+
+    this._fillSortedList(
+      this.elements.insights,
+      (report.capacityInsights || []).map((row) => ({
+        key: row.key,
+        bytes: row.bytes || 0,
+        label: `${row.key}: ${row.formatted} — ${row.detail}`,
+      })),
+      8,
+    );
 
     this._fillSortedList(
       this.elements.categories,

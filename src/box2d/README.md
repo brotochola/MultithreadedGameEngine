@@ -49,3 +49,11 @@ That builds with `weed_post.js` (`importScripts('weedjs_post.js')`, not the lab 
 Lab demo stays on `build_wasm.bat` (physics_post.js). Do not copy a plain lab build into Weed — it will try to load missing `game-constants.js`.
 
 Units: px, px/s, px/s², rad, rad/s.
+
+## HEAP sizing
+
+Weed builds use fixed `INITIAL_MEMORY=256MB` (`ALLOW_MEMORY_GROWTH=0`) so the HEAP `SharedArrayBuffer` stays stable for hot field rebind.
+
+Live allocator occupancy is exported as `_weedjs_heap_bytes_used` (`mallinfo().uordblks`) and published each physics step into `PHYSICS_STATS.HEAP_USED_KB` / `HEAP_HIGH_WATER_KB`. MemoryPanel shows **used / reserved** plus high-water.
+
+Measured (BallsScene integrated bench, ~9k bodies): high-water ≈ **45 MB**. 256 MB reserved ≈ 5× headroom for typical demos. Extrapolating linearly toward `MAX_ENTITIES` (65k) can approach ~300 MB — raise `INITIAL_MEMORY` again if MemoryPanel high-water climbs near the reserved size.

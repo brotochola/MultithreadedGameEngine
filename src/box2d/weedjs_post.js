@@ -92,7 +92,12 @@
     COMMAND_OVERFLOW_TOTAL: 20,
     CONTACT_DROPPED: 21,
     SENSOR_DROPPED: 22,
+    HEAP_USED_KB: 23,
+    HEAP_HIGH_WATER_KB: 24,
   };
+
+  let heapHighWaterKb = 0;
+  let weedjsHeapBytesUsed = null;
 
   function viewFromDesc(desc, TypedArray) {
     return new TypedArray(desc.sab, desc.byteOffset, desc.length);
@@ -874,6 +879,15 @@
     } else {
       statsF32[PS.WEED_JOINTS] = 0;
     }
+    if (typeof weedjsHeapBytesUsed === 'function') {
+      const usedKb = ((weedjsHeapBytesUsed() | 0) / 1024) | 0;
+      if (usedKb > heapHighWaterKb) heapHighWaterKb = usedKb;
+      statsF32[PS.HEAP_USED_KB] = usedKb;
+      statsF32[PS.HEAP_HIGH_WATER_KB] = heapHighWaterKb;
+    } else {
+      statsF32[PS.HEAP_USED_KB] = 0;
+      statsF32[PS.HEAP_HIGH_WATER_KB] = heapHighWaterKb;
+    }
   }
 
   function doStep() {
@@ -1032,7 +1046,11 @@
       'number',
       'number',
     ]);
-
+    weedjsHeapBytesUsed =
+      typeof Module._weedjs_heap_bytes_used === 'function'
+        ? Module._weedjs_heap_bytes_used
+        : null;
+    heapHighWaterKb = 0;
     ctrlI32 = new Int32Array(data.controlSab);
     ctrlF32 = new Float32Array(data.controlSab, 16, 4);
     if (data.commandSab) {

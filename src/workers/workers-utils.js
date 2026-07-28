@@ -79,8 +79,12 @@ export const PHYSICS_STATS = Object.freeze({
   COMMAND_OVERFLOW_TOTAL: 20,
   CONTACT_DROPPED: 21,
   SENSOR_DROPPED: 22,
-  STRIDE_FLOATS: 24,
-  BUFFER_SIZE: 24 * 4,
+  /** Allocator used (kilobytes) — float32-safe vs raw bytes above 16MB. */
+  HEAP_USED_KB: 23,
+  /** Max HEAP_USED_KB seen this session. */
+  HEAP_HIGH_WATER_KB: 24,
+  STRIDE_FLOATS: 32,
+  BUFFER_SIZE: 32 * 4,
 });
 
 /**

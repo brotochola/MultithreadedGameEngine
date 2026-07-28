@@ -105,7 +105,7 @@ Spatial workers write into `spatialStats` (multi-worker layout). Relevant keys f
 ## Configuration touchpoints
 
 - **`cellSize`, grid dimensions** — from scene `gridMetadata` (see `Scene` / config defaults).
-- **`maxNeighbors`** — bounds stride and buffer sizes; must stay consistent across `Grid` initialization.
+- **`maxNeighbors`** — bounds stride and buffer sizes (`totalEntityCount * (1 + maxNeighbors) * 2` bytes). Default is **128**; dense flocks may need 512–1024 via scene `spatial.maxNeighbors`. Must stay consistent across `Grid` initialization.
 
 ---
 

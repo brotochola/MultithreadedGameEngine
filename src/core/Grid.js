@@ -10,7 +10,7 @@
 // - Accepts stale data by design (imperceptible, filtered by distance checks)
 //
 // MEMORY LAYOUT:
-// SpatialGridSAB: Fixed cells with [count:Uint8, pad:3, entities[MAX_ENTITIES_PER_CELL]:Uint32]
+// SpatialGridSAB: Fixed cells with [count:Uint8, pad:3, entities[MAX_ENTITIES_PER_CELL]:Uint16]
 // NeighborsSAB:   Fixed per-entity with [totalCount:Uint16, neighbors[MAX_NEIGHBORS]:Uint16]
 //                 Visual-range neighbors only. Physics contacts come from Box2D.
 // WHY NO DOUBLE BUFFERING FOR NEIGHBORS?
@@ -70,10 +70,10 @@ export class Grid {
   static neighborStride = 0; // Elements per entity in neighbor arrays
 
   // ===== SPATIAL GRID DATA (Single Buffer - Row Ownership) =====
-  // Layout per cell: [count:Uint8, pad:3bytes, entities[16]:Uint32]
+  // Layout per cell: [count:Uint8, pad:3bytes, entities[mec]:Uint16]
   static _gridBuffer = null; // SharedArrayBuffer
   static _gridCounts = null; // Uint8Array view - count at byte 0 of each cell
-  static _gridEntities = null; // Uint32Array view - entities starting at byte 4
+  static _gridEntities = null; // Uint16Array view - entities starting at byte 4
 
   // ===== NEIGHBOR DATA (Single Buffer - Row Ownership) =====
   // Layout per entity: [totalCount:Uint16, neighbors[MAX_NEIGHBORS]:Uint16]
@@ -125,8 +125,8 @@ export class Grid {
     Grid.maxEntitiesPerCell = metadata.maxEntitiesPerCell || SPATIAL_DEFAULTS.maxEntitiesPerCell;
     Grid.rowsPerBlock = metadata.rowsPerBlock || SPATIAL_DEFAULTS.rowsPerBlock;
 
-    // Compute derived values
-    Grid.cellByteSize = 4 + Grid.maxEntitiesPerCell * 4;
+    // Compute derived values: 4-byte header + Uint16 entity ids
+    Grid.cellByteSize = 4 + Grid.maxEntitiesPerCell * 2;
     // Stride = 1 (totalCount) + maxNeighbors
     Grid.neighborStride = 1 + Grid.maxNeighbors;
     Grid._stride = Grid.neighborStride;
@@ -135,7 +135,7 @@ export class Grid {
     if (buffers.gridBuffer) {
       Grid._gridBuffer = buffers.gridBuffer;
       Grid._gridCounts = new Uint8Array(buffers.gridBuffer);
-      Grid._gridEntities = new Uint32Array(buffers.gridBuffer);
+      Grid._gridEntities = new Uint16Array(buffers.gridBuffer);
     }
 
     // ===== NEIGHBOR DATA (Single Buffer) =====
@@ -229,9 +229,8 @@ export class Grid {
    */
   static getCellEntity(cellIndex, k) {
     if (!Grid._gridEntities) return 0;
-    // Entity array starts at byte 4 of each cell
-    const uint32Offset = ((cellIndex * Grid.cellByteSize) >> 2) + 1 + k;
-    return Grid._gridEntities[uint32Offset];
+    // Entity array starts at byte 4 of each cell (Uint16 index +2 after count/pad)
+    return Grid._gridEntities[Grid.getCellBase(cellIndex) + k];
   }
 
   /**
@@ -253,13 +252,14 @@ export class Grid {
   }
 
   /**
-   * Get base Uint32 index for cell entities (for Ray.js compatibility)
+   * Get base Uint16 index for cell entities (into Grid._gridEntities).
+   * Skips the 4-byte [count + pad] header.
    * @param {number} cellIndex - Cell index
-   * @returns {number} Base Uint32 index into gridEntities
+   * @returns {number} Base Uint16 index into gridEntities
    */
   static getCellBase(cellIndex) {
     const byteOffset = cellIndex * Grid.cellByteSize;
-    return (byteOffset >> 2) + 1;
+    return (byteOffset >> 1) + 2;
   }
 
   // =============================================================================
@@ -292,8 +292,7 @@ export class Grid {
 
     if (count >= Grid.maxEntitiesPerCell) return false;
 
-    const uint32Offset = (byteOffset >> 2) + 1 + count;
-    Grid._gridEntities[uint32Offset] = entityId;
+    Grid._gridEntities[Grid.getCellBase(cellIndex) + count] = entityId;
     Grid._gridCounts[byteOffset] = count + 1;
 
     return true;
@@ -534,7 +533,7 @@ export class Grid {
         if (cellCount === 0) continue;
 
         // Direct buffer access for performance
-        const cellEntityBase = (byteOffset >> 2) + 1;
+        const cellEntityBase = Grid.getCellBase(cellIndex);
 
         for (let k = 0; k < cellCount; k++) {
           const entityId = gridEntities[cellEntityBase + k];

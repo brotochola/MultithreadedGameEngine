@@ -2726,59 +2726,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
       const maxItems = this.renderQueueMaxItems;
 
-      // Create typed array views for BOTH buffers
+      // Create typed array views for BOTH buffers (must match RenderQueueLayout / Scene alloc)
       const bufferSABs = [data.renderQueue.dataA, data.renderQueue.dataB];
       const cameraSABs = [data.renderQueue.cameraA || null, data.renderQueue.cameraB || null];
 
       for (let bufIdx = 0; bufIdx < 2; bufIdx++) {
-        const sab = bufferSABs[bufIdx];
-        let offset = 0;
-
-        const buffer = {
-          count: new Int32Array(sab, offset, 1),
-        };
-        offset += 4;
-
-        buffer.x = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.y = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.scaleX = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.scaleY = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.rotation = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.alpha = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.tint = new Uint32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.textureId = new Uint16Array(sab, offset, maxItems);
-        offset += maxItems * 2;
-
-        offset = Math.ceil(offset / 4) * 4;
-
-        buffer.anchorX = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.anchorY = new Float32Array(sab, offset, maxItems);
-        offset += maxItems * 4;
-
-        buffer.type = new Uint8Array(sab, offset, maxItems);
-        offset += maxItems;
-
-        offset = Math.ceil(offset / 4) * 4;
-
-        buffer.entityIndex = new Int32Array(sab, offset, maxItems);
-
-        this.renderQueueBuffers[bufIdx] = buffer;
+        this.renderQueueBuffers[bufIdx] = createRenderQueueViews(bufferSABs[bufIdx], maxItems);
         this.renderQueueCameraBuffers[bufIdx] = cameraSABs[bufIdx]
           ? new Float32Array(cameraSABs[bufIdx], 0, 3)
           : null;

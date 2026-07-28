@@ -12,7 +12,7 @@ Engine-focused notes for the current `src/` architecture.
 | QuerySystem component mask width | `64` components |
 | QuerySystem entity-type mask width | `64` entity types |
 | Spatial grid cells | `65535` max (cell indices cached as `Uint16`) |
-| Default max neighbors/entity | `500` |
+| Default max neighbors/entity | `128` (raise via `spatial.maxNeighbors` for dense flocks) |
 | Max entities/cell | `255` hard cap (`Uint8` count), `64` default |
 | Default max collision pairs/frame | `10000` |
 | Collision layers | `32` (Uint32 bitmask) |

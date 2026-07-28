@@ -166,6 +166,8 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   maximumLinearSpeed: 50000,
   /** Box2D internal pthread count (not Weed logic/spatial). Clamped to PTHREAD_POOL_SIZE (4). */
   box2dWorkerCount: 4,
+  /** SPMC contact/sensor event ring capacity (begin+end). Dense spawns need large. */
+  contactRingCapacity: 65536,
   /** Master switch: when false, bodies never enter sleep (thresholds ignored). */
   sleeping: true,
   /** Max linear speed and |angularVelocity| (px/s, rad/s) to count as still. */
@@ -182,7 +184,9 @@ export const PHYSICS_DEFAULTS = Object.freeze({
 
 export const SPATIAL_DEFAULTS = Object.freeze({
   cellSize: 128,
-  maxNeighbors: 500,
+  // Cap neighbor list length (and SAB size: N * (1+maxNeighbors) * 2 bytes).
+  // Dense flocks may need 512–1024; most scenes are fine at 128–256.
+  maxNeighbors: 128,
   maxEntitiesPerCell: 64,
   numberOfSpatialWorkers: 1,
   rowsPerBlock: 2,
@@ -263,7 +267,7 @@ export const RENDERER_DEFAULTS = Object.freeze({
   cullingRatio: 0.1,
   startFadingDecorationsAtZoom: 0.5,
   hideDecorationsAtZoom: 0.25,
-  maxVisibleRenderables: 40000,
+  maxVisibleRenderables: 10000,
   maxDecalTileUploadsPerFrame: 32,
 });
 

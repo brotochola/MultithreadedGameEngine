@@ -26,6 +26,7 @@ import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import {
   bindContactRing,
   drainContactRing,
+  initialContactCursor,
   BOX2D_CONTACT_KIND,
 } from '../box2d/box2dContactRing.js';
 import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
@@ -752,6 +753,12 @@ class LogicWorker extends AbstractWorker {
     );
     this.box2dContactCursor = result.nextCursor;
     if (result.overrun) {
+      // Cold start: no tracked pairs — catch up silently (common when first
+      // physics steps flood the ring before logic drains).
+      if (active.size === 0 && this._collisionGens.size === 0) {
+        this.frameCollisions = active;
+        return;
+      }
       this._clearContactState('contact ring overrun');
       this.frameCollisions = active;
       return;
@@ -821,7 +828,8 @@ class LogicWorker extends AbstractWorker {
         if (data.contactSab) {
           bindContactRing(data.contactSab);
           this.box2dContactRingI32 = new Int32Array(data.contactSab);
-          this.box2dContactCursor = 0;
+          // Snap to write head — physics may already be producing events.
+          this.box2dContactCursor = initialContactCursor(this.box2dContactRingI32);
           this.useBox2dContacts = true;
           console.log(`LOGIC WORKER ${this.workerIndex}: Box2D contact ring bound`);
         } else {
