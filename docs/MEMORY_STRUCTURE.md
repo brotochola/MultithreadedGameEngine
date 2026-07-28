@@ -449,11 +449,10 @@ All use a strided `Float32Array` layout: **16 floats (64 bytes) per worker slot*
 | Buffer            | Slots                    | Fields                                                                                                                                              |
 | ----------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rendererStats`   | 1                        | FPS, DRAW_CALLS, VISIBLE_SPRITES, SPRITES_CREATED, DECORATION_SPRITES, VISIBLE_DECORATIONS, VISIBLE_ENTITIES, VISIBLE_PARTICLES, ACTIVE_DECORATIONS |
-| `particleStats`   | 1                        | FPS, ACTIVE_PARTICLES, TOTAL_PARTICLES, PARTICLES_STAMPED, FLASHES_UPDATED, SHADOWS_UPDATED, ACTIVE_ENTITIES, TOTAL_ENTITIES                        |
+| `particleStats`   | 1                        | FPS, ACTIVE_PARTICLES, TOTAL_PARTICLES, PARTICLES_STAMPED, FLASHES_UPDATED, (unused slot 5), ACTIVE_ENTITIES, TOTAL_ENTITIES                        |
 | `physicsStats`    | 1                        | FPS, STEP_MS, MSG_MS, BODY_COUNT, JOINT_COUNT, CONTACT_*, SENSOR_*, WEED_JOINTS                                                                      |
 | `spatialStats`    | N (1 per spatial worker) | FPS, NEIGHBOR_CHECKS, GRID_CELLS_CHECKED, ENTITIES_PROCESSED                                                                                        |
 | `logicStats`      | N (1 per logic worker)   | FPS, ENTITIES_PROCESSED, SYSTEMS_EXECUTED                                                                                                           |
-| `navigationStats` | 1                        | FPS, FLOWFIELDS_COMPUTED, PATHS_COMPUTED, FLOWFIELDS_CACHED, PATHS_CACHED, PENDING counts, GRID_WIDTH/HEIGHT                                        |
 | `preRenderStats`  | 1                        | FPS, VISIBLE_ENTITIES, VISIBLE_PARTICLES, VISIBLE_DECORATIONS, SHADOWS_UPDATED, RENDER_QUEUE_SIZE                                                   |
 | `frameRateData`   | `maxWorkers`             | 1 `Float32` per worker (aggregate FPS)                                                                                                              |
 

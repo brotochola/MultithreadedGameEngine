@@ -904,17 +904,6 @@ export class QuerySystem {
   }
 
   /**
-   * Get info about a pre-computed query by index
-   * Internal helper for systems that need direct access to query metadata.
-   *
-   * @param {number} queryIndex - Index in precomputedQueries array
-   * @returns {Object} - { name, queryMask, typeMask }
-   */
-  getPrecomputedQueryInfo(queryIndex) {
-    return this.precomputedQueries[queryIndex];
-  }
-
-  /**
    * Get number of pre-computed queries
    */
   getPrecomputedQueryCount() {

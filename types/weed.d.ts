@@ -834,7 +834,6 @@ export declare class QuerySystem {
   queryActiveEntitiesSlow(componentClasses: ReadonlyArray<typeof Component>): Uint16Array;
   publishPrecomputedActiveQueries(frameNumber?: number): void;
   serialize(): Record<string, unknown>;
-  getPrecomputedQueryInfo(queryIndex: number): unknown;
   getPrecomputedQueryCount(): number;
 }
 
@@ -1198,8 +1197,10 @@ export declare class Camera {
 }
 
 export declare class Ray {
-  static readonly SHAPE_CIRCLE: 0;
-  static readonly SHAPE_BOX: 1;
+  /** Aliases of {@link ShapeType} (Box=0, Circle=1, Polygon=2). */
+  static readonly SHAPE_BOX: number;
+  static readonly SHAPE_CIRCLE: number;
+  static readonly SHAPE_POLYGON: number;
 
   static cast(
     xFrom: number,
@@ -1336,7 +1337,6 @@ export declare class Grid {
   static getCellCount(cellIndex: number): number;
   static getCellEntity(cellIndex: number, k: number): number;
   static getCellByteOffset(cellIndex: number): number;
-  static getCellEntityCount(cellIndex: number): number;
   static getCellBase(cellIndex: number): number;
 
   static addEntityToCell(cellIndex: number, entityId: number): boolean;

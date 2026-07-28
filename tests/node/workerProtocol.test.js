@@ -111,7 +111,7 @@ test('logic worker keeps pending list updates when forwarding to logic0 fails', 
   }
 });
 
-test('initSeededRandom keeps the typo alias working', { concurrency: false }, () => {
+test('initSeededRandom installs rng on self and globalThis', { concurrency: false }, () => {
   const previousSelf = globalThis.self;
   const previousRng = globalThis.rng;
 
@@ -120,14 +120,10 @@ test('initSeededRandom keeps the typo alias working', { concurrency: false }, ()
 
     const workerContext = {};
     AbstractWorker.prototype.initSeededRandom.call(workerContext, 12345);
-    const first = globalThis.rng();
-
-    AbstractWorker.prototype.initSeendedRandom.call(workerContext, 12345);
-    const second = globalThis.rng();
 
     assert.equal(typeof globalThis.self.rng, 'function');
     assert.equal(typeof globalThis.rng, 'function');
-    assert.equal(first, second);
+    assert.equal(globalThis.self.rng, globalThis.rng);
   } finally {
     if (previousSelf === undefined) delete globalThis.self;
     else globalThis.self = previousSelf;

@@ -171,7 +171,6 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 | `cameraData`                   | Read           | Camera bounds for visibility                                       |
 | `activeEntitiesData`           | Read           | Which entities are alive                                           |
 | `particleStats`                | **Write**      | FPS, active counts                                                 |
-| `navigationStats`              | **Write**      | Flowfields/paths computed/cached                                   |
 | `frameRateData`                | **Write**      | Own slot                                                           |
 
 ---

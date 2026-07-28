@@ -206,12 +206,11 @@ export class AbstractWorker {
   }
 
   /**
-   * Report FPS to main thread (DEPRECATED - now using stat buffers)
-   * Subclasses can override this to write additional stats to their stat buffer
+   * Write worker FPS / metrics into this worker's SharedArrayBuffer stats view.
+   * Base no-op; subclasses override to fill their schema.
    */
   reportFPS() {
-    // Base implementation does nothing - stats are written directly to SharedArrayBuffer
-    // Subclasses override this to write their specific stats
+    // Subclasses write to SharedArrayBuffer stats
   }
 
   reportLog(message) {
@@ -843,11 +842,6 @@ export class AbstractWorker {
     self.rng = seededRandom(seed);
     // Also make it available globally without 'self.' prefix for entity code
     globalThis.rng = self.rng;
-  }
-
-  // Backwards-compatible alias for the long-standing typo.
-  initSeendedRandom(seed) {
-    AbstractWorker.prototype.initSeededRandom.call(this, seed);
   }
 
   /**

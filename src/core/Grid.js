@@ -243,15 +243,6 @@ export class Grid {
   }
 
   /**
-   * Get entity count in a cell (alias for Ray.js compatibility)
-   * @param {number} cellIndex - Cell index
-   * @returns {number} Entity count
-   */
-  static getCellEntityCount(cellIndex) {
-    return Grid.getCellCount(cellIndex);
-  }
-
-  /**
    * Get base Uint16 index for cell entities (into Grid._gridEntities).
    * Skips the 4-byte [count + pad] header.
    * @param {number} cellIndex - Cell index

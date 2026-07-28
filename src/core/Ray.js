@@ -708,7 +708,7 @@ export class Ray {
    * @private
    */
   static _collectCellHits(cellIndex, rayX, rayY, dirX, dirY, rayLength, checkedEntities, allHits, rayMask = 0xFFFFFFFF) {
-    const count = Grid.getCellEntityCount(cellIndex);
+    const count = Grid.getCellCount(cellIndex);
     if (count === 0) return;
 
     const cellBase = Grid.getCellBase(cellIndex);
@@ -762,7 +762,7 @@ export class Ray {
     Ray._tempResult.entityIndex = -1;
     Ray._tempResult.distance = Infinity;
 
-    const count = Grid.getCellEntityCount(cellIndex);
+    const count = Grid.getCellCount(cellIndex);
     if (count === 0) {
       return;
     }

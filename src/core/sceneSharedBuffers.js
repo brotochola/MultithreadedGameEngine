@@ -42,7 +42,6 @@ import {
   PHYSICS_STATS,
   SPATIAL_STATS,
   LOGIC_STATS,
-  NAVIGATION_STATS,
   PRE_RENDER_STATS,
 } from '../workers/workers-utils.js';
 import { ParticleEmitter } from './ParticleEmitter.js';
@@ -595,7 +594,6 @@ function initializeInputCameraDebugSpatialAndStatsBuffers(scene) {
   buffers.logicStats = new SharedArrayBuffer(
     LOGIC_STATS.BUFFER_SIZE_PER_WORKER * scene.numberOfLogicWorkers
   );
-  buffers.navigationStats = new SharedArrayBuffer(NAVIGATION_STATS.BUFFER_SIZE);
   buffers.preRenderStats = new SharedArrayBuffer(PRE_RENDER_STATS.BUFFER_SIZE);
 
   scene.camera.x = config.worldWidth / 2 - config.canvasWidth / 2;

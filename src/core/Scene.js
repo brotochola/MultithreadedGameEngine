@@ -81,7 +81,6 @@ import {
   PHYSICS_STATS,
   SPATIAL_STATS,
   LOGIC_STATS,
-  NAVIGATION_STATS,
   PRE_RENDER_STATS,
 } from '../workers/workers-utils.js';
 import { ParticleEmitter } from './ParticleEmitter.js';

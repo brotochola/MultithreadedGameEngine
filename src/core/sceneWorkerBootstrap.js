@@ -147,7 +147,6 @@ function buildSceneSharedBuffers(scene) {
     spatialStats: scene.buffers.spatialStats,
     logicStats: scene.buffers.logicStats,
     navigationData: scene.buffers.navigationData || null,
-    navigationStats: scene.buffers.navigationStats || null,
     nextTickData: scene.buffers.nextTickData || null,
     mouseData: scene.buffers.mouseData,
     queryEntityMetadata: scene.buffers.queryEntityMetadata,

@@ -33,7 +33,8 @@ export const RENDERER_STATS = Object.freeze({
 
 /**
  * Particle Worker Stats Schema
- * Single particle worker with particle counts
+ * Single particle worker with particle counts.
+ * Index 5 unused (was SHADOWS_UPDATED; shadows live in PRE_RENDER_STATS) — keep hole, no renumber.
  */
 export const PARTICLE_STATS = Object.freeze({
   FPS: 0,
@@ -41,7 +42,6 @@ export const PARTICLE_STATS = Object.freeze({
   TOTAL_PARTICLES: 2,
   PARTICLES_STAMPED: 3,
   FLASHES_UPDATED: 4,
-  SHADOWS_UPDATED: 5,
   ACTIVE_ENTITIES: 6,
   TOTAL_ENTITIES: 7,
   MSG_MS: 8,
@@ -118,25 +118,6 @@ export const LOGIC_STATS = Object.freeze({
 });
 
 /**
- * Navigation Worker Stats Schema (DEPRECATED - merged into particle_worker)
- * Kept for backwards compatibility, now handled by particle_worker
- */
-export const NAVIGATION_STATS = Object.freeze({
-  FPS: 0,
-  FLOWFIELDS_COMPUTED: 1,
-  PATHS_COMPUTED: 2,
-  FLOWFIELDS_CACHED: 3,
-  PATHS_CACHED: 4,
-  PENDING_FLOWFIELDS: 5,
-  PENDING_PATHS: 6,
-  GRID_WIDTH: 7,
-  GRID_HEIGHT: 8,
-  SHADOWS_UPDATED: 9,
-  STRIDE_FLOATS: 16,
-  BUFFER_SIZE: 16 * 4,
-});
-
-/**
  * Pre-Render Worker Stats Schema
  * Single pre-render worker with visibility and render queue metrics
  */
@@ -189,10 +170,6 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
       },
       {
         key: 'FLASHES_UPDATED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'SHADOWS_UPDATED',
         format: (v) => formatNumber(v),
       },
       {
@@ -273,33 +250,6 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
       {
         key: 'MSG_MS',
         format: (v) => v.toFixed(2) + 'ms',
-      },
-    ],
-  },
-  navigation: {
-    label: 'NavGrid',
-    color: 'navigation',
-    stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      {
-        key: 'FLOWFIELDS_COMPUTED',
-        format: (v) => formatNumber(v),
-        label: 'FF/frame',
-      },
-      {
-        key: 'PATHS_COMPUTED',
-        format: (v) => formatNumber(v),
-        label: 'A*/frame',
-      },
-      {
-        key: 'FLOWFIELDS_CACHED',
-        format: (v) => formatNumber(v),
-        label: 'FF cached',
-      },
-      {
-        key: 'PATHS_CACHED',
-        format: (v) => formatNumber(v),
-        label: 'A* cached',
       },
     ],
   },
