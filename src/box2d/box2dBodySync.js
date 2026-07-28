@@ -3,6 +3,12 @@
 
 export const BODY_DIRTY = Object.freeze({
   LIFECYCLE: 1,
+  BODY_TYPE: 1 << 1,
+  DAMPING: 1 << 2,
+  MASS: 1 << 3,
+  FILTER: 1 << 4,
+  FRICTION: 1 << 5,
+  GEOMETRY: 1 << 6,
 });
 
 let dirtyFlags = null;

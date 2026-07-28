@@ -7,6 +7,7 @@ import { Component } from '../core/Component.js';
 import { Collider } from './Collider.js';
 import { updateMassFromCircle, updateMassFromBox } from '../core/utils.js';
 import { ShapeType } from '../core/ConfigDefaults.js';
+import { BODY_DIRTY, markBodyDirty } from '../box2d/box2dBodySync.js';
 
 export class RigidBody extends Component {
   // Array schema - defines all physics properties
@@ -181,6 +182,23 @@ export class RigidBody extends Component {
 
     // 2. Re-sync from collider geometry; static bodies preserve invMass = 0.
     RigidBody.syncMassFromCollider(this.index);
+    markBodyDirty(this.index, BODY_DIRTY.BODY_TYPE);
+  }
+
+  get linearDamping() {
+    return RigidBody.linearDamping[this.index];
+  }
+  set linearDamping(value) {
+    RigidBody.linearDamping[this.index] = Math.max(0, Number(value) || 0);
+    markBodyDirty(this.index, BODY_DIRTY.DAMPING);
+  }
+
+  get angularDamping() {
+    return RigidBody.angularDamping[this.index];
+  }
+  set angularDamping(value) {
+    RigidBody.angularDamping[this.index] = Math.max(0, Number(value) || 0);
+    markBodyDirty(this.index, BODY_DIRTY.DAMPING);
   }
 
   /**
@@ -195,6 +213,7 @@ export class RigidBody extends Component {
     const isStatic = RigidBody.static[this.index] !== 0;
     RigidBody.invMass[this.index] = isStatic || !(m > 0) ? 0 : 1 / m;
     RigidBody.syncInertiaFromCollider(this.index, -1, isStatic);
+    markBodyDirty(this.index, BODY_DIRTY.MASS);
   }
 
 }

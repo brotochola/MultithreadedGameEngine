@@ -80,7 +80,7 @@
     SENSOR_DROPPED_COUNT: 9,
   });
 
-  var DEFAULT_FILTER_MASK = 0;
+  var DEFAULT_FILTER_MASK = 0xffffffff;
 
   global.Box2dConstants = {
     ShapeType: ShapeType,

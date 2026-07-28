@@ -21,6 +21,15 @@
   };
 
   const MAX_POLY_VERTS = 8;
+  const BODY_DIRTY = {
+    LIFECYCLE: 1,
+    BODY_TYPE: 1 << 1,
+    DAMPING: 1 << 2,
+    MASS: 1 << 3,
+    FILTER: 1 << 4,
+    FRICTION: 1 << 5,
+    GEOMETRY: 1 << 6,
+  };
   // Units: px, px/s, px/s², rad, rad/s (Box2D native — no frame-unit scale).
 
   let world = null;
@@ -106,6 +115,8 @@
         ? viewFromDesc(desc.fixedRotation, Uint8Array)
         : null,
       colActive: viewFromDesc(desc.colActive, Uint8Array),
+      offsetX: viewFromDesc(desc.offsetX, Float32Array),
+      offsetY: viewFromDesc(desc.offsetY, Float32Array),
       shapeType: viewFromDesc(desc.shapeType, Uint8Array),
       radius: viewFromDesc(desc.radius, Float32Array),
       width: viewFromDesc(desc.width, Float32Array),
@@ -222,11 +233,35 @@
     return layer <= 31 ? 1 << layer : 1;
   }
 
+  function densityForEntity(i, shape) {
+    let area = 0;
+    if (shape === ShapeType.Circle) {
+      const r = views.radius[i];
+      area = Math.PI * r * r;
+    } else if (shape === ShapeType.Box) {
+      area = views.width[i] * views.height[i];
+    } else if (shape === ShapeType.Polygon) {
+      const count = views.polyCount[i] | 0;
+      const base = i * MAX_POLY_VERTS;
+      let twiceArea = 0;
+      for (let v = 0; v < count; v++) {
+        const next = v + 1 < count ? v + 1 : 0;
+        twiceArea +=
+          views.polyVertexX[base + v] * views.polyVertexY[base + next] -
+          views.polyVertexX[base + next] * views.polyVertexY[base + v];
+      }
+      area = Math.abs(twiceArea) * 0.5;
+    }
+    const mass = views.mass[i];
+    return mass > 0 && area > 0 ? mass / area : 1;
+  }
+
   function createBodyForEntity(i) {
     const isStatic = views.rbStatic[i] !== 0;
     const type = isStatic ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC;
     const shape = views.shapeType[i] | 0;
-    const friction = views.friction[i] || 0.3;
+    const rawFriction = views.friction[i];
+    const friction = rawFriction >= 0 ? rawFriction : 0;
     const linearDamping = views.linearDamping[i] || 0;
     const angularDamping = views.angularDamping[i] || 0;
     const angle = isFixedRotation(i) ? 0 : views.rotation[i];
@@ -235,7 +270,9 @@
       x: views.x[i],
       y: views.y[i],
       angle,
-      density: 1,
+      offsetX: views.offsetX[i],
+      offsetY: views.offsetY[i],
+      density: densityForEntity(i, shape),
       friction,
       restitution: 0,
       linearDamping,
@@ -281,6 +318,70 @@
     return true;
   }
 
+  function syncBodyGeometry(i) {
+    const shape = views.shapeType[i] | 0;
+    const offsetX = views.offsetX[i];
+    const offsetY = views.offsetY[i];
+    if (shape === ShapeType.Circle) {
+      const radius = views.radius[i];
+      if (radius > 0) {
+        bodySetShapeCircleFn(i, radius, offsetX, offsetY);
+      }
+    } else if (shape === ShapeType.Box) {
+      const hx = views.width[i] * 0.5;
+      const hy = views.height[i] * 0.5;
+      if (hx > 0 && hy > 0) {
+        bodySetShapeBoxFn(i, hx, hy, offsetX, offsetY);
+      }
+    } else if (shape === ShapeType.Polygon) {
+      const count = views.polyCount[i] | 0;
+      if (count < 3) return;
+      const ptr = Module._malloc(count * 2 * 4);
+      try {
+        const base = i * MAX_POLY_VERTS;
+        const heapBase = ptr >> 2;
+        for (let v = 0; v < count; v++) {
+          Module.HEAPF32[heapBase + v * 2] = views.polyVertexX[base + v];
+          Module.HEAPF32[heapBase + v * 2 + 1] = views.polyVertexY[base + v];
+        }
+        bodySetShapePolygonFn(i, ptr, count, offsetX, offsetY);
+      } finally {
+        Module._free(ptr);
+      }
+    }
+  }
+
+  function syncBodyProperties(i, flags) {
+    if (flags & BODY_DIRTY.BODY_TYPE) {
+      bodySetTypeFn(
+        i,
+        views.rbStatic[i] ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC,
+      );
+    }
+    if (flags & BODY_DIRTY.DAMPING) {
+      bodySetLinearDampingFn(i, views.linearDamping[i]);
+      bodySetAngularDampingFn(i, views.angularDamping[i]);
+    }
+    if (flags & BODY_DIRTY.GEOMETRY) {
+      syncBodyGeometry(i);
+    }
+    if (flags & (BODY_DIRTY.MASS | BODY_DIRTY.GEOMETRY)) {
+      bodySetDensityFn(i, densityForEntity(i, views.shapeType[i] | 0));
+    }
+    if (flags & BODY_DIRTY.FILTER) {
+      bodySetFilterFn(
+        i,
+        categoryBitsFor(i) >>> 0,
+        views.collisionMask[i] >>> 0,
+        views.collisionGroupIndex[i] | 0,
+      );
+    }
+    if (flags & BODY_DIRTY.FRICTION) {
+      const friction = views.friction[i];
+      bodySetFrictionFn(i, friction >= 0 ? friction : 0);
+    }
+  }
+
   function addDenseBody(i) {
     if (densePositions[i] >= 0) return;
     densePositions[i] = denseCount;
@@ -299,8 +400,9 @@
     densePositions[i] = -1;
   }
 
-  function syncBodySlot(i) {
+  function syncBodySlot(i, flags) {
     let changes = 0;
+    let created = false;
     const want =
       views.entityActive[i] !== 0 &&
       views.rbActive[i] !== 0 &&
@@ -329,12 +431,16 @@
         hasBody[i] = 1;
         seenBodyGeneration[i] = generation;
         addDenseBody(i);
+        created = true;
         changes++;
       } else if (bodyDirtyFlags && bodyDirtyWords) {
         // Invalid/incomplete spawn data may become valid later; retry sparsely.
         Atomics.or(bodyDirtyFlags, i, 1);
         Atomics.or(bodyDirtyWords, i >>> 5, 1 << (i & 31));
       }
+    }
+    if (hasBody[i] && !created && flags !== BODY_DIRTY.LIFECYCLE) {
+      syncBodyProperties(i, flags);
     }
     return changes;
   }
@@ -350,9 +456,9 @@
           const i = (wordIndex << 5) + bit;
           bits = (bits & (bits - 1)) >>> 0;
           if (i >= entityCount) continue;
-          Atomics.exchange(bodyDirtyFlags, i, 0);
+          const flags = Atomics.exchange(bodyDirtyFlags, i, 0);
           visited++;
-          changes += syncBodySlot(i);
+          changes += syncBodySlot(i, flags);
         }
       }
       lastBodySyncVisited = visited;
@@ -557,6 +663,15 @@
   let bodySetAngularVelocityFn = null;
   let bodySetAwakeFn = null;
   let bodySetFixedRotationFn = null;
+  let bodySetTypeFn = null;
+  let bodySetLinearDampingFn = null;
+  let bodySetAngularDampingFn = null;
+  let bodySetFilterFn = null;
+  let bodySetFrictionFn = null;
+  let bodySetDensityFn = null;
+  let bodySetShapeBoxFn = null;
+  let bodySetShapeCircleFn = null;
+  let bodySetShapePolygonFn = null;
 
   // Hoisted once — drainCommands must not allocate a fresh handlers object every step
   const cmdHandlers = {
@@ -839,6 +954,49 @@
     );
     bodySetAwakeFn = Module.cwrap('body_set_awake', null, ['number', 'number']);
     bodySetFixedRotationFn = Module.cwrap('body_set_fixed_rotation', null, [
+      'number',
+      'number',
+    ]);
+    bodySetTypeFn = Module.cwrap('body_set_type', null, ['number', 'number']);
+    bodySetLinearDampingFn = Module.cwrap('body_set_linear_damping', null, [
+      'number',
+      'number',
+    ]);
+    bodySetAngularDampingFn = Module.cwrap('body_set_angular_damping', null, [
+      'number',
+      'number',
+    ]);
+    bodySetFilterFn = Module.cwrap('body_set_filter', null, [
+      'number',
+      'number',
+      'number',
+      'number',
+    ]);
+    bodySetFrictionFn = Module.cwrap('body_set_friction', null, [
+      'number',
+      'number',
+    ]);
+    bodySetDensityFn = Module.cwrap('body_set_density', null, [
+      'number',
+      'number',
+    ]);
+    bodySetShapeBoxFn = Module.cwrap('body_set_shape_box', null, [
+      'number',
+      'number',
+      'number',
+      'number',
+      'number',
+    ]);
+    bodySetShapeCircleFn = Module.cwrap('body_set_shape_circle', null, [
+      'number',
+      'number',
+      'number',
+      'number',
+    ]);
+    bodySetShapePolygonFn = Module.cwrap('body_set_shape_polygon', null, [
+      'number',
+      'number',
+      'number',
       'number',
       'number',
     ]);

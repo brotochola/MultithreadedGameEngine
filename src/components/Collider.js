@@ -12,6 +12,7 @@
 import { Component } from '../core/Component.js';
 import { RigidBody } from './RigidBody.js';
 import { MAX_POLYGON_VERTICES, ShapeType } from '../core/ConfigDefaults.js';
+import { BODY_DIRTY, markBodyDirty } from '../box2d/box2dBodySync.js';
 
 class Collider extends Component {
   // Array schema - defines all collision properties
@@ -153,6 +154,7 @@ class Collider extends Component {
     Collider.shapeType[index] = ShapeType.Polygon;
 
     RigidBody.syncMassFromCollider(index);
+    markBodyDirty(index, BODY_DIRTY.GEOMETRY);
     return true;
   }
 
@@ -217,6 +219,31 @@ class Collider extends Component {
   // CUSTOM GETTERS/SETTERS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  get shapeType() {
+    return Collider.shapeType[this.index];
+  }
+  set shapeType(value) {
+    Collider.shapeType[this.index] = value | 0;
+    RigidBody.syncMassFromCollider(this.index);
+    markBodyDirty(this.index, BODY_DIRTY.GEOMETRY);
+  }
+
+  get offsetX() {
+    return Collider.offsetX[this.index];
+  }
+  set offsetX(value) {
+    Collider.offsetX[this.index] = Number(value) || 0;
+    markBodyDirty(this.index, BODY_DIRTY.GEOMETRY);
+  }
+
+  get offsetY() {
+    return Collider.offsetY[this.index];
+  }
+  set offsetY(value) {
+    Collider.offsetY[this.index] = Number(value) || 0;
+    markBodyDirty(this.index, BODY_DIRTY.GEOMETRY);
+  }
+
   get radius() {
     return Collider.radius[this.index];
   }
@@ -225,6 +252,7 @@ class Collider extends Component {
     // Authoring sugar: positive radius ⇒ circle (SAB default 0 is now Box in C numbering)
     if (value > 0) Collider.shapeType[this.index] = ShapeType.Circle;
     RigidBody.syncMassFromCollider(this.index);
+    markBodyDirty(this.index, BODY_DIRTY.GEOMETRY);
   }
 
   get width() {
@@ -236,6 +264,7 @@ class Collider extends Component {
       Collider.shapeType[this.index] = ShapeType.Box;
     }
     RigidBody.syncMassFromCollider(this.index);
+    markBodyDirty(this.index, BODY_DIRTY.GEOMETRY);
   }
 
   get height() {
@@ -247,6 +276,7 @@ class Collider extends Component {
       Collider.shapeType[this.index] = ShapeType.Box;
     }
     RigidBody.syncMassFromCollider(this.index);
+    markBodyDirty(this.index, BODY_DIRTY.GEOMETRY);
   }
 
   get collisionLayer() {
@@ -254,6 +284,7 @@ class Collider extends Component {
   }
   set collisionLayer(value) {
     Collider.collisionLayer[this.index] = value & 31;
+    markBodyDirty(this.index, BODY_DIRTY.FILTER);
   }
 
   get collisionMask() {
@@ -261,6 +292,7 @@ class Collider extends Component {
   }
   set collisionMask(value) {
     Collider.collisionMask[this.index] = value;
+    markBodyDirty(this.index, BODY_DIRTY.FILTER);
   }
 
   get collisionGroupIndex() {
@@ -268,14 +300,25 @@ class Collider extends Component {
   }
   set collisionGroupIndex(value) {
     Collider.collisionGroupIndex[this.index] = value | 0;
+    markBodyDirty(this.index, BODY_DIRTY.FILTER);
+  }
+
+  get friction() {
+    return Collider.friction[this.index];
+  }
+  set friction(value) {
+    Collider.friction[this.index] = Math.max(0, Number(value) || 0);
+    markBodyDirty(this.index, BODY_DIRTY.FRICTION);
   }
 
   addLayerToMask(layer) {
     Collider.collisionMask[this.index] |= (1 << (layer & 31));
+    markBodyDirty(this.index, BODY_DIRTY.FILTER);
   }
 
   removeLayerFromMask(layer) {
     Collider.collisionMask[this.index] &= ~(1 << (layer & 31));
+    markBodyDirty(this.index, BODY_DIRTY.FILTER);
   }
 
   collidesWithLayer(layer) {

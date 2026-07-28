@@ -39,6 +39,8 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
+    "number",
   ]);
   const createBodyCircle = wrap("create_body_circle", "number", [
     "number",
@@ -63,8 +65,12 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
+    "number",
   ]);
   const createBodyPolygon = wrap("create_body_polygon", "number", [
+    "number",
+    "number",
     "number",
     "number",
     "number",
@@ -160,6 +166,7 @@ function createPhysicsApi(Module) {
   ]);
   const bodySetAwake = wrap("body_set_awake", null, ["number", "number"]);
   const bodySetFilter = wrap("body_set_filter", null, [
+    "number",
     "number",
     "number",
     "number",
@@ -521,8 +528,8 @@ function createPhysicsApi(Module) {
       bodySetAwake(this.slot, awake ? 1 : 0);
     }
 
-    setFilter(categoryBits, maskBits = DEFAULT_FILTER_MASK) {
-      bodySetFilter(this.slot, categoryBits, maskBits);
+    setFilter(categoryBits, maskBits = DEFAULT_FILTER_MASK, groupIndex = 0) {
+      bodySetFilter(this.slot, categoryBits, maskBits, groupIndex);
     }
 
     setLinearDamping(damping) {
@@ -592,6 +599,8 @@ function createPhysicsApi(Module) {
         o.angle ?? 0,
         o.hx ?? 0.5,
         o.hy ?? 0.5,
+        o.offsetX ?? 0,
+        o.offsetY ?? 0,
         o.density,
         o.friction,
         o.restitution,
@@ -624,6 +633,8 @@ function createPhysicsApi(Module) {
         o.y ?? 0,
         o.angle ?? 0,
         o.radius ?? 0.5,
+        o.offsetX ?? 0,
+        o.offsetY ?? 0,
         o.density,
         o.friction,
         o.restitution,
@@ -665,6 +676,8 @@ function createPhysicsApi(Module) {
         o.angle ?? 0,
         ptr,
         vertCount,
+        o.offsetX ?? 0,
+        o.offsetY ?? 0,
         o.density,
         o.friction,
         o.restitution,

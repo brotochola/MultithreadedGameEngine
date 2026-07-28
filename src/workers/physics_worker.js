@@ -152,6 +152,8 @@ class PhysicsWorker extends AbstractWorker {
         sleeping: packView(RigidBody.sleeping),
         fixedRotation: packView(RigidBody.fixedRotation),
         colActive: packView(Collider.active),
+        offsetX: packView(Collider.offsetX),
+        offsetY: packView(Collider.offsetY),
         shapeType: packView(Collider.shapeType),
         radius: packView(Collider.radius),
         width: packView(Collider.width),

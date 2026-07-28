@@ -169,16 +169,10 @@ export class ConstraintsTestScene extends Scene {
                 y: startY + i * spacing,
                 vx: 0,
                 vy: 0,
+                isStatic: i === 0,
             });
 
             if (ball) {
-                // First ball is static (anchor point)
-                // Use direct array access since ball is just { index }
-                if (balls.length === 0) {
-                    RigidBody.static[ball.index] = 1;
-                    RigidBody.invMass[ball.index] = 0; // Static = infinite mass
-                }
-
                 // Connect to previous ball (use balls.length - 1, not i - 1)
                 if (balls.length > 0) {
                     const prevBall = balls[balls.length - 1];
@@ -208,16 +202,11 @@ export class ConstraintsTestScene extends Scene {
                 y: y1 + dy * i + (i > 0 && i < segments - 1 ? 50 : 0), // Sag in middle
                 vx: 0,
                 vy: 0,
+                isStatic: i === 0 || i === segments - 1,
             });
 
             if (ball) {
                 balls.push(ball);
-
-                // First and last balls are static (anchors)
-                if (i === 0 || i === segments - 1) {
-                    RigidBody.static[ball.index] = 1;
-                    RigidBody.invMass[ball.index] = 0;
-                }
 
                 // Connect to previous ball
                 if (i > 0 && balls[i - 1]) {

@@ -713,6 +713,8 @@ export declare class GameObject {
   set vx(value: number);
   get vy(): number;
   set vy(value: number);
+  get isStatic(): boolean;
+  set isStatic(value: boolean);
   get speed(): number;
   get velocityAngle(): number;
   get alpha(): number;

@@ -567,6 +567,17 @@ export class GameObject {
     this.setFixedRotation(value);
   }
 
+  /** Box2D body type. Prefer spawnConfig.isStatic or this property over raw SoA writes. */
+  get isStatic() {
+    if (!this._hasComponents.RigidBody) return false;
+    return RigidBody.static[this.index] !== 0;
+  }
+  set isStatic(value) {
+    if (this._hasComponents.RigidBody) {
+      this.rigidBody.static = value;
+    }
+  }
+
   /** Speed (magnitude of velocity) - read-only, computed by physics worker */
   get speed() {
     if (!this._hasComponents.RigidBody) return 0;
@@ -1839,10 +1850,20 @@ export class GameObject {
 
     if (has.RigidBody) {
       RigidBody.active[i] = 1;
+      RigidBody.static[i] = 0;
       RigidBody.ax[i] = 0;
       RigidBody.ay[i] = 0;
       RigidBody.vx[i] = 0;
       RigidBody.vy[i] = 0;
+      RigidBody.angularVelocity[i] = 0;
+      RigidBody.angularAccel[i] = 0;
+      RigidBody.mass[i] = 0;
+      RigidBody.invMass[i] = 0;
+      RigidBody.inertia[i] = 0;
+      RigidBody.invInertia[i] = 0;
+      RigidBody.linearDamping[i] = 0;
+      RigidBody.angularDamping[i] = 0;
+      RigidBody.maxLinearSpeed[i] = 0;
       RigidBody.speed[i] = 0;
       RigidBody.velocityAngle[i] = 0;
       RigidBody.fixedRotation[i] = 0;
@@ -1858,10 +1879,21 @@ export class GameObject {
 
     if (has.Collider) {
       Collider.active[i] = 1;
+      Collider.shapeType[i] = ShapeType.Box;
+      Collider.offsetX[i] = 0;
+      Collider.offsetY[i] = 0;
+      Collider.radius[i] = 0;
+      Collider.width[i] = 0;
+      Collider.height[i] = 0;
+      Collider.isTrigger[i] = 0;
       Collider.collisionLayer[i] = 0;
       Collider.collisionMask[i] = 0xFFFFFFFF;
       Collider.collisionGroupIndex[i] = 0;
       Collider.friction[i] = 0;
+      Collider.visualRange[i] = 0;
+      Collider.polyCount[i] = 0;
+      Collider.polyCentroidX[i] = 0;
+      Collider.polyCentroidY[i] = 0;
     }
 
     if (has.LightEmitter) {
