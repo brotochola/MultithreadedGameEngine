@@ -46,7 +46,7 @@ export class MySoldier extends Person {
     // groupingForce and separationForce now use static class properties (MySoldier.groupingForce, MySoldier.separationForce)
 
     this.collider.visualRange = 250;
-    this.rigidBody.fixedRotation = 1;
+    this.setFixedRotation(1);
   }
 
   /**

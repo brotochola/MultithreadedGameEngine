@@ -1,4 +1,4 @@
-// WeedJS bridge — loaded by box2d_wasm.js?mode=weedjs
+// WeedJS bridge — loaded by box2d_wasm.js (always).
 // Owns Module; driven by Atomics handshake from physics_worker (ESM).
 // Skip on em-pthread pool workers.
 
@@ -7,7 +7,11 @@
     return;
   }
 
-  importScripts('game-constants.js', 'physics-api.js', 'box2dCommandRing.impl.js');
+  importScripts(
+    'box2dConstants.impl.js',
+    'physics-api.js',
+    'box2dCommandRing.impl.js',
+  );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
 
   const CTRL = {
@@ -16,7 +20,6 @@
     ENTITY_COUNT: 2,
   };
 
-  const WEED_SHAPE = { CIRCLE: 0, BOX: 1, POLYGON: 2 };
   const MAX_POLY_VERTS = 8;
   // Units: px, px/s, px/s², rad, rad/s (Box2D native — no frame-unit scale).
 
@@ -28,7 +31,6 @@
   let cmdF32 = null;
   let views = null;
   let hasBody = null;
-  let appliedFixedRotation = null;
   let denseList = null;
   let denseCount = 0;
   let pxChan = null;
@@ -101,10 +103,7 @@
     for (let i = 0; i < count; i++) {
       pxChan[i] = views.x[i];
       pyChan[i] = views.y[i];
-      rotChan[i] =
-        (views.shapeType[i] | 0) === WEED_SHAPE.BOX || isFixedRotation(i)
-          ? 0
-          : views.rotation[i];
+      rotChan[i] = isFixedRotation(i) ? 0 : views.rotation[i];
       vxChan[i] = views.vx[i];
       vyChan[i] = views.vy[i];
       angChan[i] = views.angularVelocity[i];
@@ -134,12 +133,12 @@
 
   function createBodyForEntity(i) {
     const isStatic = views.rbStatic[i] !== 0;
-    const type = isStatic ? BODY_TYPE.STATIC : BODY_TYPE.DYNAMIC;
+    const type = isStatic ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC;
     const shape = views.shapeType[i] | 0;
     const friction = views.contactFriction[i] || 0.3;
     const linearDamping = views.friction[i] || 0;
     const angularDamping = views.angularDrag[i] || 0;
-    const angle = shape === WEED_SHAPE.BOX ? 0 : views.rotation[i];
+    const angle = isFixedRotation(i) ? 0 : views.rotation[i];
     const opts = {
       type,
       x: views.x[i],
@@ -163,16 +162,16 @@
     };
 
     try {
-      if (shape === WEED_SHAPE.CIRCLE) {
+      if (shape === ShapeType.Circle) {
         const r = views.radius[i];
         if (!(r > 0)) return false;
         world.createCircle({ ...opts, radius: r });
-      } else if (shape === WEED_SHAPE.BOX) {
+      } else if (shape === ShapeType.Box) {
         const hx = views.width[i] * 0.5;
         const hy = views.height[i] * 0.5;
         if (!(hx > 0 && hy > 0)) return false;
         world.createBox({ ...opts, hx, hy });
-      } else if (shape === WEED_SHAPE.POLYGON) {
+      } else if (shape === ShapeType.Polygon) {
         const count = views.polyCount[i] | 0;
         if (count < 3) return false;
         const base = i * MAX_POLY_VERTS;
@@ -202,7 +201,6 @@
       if (want && !have) {
         if (createBodyForEntity(i)) {
           hasBody[i] = 1;
-          appliedFixedRotation[i] = isFixedRotation(i) ? 1 : 0;
         }
       } else if (!want && have) {
         try {
@@ -211,14 +209,8 @@
           /* slot may already be clear */
         }
         hasBody[i] = 0;
-        appliedFixedRotation[i] = 0;
       }
       if (hasBody[i]) {
-        const flag = isFixedRotation(i) ? 1 : 0;
-        if (flag !== appliedFixedRotation[i]) {
-          bodySetFixedRotationFn(i, flag);
-          appliedFixedRotation[i] = flag;
-        }
         denseList[denseCount++] = i;
       }
     }
@@ -238,10 +230,8 @@
       setTransform(entity, x, y, angle) {
         if (!hasBody[entity]) return;
         bodySetAwakeFn(entity, 1);
-        bodySetTransformFn(entity, x, y, angle);
-        if ((views.shapeType[entity] | 0) === WEED_SHAPE.BOX) {
-          rotChan[entity] = 0;
-        }
+        const a = isFixedRotation(entity) ? 0 : angle;
+        bodySetTransformFn(entity, x, y, a);
       },
       setVelocity(entity, vx, vy) {
         if (!hasBody[entity]) return;
@@ -253,15 +243,22 @@
         bodySetAwakeFn(entity, 1);
         const x = pxChan[entity];
         const y = pyChan[entity];
-        bodySetTransformFn(entity, x, y, angle);
-        if ((views.shapeType[entity] | 0) === WEED_SHAPE.BOX) {
-          rotChan[entity] = 0;
-        }
+        const a = isFixedRotation(entity) ? 0 : angle;
+        bodySetTransformFn(entity, x, y, a);
       },
       setAngularVelocity(entity, w) {
         if (!hasBody[entity]) return;
         if (w !== 0) bodySetAwakeFn(entity, 1);
         bodySetAngularVelocityFn(entity, w);
+      },
+      setFixedRotation(entity, flag) {
+        if (!hasBody[entity]) return;
+        const f = flag ? 1 : 0;
+        bodySetFixedRotationFn(entity, f);
+        if (f) {
+          rotChan[entity] = 0;
+          bodySetAngularVelocityFn(entity, 0);
+        }
       },
     });
   }
@@ -316,7 +313,7 @@
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
       if (i >= rotLen) continue;
-      if ((views.shapeType[i] | 0) === WEED_SHAPE.BOX || isFixedRotation(i)) {
+      if (isFixedRotation(i)) {
         rotChan[i] = 0;
       }
     }
@@ -427,7 +424,6 @@
     bindWeedViews(data.views);
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
-    appliedFixedRotation = new Uint8Array(entityCount);
     denseList = new Uint16Array(entityCount);
 
     const ready = world.getReadyPayload();

@@ -87,7 +87,7 @@ export class RigidBody extends Component {
           massInitialized = true;
         }
       } else if (shapeType === 1) {
-        // AABB Box — rectangle area mass
+        // Box — rectangle area mass
         const width = Collider.width[index];
         const height = Collider.height[index];
         if (width > 0 && height > 0) {
@@ -129,7 +129,7 @@ export class RigidBody extends Component {
 
   /**
    * Recompute rotational inertia from collider geometry and mass.
-   * Circle: I = 0.5 * m * r²; AABB Box: I = m * (w² + h²) / 12;
+   * Circle: I = 0.5 * m * r²; Box: I = m * (w² + h²) / 12;
    * Polygon: Box2D-style about centroid.
    * Static bodies always get invInertia = 0.
    */

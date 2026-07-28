@@ -14,4 +14,5 @@ export const enqueueSetTransform = R.enqueueSetTransform;
 export const enqueueSetVelocity = R.enqueueSetVelocity;
 export const enqueueSetAngle = R.enqueueSetAngle;
 export const enqueueSetAngularVelocity = R.enqueueSetAngularVelocity;
+export const enqueueSetFixedRotation = R.enqueueSetFixedRotation;
 export const drainCommandRing = R.drainCommandRing;

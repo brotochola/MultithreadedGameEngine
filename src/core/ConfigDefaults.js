@@ -21,14 +21,22 @@ export const MAX_POLYGON_VERTICES = 8;
 export const ShapeType = Object.freeze({
   /** Circle collider - uses radius property */
   Circle: 0,
-  /** Axis-aligned box/rectangle - uses width and height (ignores Transform.rotation) */
+  /**
+   * Box2D box — local AABB (width/height), world-rotated by Transform.rotation
+   * unless RigidBody.fixedRotation / static.
+   */
   Box: 1,
   /**
-   * Convex polygon (Box2D-style) — local verts/normals via Collider.makeBox / makePolygon.
+   * Convex polygon — local verts/normals via Collider.makePolygon.
    * Oriented by Transform.rotation. Max MAX_POLYGON_VERTICES vertices.
    */
   Polygon: 2,
 });
+
+export {
+  Box2dBodyType,
+  STATE_CHANNELS,
+} from '../box2d/box2dConstants.js';
 
 /**
  * Blend mode enum — all PixiJS-supported blend modes.

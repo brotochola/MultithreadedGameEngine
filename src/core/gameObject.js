@@ -40,8 +40,9 @@ import {
   enqueueSetVelocity,
   enqueueSetAngle,
   enqueueSetAngularVelocity,
+  enqueueSetFixedRotation,
   isCommandRingBound,
-} from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
+} from '../box2d/box2dCommandRing.js';
 // Export Keyboard for easy access (Mouse imported separately to avoid circular dep)
 // Note: SpriteSheetRegistry is registered globally in AbstractWorker.registerCoreClasses()
 export { Keyboard, SpriteSheetRegistry, SceneBridge };
@@ -548,6 +549,19 @@ export class GameObject {
     }
   }
 
+  /**
+   * Lock / unlock body rotation (Box2D motionLocks.angularZ).
+   * Prefer this or setFixedRotation() over raw RigidBody.fixedRotation[i]
+   * so the command ring updates Box2D when a body already exists.
+   */
+  get fixedRotation() {
+    if (!this._hasComponents.RigidBody) return 0;
+    return RigidBody.fixedRotation[this.index];
+  }
+  set fixedRotation(value) {
+    this.setFixedRotation(value);
+  }
+
   /** Speed (magnitude of velocity) - read-only, computed by physics worker */
   get speed() {
     if (!this._hasComponents.RigidBody) return 0;
@@ -925,6 +939,24 @@ export class GameObject {
       RigidBody.vy[i] = vy;
       if (isCommandRingBound()) {
         enqueueSetVelocity(i, vx, vy);
+      }
+    }
+    return this;
+  }
+
+  /**
+   * Set fixedRotation (writes SoA + enqueues Box2D SET_FIXED_ROTATION).
+   * Direct SoA poke RigidBody.fixedRotation[i] skips Box2D after body create.
+   * @param {number|boolean} flag - 0/false free, 1/true locked
+   * @returns {this}
+   */
+  setFixedRotation(flag) {
+    if (this._hasComponents.RigidBody) {
+      const i = this.index;
+      const v = flag ? 1 : 0;
+      RigidBody.fixedRotation[i] = v;
+      if (isCommandRingBound()) {
+        enqueueSetFixedRotation(i, v);
       }
     }
     return this;

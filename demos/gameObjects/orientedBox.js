@@ -1,8 +1,9 @@
-// OrientedBox - Rigid crate as Box2D-style 4-vert Polygon (makeBox)
+// OrientedBox - Rigid crate as ShapeType.Box (rotates with body)
 
 import WEED from '/src/index.js';
 
-const { GameObject, RigidBody, Collider, SpriteRenderer } = WEED;
+const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
+const { ShapeType } = enums;
 
 export class OrientedBox extends GameObject {
     static scriptUrl = import.meta.url;
@@ -20,7 +21,9 @@ export class OrientedBox extends GameObject {
         const height = spawnConfig.height ?? size;
         const texSize = 100;
 
-        Collider.makeBox(this.index, width * 0.5, height * 0.5);
+        this.collider.shapeType = ShapeType.Box;
+        this.collider.width = width;
+        this.collider.height = height;
         this.collider.isTrigger = 0;
         this.collider.contactFriction = 1;
         this.collider.visualRange = Math.hypot(width, height) * 0.5 + 200;

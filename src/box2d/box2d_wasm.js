@@ -4,12 +4,7 @@ var Module=typeof Module!="undefined"?Module:{};var ENVIRONMENT_IS_WEB=!!globalT
     return;
   }
   try {
-    const mode = new URL(self.location.href).searchParams.get('mode');
-    if (mode === 'weedjs') {
-      importScripts('weedjs_post.js');
-    } else {
-      importScripts('physics_post.js');
-    }
+    importScripts('weedjs_post.js');
   } catch (err) {
     console.error('[box2d_wasm] post-js dispatch failed', err);
   }

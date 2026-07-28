@@ -28,7 +28,7 @@ class Collider extends Component {
     // Circle shape (also polygon skin radius; 0 = sharp)
     radius: Float32Array,
 
-    // Box shape (AABB); also filled by makeBox for debug/picking convenience
+    // Box shape (local AABB extents; rotates with Transform unless fixedRotation)
     width: Float32Array,
     height: Float32Array,
 
@@ -68,45 +68,6 @@ class Collider extends Component {
    */
   static polyBase(index) {
     return index * MAX_POLYGON_VERTICES;
-  }
-
-  /**
-   * Box2D b2MakeBox — axis-aligned rectangle in local space (±halfW, ±halfH).
-   * Sets shapeType Polygon, polyCount=4, centroid 0, and width/height for convenience.
-   * @param {number} index
-   * @param {number} halfW
-   * @param {number} halfH
-   * @returns {boolean}
-   */
-  static makeBox(index, halfW, halfH) {
-    if (!(halfW > 0) || !(halfH > 0)) return false;
-    const base = Collider.polyBase(index);
-    const vx = Collider.polyVertexX;
-    const vy = Collider.polyVertexY;
-    const nx = Collider.polyNormalX;
-    const ny = Collider.polyNormalY;
-
-    // CCW verts, interior left of each edge (y-down screens still store CCW in local math)
-    vx[base] = -halfW; vy[base] = -halfH;
-    vx[base + 1] = halfW; vy[base + 1] = -halfH;
-    vx[base + 2] = halfW; vy[base + 2] = halfH;
-    vx[base + 3] = -halfW; vy[base + 3] = halfH;
-
-    // Outward normals
-    nx[base] = 0; ny[base] = -1;
-    nx[base + 1] = 1; ny[base + 1] = 0;
-    nx[base + 2] = 0; ny[base + 2] = 1;
-    nx[base + 3] = -1; ny[base + 3] = 0;
-
-    Collider.polyCount[index] = 4;
-    Collider.polyCentroidX[index] = 0;
-    Collider.polyCentroidY[index] = 0;
-    Collider.width[index] = halfW * 2;
-    Collider.height[index] = halfH * 2;
-    Collider.shapeType[index] = ShapeType.Polygon;
-
-    RigidBody.syncMassFromCollider(index);
-    return true;
   }
 
   /**
@@ -246,10 +207,6 @@ class Collider extends Component {
     // Unit-density inertia about centroid; scale to actual mass
     const unitI = I / 12;
     return (mass / area) * unitI;
-  }
-
-  makeBox(halfW, halfH) {
-    return Collider.makeBox(this.index, halfW, halfH);
   }
 
   makePolygon(points) {

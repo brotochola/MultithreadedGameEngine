@@ -175,6 +175,8 @@ import { AbstractWorker } from './workers/AbstractWorker.js';
 import {
   ShapeType,
   MAX_POLYGON_VERTICES,
+  Box2dBodyType,
+  STATE_CHANNELS,
   BLEND_MODES,
   DEFAULT_LAYERS,
   CAMERA_TYPES,
@@ -183,6 +185,8 @@ import {
 const enums = Object.freeze({
   ShapeType,
   MAX_POLYGON_VERTICES,
+  Box2dBodyType,
+  STATE_CHANNELS,
   BLEND_MODES,
   DEFAULT_LAYERS,
   CAMERA_TYPES,

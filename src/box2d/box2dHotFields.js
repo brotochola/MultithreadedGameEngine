@@ -3,15 +3,9 @@
 
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
+import { STATE_CHANNELS } from './box2dConstants.js';
 
-export const STATE_CHANNELS = Object.freeze({
-  X: 0,
-  Y: 1,
-  ROTATION: 2,
-  VX: 3,
-  VY: 4,
-  ANG_VEL: 5,
-});
+export { STATE_CHANNELS };
 
 /**
  * @param {{

@@ -10,6 +10,7 @@
     SET_VELOCITY: 2, // entity, vx, vy
     SET_ANGLE: 3, // entity, angle
     SET_ANGULAR_VELOCITY: 4, // entity, w
+    SET_FIXED_ROTATION: 5, // entity, flag (0|1)
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -90,6 +91,10 @@
     return enqueue(BOX2D_CMD.SET_ANGULAR_VELOCITY, entity, w, 0, 0, 0);
   }
 
+  function enqueueSetFixedRotation(entity, flag) {
+    return enqueue(BOX2D_CMD.SET_FIXED_ROTATION, entity, flag ? 1 : 0, 0, 0, 0);
+  }
+
   function drainCommandRing(i32, f32, handlers) {
     if (!i32 || !f32 || !handlers) return 0;
     var cap = i32[HDR_CAP] | 0;
@@ -117,6 +122,9 @@
         case BOX2D_CMD.SET_ANGULAR_VELOCITY:
           if (handlers.setAngularVelocity) handlers.setAngularVelocity(entity, a);
           break;
+        case BOX2D_CMD.SET_FIXED_ROTATION:
+          if (handlers.setFixedRotation) handlers.setFixedRotation(entity, a);
+          break;
         default:
           break;
       }
@@ -139,6 +147,7 @@
     enqueueSetVelocity: enqueueSetVelocity,
     enqueueSetAngle: enqueueSetAngle,
     enqueueSetAngularVelocity: enqueueSetAngularVelocity,
+    enqueueSetFixedRotation: enqueueSetFixedRotation,
     drainCommandRing: drainCommandRing,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

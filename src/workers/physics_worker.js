@@ -14,13 +14,13 @@ import { AbstractWorker } from './AbstractWorker.js';
 import { PHYSICS_DEFAULTS } from '../core/ConfigDefaults.js';
 import { PHYSICS_STATS, createStatsWriter } from './workers-utils.js';
 import { validatePhysicsConfig } from '../core/utils.js';
-import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
+import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import {
   createCommandRingSab,
   bindCommandRing,
-} from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
+} from '../box2d/box2dCommandRing.js';
 
-const BOX2D_WORKER_URL = '/src/box2d_3.0_wasm_sab/box2d_wasm.js?mode=weedjs';
+const BOX2D_WORKER_URL = '/src/box2d/box2d_wasm.js';
 
 const CTRL = {
   STATE: 0,

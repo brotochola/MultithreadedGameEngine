@@ -498,8 +498,10 @@ function createPhysicsApi(Module) {
   }
 
   class PhysicsWorld {
-    static BODY_TYPE = BODY_TYPE;
-    static SHAPE_TYPE = SHAPE_TYPE;
+    static BODY_TYPE = typeof Box2dBodyType !== 'undefined' ? Box2dBodyType : BODY_TYPE;
+    static Box2dBodyType = typeof Box2dBodyType !== 'undefined' ? Box2dBodyType : BODY_TYPE;
+    static SHAPE_TYPE = typeof ShapeType !== 'undefined' ? ShapeType : SHAPE_TYPE;
+    static ShapeType = typeof ShapeType !== 'undefined' ? ShapeType : SHAPE_TYPE;
     static DEFAULT_MATERIAL = DEFAULT_MATERIAL;
     static EVENT_HEADER = EVENT_HEADER;
 

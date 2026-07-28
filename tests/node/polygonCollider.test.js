@@ -17,16 +17,14 @@ function initComponents(count = 4) {
   }
 }
 
-test('Collider.makeBox writes 4 verts and Polygon shapeType', () => {
+test('ShapeType.Box + width/height syncs mass from rectangle area', () => {
   initComponents();
   assert.equal(MAX_POLYGON_VERTICES, 8);
-  assert.ok(Collider.makeBox(0, 10, 20));
-  assert.equal(Collider.shapeType[0], ShapeType.Polygon);
-  assert.equal(Collider.polyCount[0], 4);
-  assert.equal(Collider.width[0], 20);
-  assert.equal(Collider.height[0], 40);
-  assert.ok(RigidBody.mass[0] > 0);
-  // Area = 20*40 = 800
+  Collider.shapeType[0] = ShapeType.Box;
+  Collider.width[0] = 20;
+  Collider.height[0] = 40;
+  RigidBody.syncMassFromCollider(0);
+  assert.equal(Collider.shapeType[0], ShapeType.Box);
   assert.ok(Math.abs(RigidBody.mass[0] - 800) < 1e-3);
 });
 

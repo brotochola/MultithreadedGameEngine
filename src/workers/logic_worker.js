@@ -21,8 +21,8 @@ import { AbstractWorker } from './AbstractWorker.js';
 
 import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
 import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
-import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
-import { bindCommandRing } from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
+import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
+import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 
 // Note: Core engine classes (GameObject, Mouse, Keyboard, etc.) and components
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker
