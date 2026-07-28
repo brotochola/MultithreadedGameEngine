@@ -579,6 +579,17 @@ if (Mouse.clicked) { ... }             // alias for isButton0Pressed
 // Mouse movement deltas: x - Mouse.prevX (prev values snapshotted at end of frame
 // on main thread and every logic worker via Mouse.snapshotPreviousFrame()).
 
+// Input — Gamepad (multipad, W3C standard mapping; main thread polls navigator.getGamepads)
+// Pad index first on indexed APIs. Edge flags need updateEdgeFlags() (engine calls it).
+if (WEED.Gamepad.isConnected()) { ... }              // pad 0
+if (WEED.Gamepad.isConnected(1)) { ... }             // pad 1..3 (MAX_PADS = 4)
+const lx = WEED.Gamepad.leftX;                       // pad-0 stick (deadzoned)
+const ly = WEED.Gamepad.getAxis(1, 1);               // pad 1 leftY
+if (WEED.Gamepad.isADown) { ... }                    // held
+if (WEED.Gamepad.isAPressed) { ... }                 // press edge (SAB counters)
+if (WEED.Gamepad.isButtonDown(1, WEED.Gamepad.B)) { ... }
+const lt = WEED.Gamepad.getButton(0, WEED.Gamepad.LT); // analog trigger 0..1
+
 // Camera
 WEED.Camera.follow(this.x, this.y);
 WEED.Camera.setZoom(1.5);
@@ -639,7 +650,7 @@ Smoke test: `node tests/bench/scene-cycle-smoke.mjs` (Playwright, heap + static 
 
 ## GameEngine Browser Hardening
 
-The engine automatically handles fullscreen web game boilerplate. All event listeners (keyboard, mouse, wheel) are owned by `GameEngine` and forwarded to the active scene via callbacks (`onKeyDown`, `onMouseDown`, etc.). Listeners survive scene transitions — no gap between scenes.
+The engine automatically handles fullscreen web game boilerplate. Keyboard/mouse/wheel listeners are owned by `GameEngine` and forwarded to the active scene (`onKeyDown`, `onMouseDown`, etc.). Gamepad state is **poll-based**: `Scene.updateInternal` calls `Gamepad.poll()` each frame (no DOM stream). Listeners survive scene transitions — no gap between scenes.
 
 ```javascript
 const game = new GameEngine({

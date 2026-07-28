@@ -596,7 +596,7 @@ The big picture. Who writes what, who reads what.
 | Stats buffers                                 | Each worker (own slot)                                                                       | Main thread                                  |
 | Query results                                 | Logic worker 0                                                                               | Logic, pre_render                            |
 | Audio mixer SAB (slot array)                  | Any thread (`SoundManager.play`) + worklet (`cursor`, `state` free)                          | `AudioMixerProcessor` worklet (audio thread) |
-| Input/mouse/camera/debug                      | Main thread                                                                                  | All workers                                  |
+| Input/mouse/gamepad/camera/debug              | Main thread                                                                                  | All workers                                  |
 
 ---
 

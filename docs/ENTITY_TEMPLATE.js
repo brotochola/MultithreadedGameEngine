@@ -1,7 +1,7 @@
 // Entity Template - engine-level starter (no demo dependencies)
 import WEED from '/src/index.js';
 
-const { GameObject, RigidBody, Collider, SpriteRenderer, SoundManager, Mouse } = WEED;
+const { GameObject, RigidBody, Collider, SpriteRenderer, SoundManager, Mouse, Gamepad } = WEED;
 
 class MyEntity extends GameObject {
   // Required for script auto-loading in worker contexts
@@ -54,6 +54,15 @@ class MyEntity extends GameObject {
     }
     if (Mouse.isButton0Released) {
       // release: fires once on mouseup
+    }
+
+    // Gamepad — pad 0 ergonomics (also Gamepad.isButtonDown(pad, Gamepad.A), getAxis, …)
+    if (Gamepad.isConnected()) {
+      RigidBody.ax[i] += Gamepad.leftX * 0.5 * dtRatio;
+      RigidBody.ay[i] += Gamepad.leftY * 0.5 * dtRatio;
+      if (Gamepad.isAPressed) {
+        // jump / once-per-press action
+      }
     }
 
     // Example neighbor iteration

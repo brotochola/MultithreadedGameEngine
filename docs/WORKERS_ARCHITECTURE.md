@@ -115,6 +115,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 | `nextTickData`           | Read/**Write**                       | Tick decimation countdown per entity                                                   |
 | `inputData`              | Read                                 | Keyboard held state + press counters (shared across all workers via `Keyboard`)        |
 | `mouseData`              | Read                                 | Mouse position + buttons                                                               |
+| `gamepadData`            | Read                                 | Multipad axes/buttons + press counters (`Gamepad`; main thread writes via `poll()`)    |
 | `cameraData`             | Read/**Write**                       | Camera state SAB `[zoom,x,y,followX,followY,targetZoom]` (prefer single writer policy) |
 | `queryResultsSAB`        | Read, **published write** (logic 0)  | Triple-buffered pre-computed active query snapshots                                    |
 | `queryVersionSAB`        | Read/**Write** (logic 0 maintenance) | Shared invalidation counter for cached non-precomputed active queries                  |
@@ -130,6 +131,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 - Runs `processListUpdates()` before any ticks (despawns first, spawns second)
 - Updates `activeEntitiesData` and per-type active lists, then publishes complete pre-computed active query snapshots
 - All logic workers call `Mouse.updateEdgeFlags()` before entity ticks (per-worker edge detection for `isButton0Pressed` etc.) and `Mouse.snapshotPreviousFrame()` after ticks
+- All workers call `Gamepad.updateEdgeFlags()` once per frame in `AbstractWorker.gameLoop` (same SAB counter pattern as Keyboard/Mouse). Main thread polls `navigator.getGamepads()` in `Scene.updateInternal` before edge flags.
 
 **Active query snapshots:** pre-computed `queryActiveEntities()` results use complete published snapshots in `queryResultsSAB`. Readers may see a slightly stale active-query result, but they do not observe logic0 shifting the same list in place.
 
@@ -471,7 +473,8 @@ Not a Web Worker — an `AudioWorkletProcessor` running on the browser's **audio
 - Active entities partitioned by: `idx % totalWorkers === workerIndex` (over per-type active lists)
 - Collision pairs partitioned by: `min(entityA, entityB) % totalWorkers === myIndex`
 - Impact processing: `targetId % totalWorkers === myIndex`
-- Logic worker 0 has extra duties: list mutations, spawn/despawn processing, mouse state
+- Logic worker 0 has extra duties: list mutations, spawn/despawn processing
+- Keyboard / Mouse / Gamepad: main thread writes SAB; all workers read (Gamepad via `poll()` each frame)
 
 ### Single-Instance Workers
 
