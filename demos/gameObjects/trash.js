@@ -45,6 +45,7 @@ export class Trash extends Lootable {
 
         this.lootableComponent.health = 1;
         this.lootableComponent.dropMoney = 100;
+        this.setFixedRotation(1);
     }
 
     recieveDamage(damage) {

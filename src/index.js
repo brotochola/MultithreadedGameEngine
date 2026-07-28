@@ -105,6 +105,15 @@ export { Flash } from './core/Flash.js';
 // Note: Workers are typically loaded as separate files via new Worker()
 // but we export them here for bundling purposes
 export { AbstractWorker } from './workers/AbstractWorker.js';
+export {
+  ShapeType,
+  MAX_POLYGON_VERTICES,
+  Box2dBodyType,
+  STATE_CHANNELS,
+  BLEND_MODES,
+  DEFAULT_LAYERS,
+  CAMERA_TYPES,
+} from './core/ConfigDefaults.js';
 
 // Worker files (logic_worker, physics_worker, pixi_worker, spatial_worker, pixi4webworkers)
 // are designed to be loaded as Web Workers and don't have default exports,

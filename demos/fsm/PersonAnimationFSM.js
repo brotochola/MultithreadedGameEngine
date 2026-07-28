@@ -23,12 +23,12 @@ export const STICK_DURATION_MS = (STICK_FRAMES * NATURAL_DURATION) / ACTION_ANIM
 // const HURT_DURATION_MS = (2 * NATURAL_DURATION) / ACTION_ANIM_SPEED;
 export const DYING_DURATION_MS = (HURT_FRAMES * NATURAL_DURATION) / DYING_ANIM_SPEED;
 
-// Speed threshold for running vs walking
-export const RUN_SPEED_THRESHOLD = 1.75;
-export const WALK_SPEED_THRESHOLD = 0.066;
-const RUN_ANIMATION_MULTIPLIER = 0.12;
-const WALK_ANIMATION_MULTIPLIER = 0.166;
-const IDLE_ANIMATION_MULTIPLIER = 0.05;
+// Speed thresholds / anim rates — RigidBody.speed is px/s (was frame-vel)
+export const RUN_SPEED_THRESHOLD = 105; // was 1.75 frame → ×60
+export const WALK_SPEED_THRESHOLD = 4; // was 0.066 frame → ×60 (~3.96)
+const RUN_ANIMATION_MULTIPLIER = 0.002; // was 0.12 / 60
+const WALK_ANIMATION_MULTIPLIER = 0.00277; // was 0.166 / 60
+const IDLE_ANIMATION_MULTIPLIER = 0.05; // idle is not speed-scaled
 
 // ==========================================
 // IDLE STATE - standing still

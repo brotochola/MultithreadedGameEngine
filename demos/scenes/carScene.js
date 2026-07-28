@@ -241,13 +241,13 @@ export class CarScene extends WEED.Scene {
         const spawnRadius = 1000;
 
         for (let i = 0; i < 200; i++) {
-            const offsetX = 1000+i*100;
-            const offsetY = 500+i*10
+            const offsetX = 1000 + i * 100;
+            const offsetY = 500 + i * 10
             const sprite = carSprites[Math.floor(rng() * carSprites.length)];
 
             AICar.spawn({
-                x:  offsetX,
-                y:  offsetY,
+                x: offsetX,
+                y: offsetY,
                 sprite: sprite,
             });
         }

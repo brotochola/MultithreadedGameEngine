@@ -246,7 +246,7 @@ export class Car extends GameObject {
         // const vy = RigidBody.vy[pi];
         const speed = RigidBody.speed[pi];
 
-        if (speed < 15 || Math.random() > 0.35) return;
+        if (speed < 90 || Math.random() > 0.35) return; // px/s
 
         const angle = this.carComponent.angle;
         const angleDeg = (angle * 180) / Math.PI;
@@ -275,13 +275,14 @@ export class Car extends GameObject {
     }
 
     /** Apply force opposing lateral velocity - tire-like friction. Resists sliding from collisions. */
-    _applyLateralFriction(dtRatio) {
+    _applyLateralFriction(_dtRatio) {
         const angle = this.carComponent.angle;
         const forwardX = Math.cos(angle);
         const forwardY = Math.sin(angle);
         const lateralX = -forwardY;
         const lateralY = forwardX;
-        const strength = (1 - this.carComponent.lateralDampening) * 900 * dtRatio; // was 0.25 frame
+        // px/s² per (px/s) lateral — was 0.25 on frame-vel → ×60 (damping, not Δv)
+        const strength = (1 - this.carComponent.lateralDampening) * 15;
 
         for (const partIdx of this._getAllPartIndices()) {
             const vx = RigidBody.vx[partIdx];
@@ -292,7 +293,7 @@ export class Car extends GameObject {
         }
     }
 
-    applyForces(forwardForce, turnForce, dtRatio = 1) {
+    applyForces(forwardForce, turnForce, _dtRatio = 1) {
         const { frontIndices, backIndices } = this._getFrontBackParts();
         const frontActive = frontIndices.every(i => Transform.active[i]);
         const backActive = backIndices.every(i => Transform.active[i]);
@@ -351,11 +352,13 @@ export class Car extends GameObject {
 
         const turnMagnitude = turnForce !== 0 ? Math.abs(turnForce) * steerFactor : 0;
         const forwardScale = turnMagnitude > 0 ? 1 / (1 + turnMagnitude * 1.5) : 1;
-        const scaledForward = forwardForce * forwardScale * dtRatio;
+        // forwardForce already px/s² — do not * dtRatio
+        const scaledForward = forwardForce * forwardScale;
 
         const slipSpeed = this.carComponent.slipSpeed;
         const traction = speed > slipSpeed ? this.carComponent.tractionLoose : this.carComponent.tractionTight;
-        const redirectK = 0.48 * traction * dtRatio; // was 0.008 on frame vel
+        // was 0.008 on frame vel → ×60 into accel; no * dtRatio
+        const redirectK = 0.48 * traction;
 
         if (speed > 60) { // px/s — was 1 frame unit
             const dir = forwardSpeed >= 0 ? 1 : -1;
@@ -377,7 +380,8 @@ export class Car extends GameObject {
         }
 
         if (turnForce !== 0) {
-            const effectiveTurn = turnForce * steerFactor * steerDirection * dtRatio;
+            // turnForce is control units (~0.36); ×3600 → px/s² (frame Δv → continuous)
+            const effectiveTurn = turnForce * steerFactor * steerDirection * 3600;
             for (let i = 0; i < partCount; i++) {
                 const partIdx = this.carComponent[PART_KEYS[i]];
                 const col = i % cols;

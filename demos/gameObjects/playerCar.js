@@ -5,14 +5,14 @@ import WEED from '/src/index.js';
 import { Car } from './car.js';
 import { CarComponent } from '../components/carComponent.js';
 
-const { Keyboard, SpriteRenderer, RigidBody, Camera } = WEED;
+const { Keyboard, SpriteRenderer, RigidBody, Camera, Transform } = WEED;
+// Velocities are px/s — old constants assumed frame-vel (~1/60)
 const ZOOM_AT_MIN_SPEED = 1.0;
 const ZOOM_AT_MAX_SPEED = 0.25;
 const SPEED_FOR_MIN_ZOOM = 0;
-const SPEED_FOR_MAX_ZOOM = 60;
-const LOOK_AHEAD_PER_SPEED = 15;
-const CAMERA_SMOOTH = 0.015;
-const CAMERA_FOLLOW_SMOOTH = 0.05//0.05;
+const SPEED_FOR_MAX_ZOOM = 600; // px/s — was 60 (frame-vel era / too low for px/s)
+const LOOK_AHEAD_SEC = 0.25; // was vx_frame * 15 ≡ vx_pxs * 0.25
+const CAMERA_FOLLOW_SMOOTH = 0.05;
 const SHADOW_TEXTURE_SIZE = 200;
 
 export class PlayerCar extends Car {
@@ -40,11 +40,11 @@ export class PlayerCar extends Car {
         const vx = CarComponent.vx[player];
         const vy = CarComponent.vy[player];
 
-        const futureX = centerX + vx * LOOK_AHEAD_PER_SPEED;
-        const futureY = centerY + vy * LOOK_AHEAD_PER_SPEED;
+        const futureX = centerX + vx * LOOK_AHEAD_SEC;
+        const futureY = centerY + vy * LOOK_AHEAD_SEC;
         Camera.follow(futureX, futureY, CAMERA_FOLLOW_SMOOTH, dtRatio);
 
-        const speed = Math.abs(vx) + Math.abs(vy)
+        const speed = Math.hypot(vx, vy);
         const speedT = Math.min(
             1,
             Math.max(0, (speed - SPEED_FOR_MIN_ZOOM) / (SPEED_FOR_MAX_ZOOM - SPEED_FOR_MIN_ZOOM))
@@ -73,7 +73,7 @@ export class PlayerCar extends Car {
         // S - Brake (stronger when going forward) or reverse
         if (Keyboard.s || Keyboard.arrowdown) {
             const forwardSpeed = this._getForwardSpeed();
-            const isMovingForward = forwardSpeed > 1;
+            const isMovingForward = forwardSpeed > 60; // px/s — was 1 frame unit
             forwardForce -= isMovingForward ? accel * brakeMult : accel;
         }
 

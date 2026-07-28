@@ -24,15 +24,16 @@ export class CarPart extends GameObject {
         this.collider.isTrigger = 0; // Physical collision
         this.collider.visualRange = radius * 3;
 
-        // Configure physics - tuned for arcade feel
-        this.rigidBody.maxVel = 24000;
+        // Cap in px/s — soft-body constraints not on Box2D yet; without cap parts fly apart
+        this.rigidBody.maxVel = 600; // was 400 frame → 24000; keep arcade ceiling
         this.rigidBody.minSpeed = 0;
-        this.rigidBody.friction = 0.01;  // Slight coast drag when off gas
+        this.rigidBody.friction = 0.05;  // a bit more coast drag until joints land
 
         // Ensure physics are active and awake
         this.rigidBody.sleeping = 0;
         this.rigidBody.stillnessTime = 0;
         this.rigidBody.static = 0;  // Not static - can move
+        this.setFixedRotation(1);
     }
 
     onDespawned() {
@@ -49,10 +50,13 @@ export class CarPart extends GameObject {
         const radius = this.collider.radius;
         const speed = RigidBody.speed[this.index];
 
-        const numSparks = Math.floor(Math.abs(RigidBody.vx[otherEntityIndex] - RigidBody.vx[this.index]) + Math.abs(RigidBody.vy[otherEntityIndex] - RigidBody.vy[this.index]));
+        // Relative speed in px/s — scale spark count (was frame-vel sum)
+        const relSpeed =
+            Math.abs(RigidBody.vx[otherEntityIndex] - RigidBody.vx[this.index]) +
+            Math.abs(RigidBody.vy[otherEntityIndex] - RigidBody.vy[this.index]);
+        const numSparks = Math.min(24, Math.max(1, Math.floor(relSpeed / 60)));
 
-        if (speed > 3) {
-
+        if (speed > 180) { // px/s — was 3 frame units
             ParticleEmitter.emit({
                 count: numSparks,
                 x: hitX,

@@ -20,7 +20,7 @@ export class AICar extends Car {
     static aiTurnStrength = 0.8;
     static aiForwardStrength = 0.9;
     static aiForwardAlignmentThreshold = 0.15;
-    static aiBrakeForwardSpeedThreshold = 1;
+    static aiBrakeForwardSpeedThreshold = 60; // px/s — was 1 frame unit
     static flowfieldName = 'roads';
 
     tick(dtRatio) {

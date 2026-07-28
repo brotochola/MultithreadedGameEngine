@@ -33,6 +33,7 @@ export class Barrel extends GameObject {
     this.collider.radius = 10;
 
     this.collider.visualRange = 50;
+    this.setFixedRotation(1);
 
     // Shadow uses default heightMultiplier = 1 (matches sprite scale)
   }
