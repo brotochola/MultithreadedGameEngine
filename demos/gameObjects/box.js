@@ -39,7 +39,7 @@ class Box extends GameObject {
     // Set the texture for this sprite
     this.setSprite('box');
 
-    // Initialize position using ergonomic API (automatically syncs px/py for Verlet)
+    // Initialize position using ergonomic API (syncs Transform px/py)
 
     this.rotation = 0;
 

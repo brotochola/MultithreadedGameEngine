@@ -114,7 +114,6 @@ export interface SceneComponentDataBuffers {
 export interface SceneBuffers {
   gameObjectData: SharedArrayBuffer | null;
   neighborData: SharedArrayBuffer | null;
-  collisionData: SharedArrayBuffer | null;
   activeEntitiesData: SharedArrayBuffer | null;
   inputData: SharedArrayBuffer | null;
   cameraData: SharedArrayBuffer | null;
@@ -1905,7 +1904,6 @@ export declare class RigidBody extends Component {
     fixedRotation: typeof Uint8Array;
     velocityAngle: typeof Float32Array;
     speed: typeof Float32Array;
-    collisionCount: typeof Uint8Array;
     sleeping: typeof Uint8Array;
     stillnessTime: typeof Float32Array;
   };
@@ -1928,7 +1926,6 @@ export declare class RigidBody extends Component {
   static fixedRotation: Uint8Array;
   static velocityAngle: Float32Array;
   static speed: Float32Array;
-  static collisionCount: Uint8Array;
   static sleeping: Uint8Array;
   static stillnessTime: Float32Array;
   static syncMassFromCollider(index: number): boolean;

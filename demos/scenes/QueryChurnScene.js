@@ -25,7 +25,6 @@ export class QueryChurnScene extends Scene {
     physics: {
       subStepCount: 1,
       noLimitFPS: true,
-      maxCollisionPairs: 1,
       gravity: { x: 0, y: 0 },
     },
     particle: {

@@ -32,7 +32,6 @@ export class OrientedBoxScene extends WEED.Scene {
         physics: {
             subStepCount: 5,
             noLimitFPS: true,
-            maxCollisionPairs: 100000,
             gravity: { x: 0, y: 1980 },
             sleeping: false,
         },

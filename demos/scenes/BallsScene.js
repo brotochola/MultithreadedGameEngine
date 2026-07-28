@@ -43,7 +43,6 @@ export class BallsScene extends Scene {
       box2dWorkerCount: 4,
       subStepCount: 4,
       noLimitFPS: false,
-      maxCollisionPairs: 100000,
       gravity: { x: 0, y: 1800 },
       sleepThreshold: 30,
       wakeUpThreshold: 30,

@@ -794,7 +794,7 @@ export class AbstractWorker {
     // Always initialize dense cores if buffers exist, even when no entity uses them.
     // Workers receive componentPools as { name: { count, componentId } } (no ComponentClass ref).
     // Without this, scenes whose entities don't use RigidBody/Collider crash in spatial/physics/logic
-    // because those workers access .active, .collisionCount etc. which are undefined typed arrays.
+    // because those workers access .active, pose/vel fields etc. which are undefined typed arrays.
     const coreComponents = [Transform, RigidBody, Collider, SpriteRenderer, AdobeAnimComponent];
     for (const ComponentClass of coreComponents) {
       const name = ComponentClass.name;

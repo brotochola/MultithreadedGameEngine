@@ -431,43 +431,46 @@
   let bodySetAwakeFn = null;
   let bodySetFixedRotationFn = null;
 
+  // Hoisted once — drainCommands must not allocate a fresh handlers object every step
+  const cmdHandlers = {
+    setTransform(entity, x, y, angle) {
+      if (!hasBody[entity]) return;
+      bodySetAwakeFn(entity, 1);
+      const a = isFixedRotation(entity) ? 0 : angle;
+      bodySetTransformFn(entity, x, y, a);
+    },
+    setVelocity(entity, vx, vy) {
+      if (!hasBody[entity]) return;
+      if (vx !== 0 || vy !== 0) bodySetAwakeFn(entity, 1);
+      bodySetLinearVelocityFn(entity, vx, vy);
+    },
+    setAngle(entity, angle) {
+      if (!hasBody[entity]) return;
+      bodySetAwakeFn(entity, 1);
+      const x = pxChan[entity];
+      const y = pyChan[entity];
+      const a = isFixedRotation(entity) ? 0 : angle;
+      bodySetTransformFn(entity, x, y, a);
+    },
+    setAngularVelocity(entity, w) {
+      if (!hasBody[entity]) return;
+      if (w !== 0) bodySetAwakeFn(entity, 1);
+      bodySetAngularVelocityFn(entity, w);
+    },
+    setFixedRotation(entity, flag) {
+      if (!hasBody[entity]) return;
+      const f = flag ? 1 : 0;
+      bodySetFixedRotationFn(entity, f);
+      if (f) {
+        rotChan[entity] = 0;
+        bodySetAngularVelocityFn(entity, 0);
+      }
+    },
+  };
+
   function drainCommands() {
     if (!cmdI32 || !cmdF32) return;
-    drainBox2dCommandRing(cmdI32, cmdF32, {
-      setTransform(entity, x, y, angle) {
-        if (!hasBody[entity]) return;
-        bodySetAwakeFn(entity, 1);
-        const a = isFixedRotation(entity) ? 0 : angle;
-        bodySetTransformFn(entity, x, y, a);
-      },
-      setVelocity(entity, vx, vy) {
-        if (!hasBody[entity]) return;
-        if (vx !== 0 || vy !== 0) bodySetAwakeFn(entity, 1);
-        bodySetLinearVelocityFn(entity, vx, vy);
-      },
-      setAngle(entity, angle) {
-        if (!hasBody[entity]) return;
-        bodySetAwakeFn(entity, 1);
-        const x = pxChan[entity];
-        const y = pyChan[entity];
-        const a = isFixedRotation(entity) ? 0 : angle;
-        bodySetTransformFn(entity, x, y, a);
-      },
-      setAngularVelocity(entity, w) {
-        if (!hasBody[entity]) return;
-        if (w !== 0) bodySetAwakeFn(entity, 1);
-        bodySetAngularVelocityFn(entity, w);
-      },
-      setFixedRotation(entity, flag) {
-        if (!hasBody[entity]) return;
-        const f = flag ? 1 : 0;
-        bodySetFixedRotationFn(entity, f);
-        if (f) {
-          rotChan[entity] = 0;
-          bodySetAngularVelocityFn(entity, 0);
-        }
-      },
-    });
+    drainBox2dCommandRing(cmdI32, cmdF32, cmdHandlers);
   }
 
   function applyForcesAndTorque() {

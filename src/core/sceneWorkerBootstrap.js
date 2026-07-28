@@ -114,7 +114,6 @@ function buildSceneSharedBuffers(scene) {
   return {
     gameObjectData: scene.buffers.gameObjectData,
     neighborData: scene.buffers.neighborData,
-    collisionData: scene.buffers.collisionData,
     activeEntitiesData: scene.buffers.activeEntitiesData,
     visibleLightsData: scene.buffers.visibleLightsData || null,
     inputData: scene.buffers.inputData,

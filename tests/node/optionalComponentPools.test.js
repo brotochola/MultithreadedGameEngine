@@ -125,7 +125,7 @@ test('Balls-like scene allocates dense cores only (no optional lighting/Adobe SA
         particle: { maxParticles: 0 },
         decoration: { maxDecorations: 0 },
         bullet: { maxBullets: 0 },
-        physics: { maxJoints: 0, maxCollisionPairs: 1000 },
+        physics: { maxJoints: 0 },
         spatial: {
           cellSize: 100,
           maxNeighbors: 32,
@@ -217,7 +217,7 @@ test('entity-listed ShadowCaster/LightEmitter allocate when lighting flags off',
         particle: { maxParticles: 0 },
         decoration: { maxDecorations: 0 },
         bullet: { maxBullets: 0 },
-        physics: { maxJoints: 0, maxCollisionPairs: 100 },
+        physics: { maxJoints: 0 },
         spatial: {
           cellSize: 128,
           maxNeighbors: 32,

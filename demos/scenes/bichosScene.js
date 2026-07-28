@@ -75,9 +75,7 @@ export class BichosScene extends WEED.Scene {
     physics: {
       subStepCount: 3,
       noLimitFPS: true,
-      maxCollisionPairs: 1000000,
       collisionResponseStrength: 0.66,
-      verletDamping: 0.99,
       gravity: { x: 0, y: 0 },
       sleepThreshold: 15,
       wakeUpThreshold: 18,

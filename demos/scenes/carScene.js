@@ -1,5 +1,5 @@
 // CarScene.js - Car physics demo scene
-// Demonstrates Verlet physics car using two connected circles
+// Demonstrates Box2D car using two connected circles (joints)
 
 import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
@@ -75,11 +75,9 @@ export class CarScene extends WEED.Scene {
         physics: {
             subStepCount: 6, // Higher substeps for stable constraints
             noLimitFPS: true,
-            maxCollisionPairs: 50000,
             maxJoints: 4096, // Box2D WASM joint cap
             boundaryElasticity: 0.3,
             collisionResponseStrength: 0.8,
-            verletDamping: 0.999, // Very low damping - car maintains momentum
             gravity: { x: 0, y: 0 },
             sleeping: false,
         },
@@ -186,8 +184,7 @@ export class CarScene extends WEED.Scene {
         },
         flowfields: {
             sidewalks: '/demos/map_n_flowfield/sidewalks_flowfield_2.json',
-            roads: '/demos/map_n_flowfield/roads_flowfield_2.json',
-
+            roads: '/demos/map_n_flowfield/roads_flowfield_2.json'
         },
     };
 

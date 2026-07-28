@@ -30,7 +30,7 @@ all X values packed together, then all Y values, etc. No per-entity objects on t
 | Component               | Fields (type)                                                                                                                                                                                                                                                                                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Transform**           | `active` (Uint8), `entityType` (Uint8), `x` (Float32), `y` (Float32), `rotation` (Float32)                                                                                                                                                                                                                                                  |
-| **RigidBody**           | `active`, `static`, `collisionCount`, `sleeping` (Uint8); `vx`, `vy`, `ax`, `ay`, `angularVelocity`, `angularAccel`, `mass`, `invMass`, `inertia`, `invInertia`, `linearDamping`, `angularDamping`, `maxLinearSpeed`, `velocityAngle`, `speed`, `stillnessTime` (Float32); `fixedRotation` (Uint8) |
+| **RigidBody**           | `active`, `static`, `sleeping` (Uint8); `vx`, `vy`, `ax`, `ay`, `angularVelocity`, `angularAccel`, `mass`, `invMass`, `inertia`, `invInertia`, `linearDamping`, `angularDamping`, `maxLinearSpeed`, `velocityAngle`, `speed`, `stillnessTime` (Float32); `fixedRotation` (Uint8) |
 | **Collider**            | `active`, `shapeType` (0=Box, 1=Circle, 2=Polygon — WASM C), `isTrigger` (Uint8); `offsetX`, `offsetY`, `radius`, `width`, `height`, `visualRange`, `friction` (Float32; Box2D fixture μ, pair = min); `polyCount` (Uint8); `polyCentroidX/Y` (Float32); strided `polyVertexX/Y`, `polyNormalX/Y` (length entityCount×8); `collisionLayer` (Uint8, index 0-31); `collisionMask` (Uint32, bitmask -- 32 collision layers max); `collisionGroupIndex` (Int32, Box2D-style group: 0 = layer/mask only, same negative = never collide, same positive = always collide) |
 | **SpriteRenderer**      | `active`, `textureId`, animation fields, flip flags, etc.                                                                                                                                                                                                                                                                                   |
 | **ParticleComponent**   | `active`, `x`, `y`, `z`, `vx`, `vy`, `vz`, `lifespan`, `currentLife`, `gravity`, `scaleX/Y`, `alpha`, `tint`, `baseTint`, `textureId`, `rotation`, `flipX/Y`, `fadeOnTheFloor`, `timeOnFloor`, `initialAlpha`, `stayOnTheFloor`, `despawnOnGroundContact`, `tweenToAlpha0`, `isItOnScreen`, `blendMode` (mixed Uint8/Uint16/Float32/Uint32) |
@@ -121,17 +121,9 @@ All lists share the same layout: `[count: Uint16, idx0: Uint16, idx1: Uint16, ..
 
 ## 4. Collision + Impact Buffers
 
-### `collisionData` -- Collision Pairs
+### Box2D contact events (no Weed `collisionData` SAB)
 
-| Property        | Value                                                                  |
-| --------------- | ---------------------------------------------------------------------- |
-| **Size**        | `(1 + maxCollisionPairs * 2) * 4` bytes. Default 10,000 pairs = ~80 KB |
-| **Layout**      | `[pairCount: Int32, entityA0, entityB0, entityA1, entityB1, ...]`      |
-| **Typed array** | `Int32Array`                                                           |
-
-| Writer         | Reader                              |
-| -------------- | ----------------------------------- |
-| Physics worker | Logic workers (collision callbacks) |
+Contact begin/end (and sensor begin/end) live on the **WASM HEAP** as `Int32Array` views shared after `box2dReady`. Logic workers with `CollisionListener` drive Unity-style Enter/Stay/Exit from those events. There is no separate `collisionData` SharedArrayBuffer.
 
 ### `impactBuffer` -- Bullet/Projectile Impacts
 
@@ -588,7 +580,7 @@ The big picture. Who writes what, who reads what.
 | Active/visible particle lists                 | Particle worker                                                                              | Pre_render                                   |
 | Active/visible decoration lists               | Particle worker + DecorationPool                                                             | Pre_render                                   |
 | Active/visible bullet lists                   | Logic (active), particle (visible)                                                           | Pre_render                                   |
-| Collision pairs (`collisionData`)             | Physics worker                                                                               | Logic workers                                |
+| Box2D contact/sensor events (HEAP)            | Nested Box2D WASM (`weedjs_post`)                                                            | Logic workers (`CollisionListener`)          |
 | Impact buffer                                 | Particle worker                                                                              | Logic workers                                |
 | Joint data                               | Logic workers (create), physics (sync)                                                    | Logic, physics                               |
 | Render queues (main + shadow)                 | Pre_render worker                                                                            | Pixi worker                                  |

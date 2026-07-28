@@ -1,4 +1,4 @@
-// Car.js - Base car class using Verlet physics with a grid of connected circles
+// Car.js - Base car class using Box2D joints with a grid of connected circles
 // The car consists of a cols x 2 grid of CarPart entities (3x2 or 4x2).
 // Triangular mesh constraints keep the shape rigid with fewer constraints.
 // Two rows give a flatter front/back for more predictable crash behavior.

@@ -35,7 +35,6 @@ export class ConstraintBoxScene extends WEED.Scene {
         physics: {
             subStepCount: 5,
             noLimitFPS: true,
-            maxCollisionPairs: 100000,
             maxJoints: 4096,
             sleeping: false,
             gravity: { x: 0, y: 1800 },

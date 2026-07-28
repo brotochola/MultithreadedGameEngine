@@ -419,12 +419,6 @@ function initializeCollisionConstraintSunAndTrackingBuffers(scene) {
   const { buffers, config, views, registeredClasses } = scene;
   const totalEntityCount = scene.totalEntityCount;
 
-  const maxCollisionPairs = config.physics.maxCollisionPairs;
-  const collisionBufferSize = (1 + maxCollisionPairs * 2) * 4;
-  buffers.collisionData = new SharedArrayBuffer(collisionBufferSize);
-  views.collision = new Int32Array(buffers.collisionData);
-  views.collision[0] = 0;
-
   Joint.reset();
   const maxJoints = config.physics.maxJoints || 0;
   if (maxJoints > 0) {

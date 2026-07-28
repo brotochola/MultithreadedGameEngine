@@ -9,7 +9,7 @@ export class BluePlatformerPlayer extends GameObject {
   static components = [PlatformerCharacterComponent, AdobeAnimComponent, RigidBody, Collider, LightEmitter, CollisionListener];
   static assetName = 'blue_character';
 
-  static jumpImpulse = -108000; // px/s² burst
+  static jumpImpulse = -80000; // px/s² burst
   static moveAcceleration = 1800; // px/s²
   static scale = 0.35;
   static clips = Object.freeze({
@@ -25,9 +25,11 @@ export class BluePlatformerPlayer extends GameObject {
 
     this.collider.radius = 30;
     this.collider.visualRange = 120;
+    this.setFixedRotation(1);
 
   }
   onCollisionEnter(other) {
+    console.log('onCollisionEnter', other);
     if (Transform.entityType[other] != Platform.entityType) return
     this.vx *= 0.5
 
@@ -61,15 +63,17 @@ export class BluePlatformerPlayer extends GameObject {
   }
 
   onCollisionExit(other) {
+    console.log('onCollisionExit', other);
     if (other == this.platformerCharacterComponent.isItStandingOnPlatform) {
       this.platformerCharacterComponent.isItStandingOnPlatform = -1
     }
   }
 
   onCollisionStay(other) {
+    console.log('onCollisionStay', other);
     if (Transform.entityType[other] != Platform.entityType) return
     //friction on top of platforms
-    this.vx *= 0.95
+    // this.vx *= 0.95
   }
 
   onSpawned(spawnConfig = {}) {
@@ -179,7 +183,7 @@ export class BluePlatformerPlayer extends GameObject {
         scale: { min: 1, max: 2.3 },
         lifespan: 300,
         angleXY: randomOffset,
-        speed: { min: 0, max: -this.vx },
+        speed: { min: 0, max: -this.vx * 0.01 },
         gravity: 0,
         vz: 0,
         despawnOnGroundContact: false,

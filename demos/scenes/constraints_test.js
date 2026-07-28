@@ -39,12 +39,9 @@ export class ConstraintsTestScene extends Scene {
 
         // Physics configuration
         physics: {
-            distanceConstraintIterations: 6,
             subStepCount: 3, // Higher substeps for stable constraints
             noLimitFPS: true,
-            maxCollisionPairs: 100000,
             maxJoints: 4096, // Enable constraint system
-            verletDamping: 0.999,
             boundaryElasticity: 0,
             collisionResponseStrength: 0.66,
             gravity: { x: 0, y: 1800 },

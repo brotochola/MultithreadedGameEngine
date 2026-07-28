@@ -1,9 +1,9 @@
 Since Box2d:
--clean up code, dead code.
--make sure zero-copy
--make sure no GC pressure
--update tests
--remove polyVertexX? or not?
+- [x] clean up dead code (collisionData / SAT / legacy logic path)
+- [x] zero-copy hot pose/vel (HEAP rebind) — verified, not rebuilt
+- [x] hot-path GC (hoist drainCommands handlers + contact applyBegin/End)
+- [x] update tests
+- [x] keep polyVertexX/Y (Ray + Box2D polygon create + debug)
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar

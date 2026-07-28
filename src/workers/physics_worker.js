@@ -4,7 +4,7 @@ self.postMessage({
   when: Date.now(),
 });
 
-// physics_worker.js — Box2D 3.0 WASM (STOP 1: pose copy via nested weedjs worker)
+// physics_worker.js — Box2D 3.0 WASM (nested weedjs worker; hot pose/vel rebound to HEAP)
 
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';

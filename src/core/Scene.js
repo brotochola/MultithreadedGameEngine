@@ -202,7 +202,6 @@ class Scene {
     this.buffers = {
       gameObjectData: null,
       neighborData: null,
-      collisionData: null,
       activeEntitiesData: null, // Active entity list for spatial worker load balancing
       inputData: null,
       cameraData: null,
@@ -268,7 +267,6 @@ class Scene {
     this.views = {
       input: null,
       camera: null,
-      collision: null,
       frameRate: null,
     };
 

@@ -111,10 +111,8 @@ export class PredatorScene extends WEED.Scene {
     physics: {
       subStepCount: 0,
       noLimitFPS: true,
-      maxCollisionPairs: 1000000,
       boundaryElasticity: 0,
       collisionResponseStrength: 0.9,
-      verletDamping: 0.99,
       gravity: { x: 0, y: 0 },
       sleepThreshold: 15,
       wakeUpThreshold: 18,

@@ -42,8 +42,6 @@ export class WaterAndBoxesScene extends WEED.Scene {
     physics: {
       subStepCount: 4,
       noLimitFPS: false,
-      maxCollisionPairs: 100000,
-      verletDamping: 0.997,
       boundaryElasticity: 0.1,
       collisionResponseStrength: 0.125,
       gravity: { x: 0, y: 3600 },

@@ -74,7 +74,7 @@ const rng = mulberry32(0xC0FFEE);
 for (let i = 0; i < ENTITY_COUNT; i++) {
   Transform.x[i] = MARGIN + rng() * (WORLD_W - 2 * MARGIN);
   Transform.y[i] = MARGIN + rng() * (WORLD_H - 2 * MARGIN);
-  Collider.shapeType[i] = rng() < 0.7 ? 0 : 1; // 70% circles, 30% boxes
+  Collider.shapeType[i] = rng() < 0.7 ? 1 : 0; // 70% circles (1), 30% boxes (0) — matches ShapeType
   Collider.radius[i] = 4 + rng() * 16;
   Collider.width[i] = 8 + rng() * 32;
   Collider.height[i] = 8 + rng() * 32;
@@ -86,7 +86,7 @@ for (let i = 0; i < ENTITY_COUNT; i++) {
   const px = Transform.x[i];
   const py = Transform.y[i];
   let halfW, halfH;
-  if (Collider.shapeType[i] === 0) {
+  if (Collider.shapeType[i] === 1) {
     halfW = halfH = Collider.radius[i];
   } else {
     halfW = Collider.width[i] * 0.5;
@@ -124,7 +124,7 @@ function bruteForceClosest(x1, y1, x2, y2, maxDist, mask, excludeA = -1, exclude
     const ex = Transform.x[i] + Collider.offsetX[i];
     const ey = Transform.y[i] + Collider.offsetY[i];
     let d = -1;
-    if (Collider.shapeType[i] === 0) {
+    if (Collider.shapeType[i] === 1) {
       d = rayCircleIntersect(x1, y1, dirX, dirY, ex, ey, Collider.radius[i], len);
     } else {
       d = rayBoxIntersect(x1, y1, dirX, dirY, ex, ey, Collider.width[i], Collider.height[i], len);

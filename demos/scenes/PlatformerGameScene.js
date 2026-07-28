@@ -20,7 +20,6 @@ export class PlatformerGameScene extends Scene {
     physics: {
       noLimitFPS: false,
       gravity: { x: 0, y: 3600 },
-      maxCollisionPairs: 5000,
       sleeping: false,
     },
     particle: {
@@ -93,8 +92,8 @@ export class PlatformerGameScene extends Scene {
   spawnLevelPlatforms() {
     const defs = [
       { x: 600, y: 2050, width: 1200, height: 60, tint: 0x5a708f },
-      { x: 1820, y: 1960, width: 420, height: 50, tint: 0x4f6983 },
-      { x: 2300, y: 1830, width: 280, height: 44, tint: 0x4f6983 },
+      { x: 1820, y: 1760, width: 420, height: 50, tint: 0x4f6983 },
+      { x: 2300, y: 1630, width: 280, height: 44, tint: 0x4f6983 },
       { x: 2670, y: 1700, width: 260, height: 44, tint: 0x4f6983 },
       { x: 3070, y: 1560, width: 300, height: 44, tint: 0x4f6983 },
       { x: 3520, y: 1720, width: 420, height: 44, tint: 0x4f6983 },

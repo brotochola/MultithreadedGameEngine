@@ -1,6 +1,6 @@
 # Physics pipeline
 
-This document describes how the **physics worker** integrates motion, collisions, and distance constraints, with emphasis on **performance choices** (dense iteration, shared memory, minimal allocations) and **data invariants** the engine assumes.
+This document describes how the **physics worker** drives Box2D (motion, contacts, joints), with emphasis on **performance choices** (HEAP rebind, shared memory, minimal allocations) and **data invariants** the engine assumes.
 
 Implementation: `src/workers/physics_worker.js`, `src/components/RigidBody.js`, `src/core/gameObject.js`, `src/core/Joint.js`.
 
@@ -42,7 +42,7 @@ Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 
 ### Sleeping
 
-Bodies that stay still can sleep so physics skips Verlet integrate and sleep–sleep pairs skip collision resolve. Cell sleeping (particle worker) builds on the same `RigidBody.sleeping` bits — see [Spatial hashing](./SPATIAL_HASHING.md).
+Bodies that stay still can sleep so Box2D / Weed can skip work on idle bodies. Cell sleeping (particle worker) builds on the same `RigidBody.sleeping` bits — see [Spatial hashing](./SPATIAL_HASHING.md).
 
 Scene knobs live under `config.physics` (merged from `PHYSICS_DEFAULTS`). Sleep enter/exit thresholds are read by the **particle worker at scene init**; prefer setting them on the scene’s `static config` rather than mid-run `updatePhysicsConfig`.
 
@@ -55,7 +55,7 @@ Scene knobs live under `config.physics` (merged from `PHYSICS_DEFAULTS`). Sleep 
 
 **Enter sleep** (particle `updateDerivedProperties`): when `sleeping` is enabled, a dynamic body with both `speed` and `|ω|` below `sleepThreshold` increments `stillnessTime`; at `sleepDuration` it sets `RigidBody.sleeping = 1`. Tumbling sticks stay awake until spin dies.
 
-**While asleep:** physics skips Verlet (snaps `px`/`py`, clears accel); mutual sleep pairs skip resolve. Spatial may still keep visual-only neighbors.
+**While asleep:** Box2D body sleeps; Weed keeps `RigidBody.sleeping` in sync. Spatial may still keep visual-only neighbors.
 
 **Wake:** speed/spin above `sleepThreshold`; meaningful collision penetration (above penetration slop); manual `RigidBody.sleeping[i] = 0` (and usually `stillnessTime[i] = 0`); awake-body accel above `wakeUpThreshold` resets the stillness counter.
 
@@ -76,10 +76,11 @@ Pair filter runs in the dense collision loop with **no allocations**:
 
 See [Collision Filtering](./bible_of_weed_js.md#collision-filtering) in the bible.
 
-### Scene `physics` config: substeps vs distance iterations
+### Scene `physics` config: substeps
 
-- **`subStepCount`** — How many times per frame the worker runs **collision resolution** (and, when constraints are enabled, the distance-constraint block that follows it). In variable-FPS mode this is an outer loop after a single Verlet move. With **`noLimitFPS`** and a fixed accumulator, the same count defines how many fixed micro-steps run per nominal frame; each micro-step runs one collision resolve.
-- **`distanceConstraintIterations`** — How many **full sweeps** over active distance constraints run **after each** collision pass in that loop (default `1`). Raise this for stiffer chains or rope-style setups without increasing collision work as much as raising `subStepCount`. Minimum `1`.
+- **`subStepCount`** — Box2D solver sub-step count per physics tick (`world.step(dt, subStepCount)`). Raise for stiffer stacking / joints at higher CPU cost. Minimum `1`.
+
+Contacts for gameplay callbacks come from **Box2D begin/end events** on the WASM HEAP (logic workers with `CollisionListener`), not from a Weed pair buffer.
 
 ---
 
@@ -134,9 +135,10 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 
 ## GC and allocations (physics worker)
 
-- **Reused** `collisionResult` object for collision tests (no per-contact object allocation in the hot path).
-- **Reused** `_denseColliders` buffer; allocation only on growth.
+- Hot pose/vel/sleeping rebound to WASM HEAP (`box2dHotFields`) — zero-copy after seed.
+- Command ring handlers hoisted once in `weedjs_post` (no per-step `{}`).
 - Joint sync uses typed arrays only; no per-joint heap objects in the hot path.
+- Contact callbacks: logic reads HEAP event views; begin/end apply helpers are instance methods (no per-frame closures).
 
 ---
 

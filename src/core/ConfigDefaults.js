@@ -155,7 +155,6 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   /** Soft contact damping ratio ζ → b2WorldDef.contactDampingRatio. */
   contactDampingRatio: 0.7,
   minSpeedForRotation: 6,
-  maxCollisionPairs: 10000,
   maxJoints: 0,
   /** Gravity (px/s²). */
   gravity: Object.freeze({ x: 0, y: 0 }),

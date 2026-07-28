@@ -39,8 +39,6 @@ export class BallsAndRectanglesScene extends WEED.Scene {
     physics: {
       subStepCount: 5,
       noLimitFPS: false,
-      maxCollisionPairs: 100000,
-      verletDamping: 0.99,
       boundaryElasticity: 0.3,
       collisionResponseStrength: 0.9,
       gravity: { x: 0, y: 1800 },

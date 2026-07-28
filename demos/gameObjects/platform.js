@@ -1,19 +1,22 @@
 import WEED from '/src/index.js';
 
-const { GameObject, Collider, SpriteRenderer, enums, ShadowCaster } = WEED;
+const { GameObject, Collider, SpriteRenderer, enums, ShadowCaster, RigidBody } = WEED;
 const { ShapeType } = enums;
 
 export class Platform extends GameObject {
   static scriptUrl = import.meta.url;
-  static components = [Collider, SpriteRenderer, ShadowCaster];
+  static components = [Collider, SpriteRenderer, ShadowCaster, RigidBody];
 
   setup() {
     this.collider.shapeType = ShapeType.Box;
     this.collider.radius = 0;
     this.collider.visualRange = 512;
+    this.rigidBody.static = 1;
+
   }
 
   onSpawned(spawnConfig = {}) {
+
     const width = spawnConfig.width ?? 220;
     const height = spawnConfig.height ?? 36;
 
