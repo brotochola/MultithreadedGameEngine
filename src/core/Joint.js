@@ -52,6 +52,7 @@ export class Joint extends SharedAtomicPool {
   static activeMeta = null; // Int32Array[2]
   static activeCount = null; // Int32Array[1]
   static activeListLock = null; // Int32Array[1]
+  static revision = null; // Uint32Array — bump on add/update/remove
 
   static getBufferSize(maxJoints) {
     // Mirror initializeArrays offsets
@@ -76,6 +77,7 @@ export class Joint extends SharedAtomicPool {
     offset += n * 2; // activeIndices
     offset += n * 2; // activeIndexPositions
     offset += 8; // activeMeta
+    offset += n * 4; // revision
     return offset;
   }
 
@@ -141,13 +143,22 @@ export class Joint extends SharedAtomicPool {
     this.activeMeta = new Int32Array(buffer, offset, 2);
     this.activeCount = new Int32Array(buffer, offset, 1);
     this.activeListLock = new Int32Array(buffer, offset + 4, 1);
+    offset += 8;
+
+    this.revision = new Uint32Array(buffer, offset, n);
+    offset += n * 4;
 
     this.active.fill(0);
     this.type.fill(0);
+    this.revision.fill(0);
     this.activeIndices.fill(this.INVALID_INDEX);
     this.activeIndexPositions.fill(this.INVALID_INDEX);
     this.activeMeta[0] = 0;
     this.activeMeta[1] = 0;
+  }
+
+  static bumpRevision(idx) {
+    if (this.revision) Atomics.add(this.revision, idx, 1);
   }
 
   static _worldToLocal(entity, wx, wy) {
@@ -176,6 +187,7 @@ export class Joint extends SharedAtomicPool {
   }
 
   static _activate(idx) {
+    this.bumpRevision(idx);
     this.acquireSpinLock(this.activeListLock);
     try {
       const slot = this.activeCount ? Atomics.load(this.activeCount, 0) : 0;
@@ -289,6 +301,7 @@ export class Joint extends SharedAtomicPool {
       this.releaseSpinLock(this.activeListLock);
     }
 
+    this.bumpRevision(idx);
     this.returnToPool(idx);
   }
 
@@ -303,34 +316,86 @@ export class Joint extends SharedAtomicPool {
   static update(idx, props = {}) {
     if (idx < 0 || idx >= this.maxCount || !this.active[idx]) return;
     const t = this.type[idx];
+    let changed = false;
 
-    if (props.localAnchorAX !== undefined) this.localAnchorAX[idx] = props.localAnchorAX;
-    if (props.localAnchorAY !== undefined) this.localAnchorAY[idx] = props.localAnchorAY;
-    if (props.localAnchorBX !== undefined) this.localAnchorBX[idx] = props.localAnchorBX;
-    if (props.localAnchorBY !== undefined) this.localAnchorBY[idx] = props.localAnchorBY;
+    if (props.localAnchorAX !== undefined) {
+      this.localAnchorAX[idx] = props.localAnchorAX;
+      changed = true;
+    }
+    if (props.localAnchorAY !== undefined) {
+      this.localAnchorAY[idx] = props.localAnchorAY;
+      changed = true;
+    }
+    if (props.localAnchorBX !== undefined) {
+      this.localAnchorBX[idx] = props.localAnchorBX;
+      changed = true;
+    }
+    if (props.localAnchorBY !== undefined) {
+      this.localAnchorBY[idx] = props.localAnchorBY;
+      changed = true;
+    }
 
     if (t === JOINT_TYPE.DISTANCE) {
-      if (props.length !== undefined) this.length[idx] = props.length;
-      if (props.enableSpring !== undefined) this.enableSpring[idx] = props.enableSpring ? 1 : 0;
-      if (props.hertz !== undefined) this.hertz[idx] = props.hertz;
-      if (props.dampingRatio !== undefined) this.dampingRatio[idx] = props.dampingRatio;
+      if (props.length !== undefined) {
+        this.length[idx] = props.length;
+        changed = true;
+      }
+      if (props.enableSpring !== undefined) {
+        this.enableSpring[idx] = props.enableSpring ? 1 : 0;
+        changed = true;
+      }
+      if (props.hertz !== undefined) {
+        this.hertz[idx] = props.hertz;
+        changed = true;
+      }
+      if (props.dampingRatio !== undefined) {
+        this.dampingRatio[idx] = props.dampingRatio;
+        changed = true;
+      }
     } else if (t === JOINT_TYPE.REVOLUTE) {
-      if (props.enableLimit !== undefined) this.enableLimit[idx] = props.enableLimit ? 1 : 0;
-      if (props.lowerAngle !== undefined) this.lowerAngle[idx] = props.lowerAngle;
-      if (props.upperAngle !== undefined) this.upperAngle[idx] = props.upperAngle;
-      if (props.enableMotor !== undefined) this.enableMotor[idx] = props.enableMotor ? 1 : 0;
-      if (props.motorSpeed !== undefined) this.motorSpeed[idx] = props.motorSpeed;
-      if (props.maxMotorTorque !== undefined) this.maxMotorTorque[idx] = props.maxMotorTorque;
+      if (props.enableLimit !== undefined) {
+        this.enableLimit[idx] = props.enableLimit ? 1 : 0;
+        changed = true;
+      }
+      if (props.lowerAngle !== undefined) {
+        this.lowerAngle[idx] = props.lowerAngle;
+        changed = true;
+      }
+      if (props.upperAngle !== undefined) {
+        this.upperAngle[idx] = props.upperAngle;
+        changed = true;
+      }
+      if (props.enableMotor !== undefined) {
+        this.enableMotor[idx] = props.enableMotor ? 1 : 0;
+        changed = true;
+      }
+      if (props.motorSpeed !== undefined) {
+        this.motorSpeed[idx] = props.motorSpeed;
+        changed = true;
+      }
+      if (props.maxMotorTorque !== undefined) {
+        this.maxMotorTorque[idx] = props.maxMotorTorque;
+        changed = true;
+      }
     } else if (t === JOINT_TYPE.WELD) {
-      if (props.linearHertz !== undefined) this.linearHertz[idx] = props.linearHertz;
-      if (props.angularHertz !== undefined) this.angularHertz[idx] = props.angularHertz;
+      if (props.linearHertz !== undefined) {
+        this.linearHertz[idx] = props.linearHertz;
+        changed = true;
+      }
+      if (props.angularHertz !== undefined) {
+        this.angularHertz[idx] = props.angularHertz;
+        changed = true;
+      }
       if (props.linearDampingRatio !== undefined) {
         this.linearDampingRatio[idx] = props.linearDampingRatio;
+        changed = true;
       }
       if (props.angularDampingRatio !== undefined) {
         this.angularDampingRatio[idx] = props.angularDampingRatio;
+        changed = true;
       }
     }
+    if (changed) this.bumpRevision(idx);
   }
 
   static isActive(idx) {
@@ -406,5 +471,6 @@ export class Joint extends SharedAtomicPool {
     this.activeMeta = null;
     this.activeCount = null;
     this.activeListLock = null;
+    this.revision = null;
   }
 }

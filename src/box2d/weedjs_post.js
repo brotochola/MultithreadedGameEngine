@@ -11,8 +11,11 @@
     'box2dConstants.impl.js',
     'physics-api.js',
     'box2dCommandRing.impl.js',
+    'box2dContactRing.impl.js',
   );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
+  const publishBox2dContactEvent = Box2dContactRing.publishContactEvent;
+  const CONTACT_KIND = Box2dContactRing.BOX2D_CONTACT_KIND;
 
   const CTRL = {
     STATE: 0, // 0 idle, 1 step, 2 done, 3 fatal
@@ -38,6 +41,7 @@
   let ctrlF32 = null;
   let cmdI32 = null;
   let cmdF32 = null;
+  let contactRingI32 = null;
   let views = null;
   let hasBody = null;
   let denseList = null;
@@ -49,9 +53,11 @@
   let bodyGeneration = null;
   let seenBodyGeneration = null;
   let jointViews = null;
-  let jointHandle = null; // Int32Array, -1 = none
-  let jointFp = null; // Float32Array fingerprint per joint
-  let jointLive = null; // Uint8Array scratch
+  let jointHandle = null; // Int32Array, -1 = none, -2 = fail this revision
+  let jointSeenRev = null; // Uint32Array — last synced Joint.revision
+  let jointDense = null; // Uint16Array — indices with live WASM handles
+  let jointDenseCount = 0;
+  let jointLive = null; // Uint8Array scratch (dense-sized marks only)
   let maxJoints = 0;
   let jointCapacityWarn = false;
   let pxChan = null;
@@ -148,7 +154,10 @@
     if (!desc || !(maxJ > 0)) {
       jointViews = null;
       jointHandle = null;
-      jointFp = null;
+      jointSeenRev = null;
+      jointDense = null;
+      jointDenseCount = 0;
+      jointLive = null;
       maxJoints = 0;
       return;
     }
@@ -177,11 +186,13 @@
       angularDampingRatio: viewFromDesc(desc.angularDampingRatio, Float32Array),
       activeIndices: viewFromDesc(desc.activeIndices, Uint16Array),
       activeCount: viewFromDesc(desc.activeCount, Int32Array),
+      revision: viewFromDesc(desc.revision, Uint32Array),
     };
     jointHandle = new Int32Array(maxJoints);
     jointHandle.fill(-1);
-    jointFp = new Float32Array(maxJoints);
-    jointFp.fill(NaN);
+    jointSeenRev = new Uint32Array(maxJoints);
+    jointDense = new Uint16Array(maxJoints);
+    jointDenseCount = 0;
     jointLive = new Uint8Array(maxJoints);
   }
 
@@ -501,50 +512,24 @@
     return changes;
   }
 
-  function jointFingerprint(idx) {
-    const jv = jointViews;
-    const t = jv.type[idx] | 0;
-    // Cheap fingerprint: type + anchors + type-specific floats
-    let fp =
-      t * 1e6 +
-      jv.localAnchorAX[idx] +
-      jv.localAnchorAY[idx] * 1.1 +
-      jv.localAnchorBX[idx] * 1.2 +
-      jv.localAnchorBY[idx] * 1.3;
-    if (t === JOINT_TYPE.DISTANCE) {
-      fp +=
-        jv.length[idx] * 2 +
-        (jv.enableSpring[idx] ? 100 : 0) +
-        jv.hertz[idx] * 3 +
-        jv.dampingRatio[idx] * 4;
-    } else if (t === JOINT_TYPE.REVOLUTE) {
-      fp +=
-        (jv.enableLimit[idx] ? 10 : 0) +
-        jv.lowerAngle[idx] +
-        jv.upperAngle[idx] * 1.5 +
-        (jv.enableMotor[idx] ? 20 : 0) +
-        jv.motorSpeed[idx] * 2 +
-        jv.maxMotorTorque[idx] * 3;
-    } else if (t === JOINT_TYPE.WELD) {
-      fp +=
-        jv.linearHertz[idx] +
-        jv.angularHertz[idx] * 1.1 +
-        jv.linearDampingRatio[idx] * 1.2 +
-        jv.angularDampingRatio[idx] * 1.3;
-    }
-    return fp;
+  function jointRevision(idx) {
+    const rev = jointViews.revision;
+    return rev ? Atomics.load(rev, idx) >>> 0 : 0;
   }
 
   function destroyJointAt(idx) {
     const h = jointHandle[idx];
-    if (h < 0) return;
+    if (h < 0) {
+      if (h === -2) jointHandle[idx] = -1;
+      return;
+    }
     try {
       world.destroyJoint(h);
     } catch (_) {
       /* already gone with body */
     }
     jointHandle[idx] = -1;
-    jointFp[idx] = NaN;
+    jointSeenRev[idx] = 0;
   }
 
   function createJointAt(idx) {
@@ -553,8 +538,12 @@
     const a = packed >>> 16;
     const b = packed & 0xffff;
     if (a === b || !hasBody[a] || !hasBody[b]) return false;
-    // -2 = permanent fail this session (avoid per-frame retry / leak storm)
-    if (jointHandle[idx] === -2) return false;
+    const rev = jointRevision(idx);
+    // -2 = fail for this revision only; slot recycle bumps revision and retries
+    if (jointHandle[idx] === -2) {
+      if (jointSeenRev[idx] === rev) return false;
+      jointHandle[idx] = -1;
+    }
 
     const bodyA = { slot: a };
     const bodyB = { slot: b };
@@ -601,6 +590,7 @@
       }
     } catch (err) {
       jointHandle[idx] = -2;
+      jointSeenRev[idx] = rev;
       if (!jointCapacityWarn) {
         jointCapacityWarn = true;
         console.warn(
@@ -612,7 +602,7 @@
     }
 
     jointHandle[idx] = handleObj.handle;
-    jointFp[idx] = jointFingerprint(idx);
+    jointSeenRev[idx] = rev;
     return true;
   }
 
@@ -621,8 +611,12 @@
     const jv = jointViews;
     const activeCount = Atomics.load(jv.activeCount, 0) | 0;
     let changes = 0;
-    jointLive.fill(0);
 
+    for (let i = 0; i < jointDenseCount; i++) {
+      jointLive[jointDense[i]] = 0;
+    }
+
+    let nextDenseCount = 0;
     for (let slot = 0; slot < activeCount; slot++) {
       const idx = jv.activeIndices[slot];
       if (idx === 0xffff || !jv.active[idx]) continue;
@@ -632,8 +626,8 @@
       const b = packed & 0xffff;
       const want = hasBody[a] && hasBody[b] ? 1 : 0;
       const have = jointHandle[idx] >= 0 ? 1 : 0;
-      const fp = jointFingerprint(idx);
-      if (want && have && jointFp[idx] !== fp) {
+      const rev = jointRevision(idx);
+      if (want && have && jointSeenRev[idx] !== rev) {
         destroyJointAt(idx);
         createJointAt(idx);
         changes++;
@@ -643,14 +637,19 @@
         destroyJointAt(idx);
         changes++;
       }
+      if (jointHandle[idx] >= 0) {
+        jointDense[nextDenseCount++] = idx;
+      }
     }
 
-    for (let i = 0; i < maxJoints; i++) {
-      if (!jointLive[i] && jointHandle[i] >= 0) {
-        destroyJointAt(i);
+    for (let i = 0; i < jointDenseCount; i++) {
+      const idx = jointDense[i];
+      if (!jointLive[idx] && jointHandle[idx] >= 0) {
+        destroyJointAt(idx);
         changes++;
       }
     }
+    jointDenseCount = nextDenseCount;
     return changes;
   }
 
@@ -762,6 +761,35 @@
     }
   }
 
+  function entityGen(i) {
+    return bodyGeneration ? Atomics.load(bodyGeneration, i) | 0 : 0;
+  }
+
+  function publishPairBuffer(buf, count, kind, stride) {
+    if (!buf || !(count > 0) || !contactRingI32) return;
+    for (let i = 0; i < count; i++) {
+      const a = buf[i * stride] | 0;
+      const b = buf[i * stride + 1] | 0;
+      publishBox2dContactEvent(kind, a, b, entityGen(a), entityGen(b));
+    }
+  }
+
+  function publishContactRingFromWasm() {
+    if (!world || !contactRingI32) return;
+    const hdr = world._eventHeader;
+    if (!hdr) return;
+    const stride = 2;
+    const beginCount = hdr[EVENT_HEADER.CONTACT_BEGIN_COUNT] | 0;
+    const endCount = hdr[EVENT_HEADER.CONTACT_END_COUNT] | 0;
+    const sensorBeginCount = hdr[EVENT_HEADER.SENSOR_BEGIN_COUNT] | 0;
+    const sensorEndCount = hdr[EVENT_HEADER.SENSOR_END_COUNT] | 0;
+    // Ends before begins so logic can drop pairs before re-enter same frame
+    publishPairBuffer(world._contactEnd, endCount, CONTACT_KIND.CONTACT_END, stride);
+    publishPairBuffer(world._sensorEnd, sensorEndCount, CONTACT_KIND.SENSOR_END, stride);
+    publishPairBuffer(world._contactBegin, beginCount, CONTACT_KIND.CONTACT_BEGIN, stride);
+    publishPairBuffer(world._sensorBegin, sensorBeginCount, CONTACT_KIND.SENSOR_BEGIN, stride);
+  }
+
   function afterStep() {
     const rotLen = rotChan ? rotChan.length : 0;
     for (let n = 0; n < denseCount; n++) {
@@ -777,6 +805,7 @@
     if (!sleepingEnabled) {
       enforceAwakeDynamics();
     }
+    publishContactRingFromWasm();
   }
 
   /**
@@ -825,10 +854,13 @@
       statsF32[PS.CONTACT_END] = hdr[EVENT_HEADER.CONTACT_END_COUNT] | 0;
       statsF32[PS.SENSOR_BEGIN] = hdr[EVENT_HEADER.SENSOR_BEGIN_COUNT] | 0;
       statsF32[PS.SENSOR_END] = hdr[EVENT_HEADER.SENSOR_END_COUNT] | 0;
-      statsF32[PS.CONTACT_DROPPED] =
-        hdr[EVENT_HEADER.CONTACT_DROPPED_COUNT] | 0;
-      statsF32[PS.SENSOR_DROPPED] =
-        hdr[EVENT_HEADER.SENSOR_DROPPED_COUNT] | 0;
+      const wasmContactDrop = hdr[EVENT_HEADER.CONTACT_DROPPED_COUNT] | 0;
+      const wasmSensorDrop = hdr[EVENT_HEADER.SENSOR_DROPPED_COUNT] | 0;
+      const ringDrop = contactRingI32
+        ? Atomics.load(contactRingI32, 2) | 0
+        : 0;
+      statsF32[PS.CONTACT_DROPPED] = wasmContactDrop + ringDrop;
+      statsF32[PS.SENSOR_DROPPED] = wasmSensorDrop;
     } else {
       statsF32[PS.CONTACT_BEGIN] = 0;
       statsF32[PS.CONTACT_END] = 0;
@@ -1006,6 +1038,12 @@
     if (data.commandSab) {
       cmdI32 = new Int32Array(data.commandSab);
       cmdF32 = new Float32Array(data.commandSab);
+    }
+    if (data.contactSab) {
+      Box2dContactRing.bindContactRing(data.contactSab);
+      contactRingI32 = new Int32Array(data.contactSab);
+    } else {
+      contactRingI32 = null;
     }
     Atomics.store(ctrlI32, CTRL.ENTITY_COUNT, data.entityCount | 0);
     Atomics.store(ctrlI32, CTRL.SUBSTEPS, data.subSteps | 0 || 4);

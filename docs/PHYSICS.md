@@ -83,7 +83,9 @@ See [Collision Filtering](./bible_of_weed_js.md#collision-filtering) in the bibl
 
 - **`subStepCount`** — Box2D solver sub-step count per physics tick (`world.step(dt, subStepCount)`). Raise for stiffer stacking / joints at higher CPU cost. Minimum `1`.
 
-Contacts for gameplay callbacks come from **Box2D begin/end events** on the WASM HEAP (logic workers with `CollisionListener`), not from a Weed pair buffer.
+Contacts for gameplay callbacks come from a **sequenced contact ring** (`box2dContactRing`): nested `weedjs_post` publishes Box2D begin/end (+ sensor) records with body generations after each step; each logic worker keeps its own read cursor (no physics/logic lockstep). Stale generations and inactive entities are rejected; ring overrun clears local pair state.
+
+Body create/destroy sync uses a **dirty bitset + generation** (`box2dBodySync`), not `queryActiveEntities`. Command writes use an **MPSC sequence-slot ring** (`box2dCommandRing`).
 
 ---
 
@@ -132,7 +134,7 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 
 ### Sync
 
-`weedjs_post.syncJoints` after `syncBodies`: create/destroy/recreate Box2D joints via `create*_joint_local`.
+`weedjs_post.syncJoints` after `syncBodies`: create/destroy/recreate Box2D joints via `create*_joint_local`. Change detection uses `Joint.revision` (bumped on add/update/remove), not float fingerprints. Live WASM handles tracked via a dense list (no full `maxJoints` sweep). Failed creates (`handle === -2`) retry only after the slot's revision changes.
 
 ---
 
@@ -140,8 +142,8 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 
 - Hot pose/vel/sleeping rebound to WASM HEAP (`box2dHotFields`) — zero-copy after seed.
 - Command ring handlers hoisted once in `weedjs_post` (no per-step `{}`).
-- Joint sync uses typed arrays only; no per-joint heap objects in the hot path.
-- Contact callbacks: logic reads HEAP event views; begin/end apply helpers are instance methods (no per-frame closures).
+- Joint sync uses typed arrays + revision ints only; no per-joint heap objects in the hot path.
+- Contact callbacks: logic drains the contact ring; begin/end apply helpers are instance methods (no per-frame closures).
 
 ---
 
@@ -159,6 +161,9 @@ Written to `physicsStats` via indices in `src/workers/workers-utils.js` (`PHYSIC
 | `CONTACT_BEGIN` / `CONTACT_END` | Box2D contact begin/end event counts this step (`EVENT_HEADER`) |
 | `SENSOR_BEGIN` / `SENSOR_END` | Box2D sensor begin/end event counts this step |
 | `WEED_JOINTS` | Dense active count from Weed `Joint` SAB (when joints enabled) |
+| `COMMAND_OVERFLOW_TOTAL` | Cumulative MPSC command ring overflows |
+| `CONTACT_DROPPED` / `SENSOR_DROPPED` | WASM export drops + contact-ring overrun counter |
+| `BODY_SYNC_*` / `JOINT_SYNC_*` / `COMMAND_*` | Nested subphase timings and change counts |
 
 Other workers expose `MSG_MS` similarly for comparable overhead profiling.
 

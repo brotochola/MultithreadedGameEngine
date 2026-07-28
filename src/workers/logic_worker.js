@@ -23,6 +23,12 @@ import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
 import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
+import {
+  bindContactRing,
+  drainContactRing,
+  BOX2D_CONTACT_KIND,
+} from '../box2d/box2dContactRing.js';
+import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
 
 // Note: Core engine classes (GameObject, Mouse, Keyboard, etc.) and components
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker
@@ -67,14 +73,13 @@ class LogicWorker extends AbstractWorker {
     // (which run after processCollisionCallbacks) must query through this alias.
     this.frameCollisions = this.currentCollisions;
     this._beginSet = new Set();
+    /** @type {Map<number, bigint>} cantor key → packed gens */
+    this._collisionGens = new Map();
 
-    // Box2D WASM contact/sensor views (msg box2dReady)
-    this.box2dEventHeader = null;
-    this.box2dContactBegin = null;
-    this.box2dContactEnd = null;
-    this.box2dSensorBegin = null;
-    this.box2dSensorEnd = null;
-    this.box2dPairStride = 2;
+    // Box2D sequenced contact ring (msg box2dReady)
+    this.box2dContactRingI32 = null;
+    this.box2dContactCursor = 0;
+    this.bodyGeneration = null;
     this.useBox2dContacts = false;
 
     // Screen visibility tracking (for onScreenEnter/Exit lifecycle methods)
@@ -127,6 +132,13 @@ class LogicWorker extends AbstractWorker {
         this.workerIndex
       );
       console.log(`LOGIC WORKER ${this.workerIndex}: Stats buffer initialized`);
+    }
+
+    if (data.buffers.bodyGeneration) {
+      this.bodyGeneration = new Int32Array(data.buffers.bodyGeneration);
+    } else if (data.buffers.bodyDirtyFlags) {
+      const views = bindBodySyncBuffers(data.buffers);
+      this.bodyGeneration = views?.generation ?? null;
     }
 
     // Deserialize spritesheet metadata for animation lookups
@@ -635,67 +647,86 @@ class LogicWorker extends AbstractWorker {
     this._processBox2dCollisionCallbacks();
   }
 
-  _applyBox2dContactEnd(buf, count) {
-    const stride = this.box2dPairStride;
-    const totalWorkers = this.totalLogicWorkers;
-    const myIndex = this.workerIndex;
-    const gameObjects = this.gameObjects;
-    const active = this.previousCollisions;
-    const entityType = Transform.entityType;
-    const collisionFlags = this.collisionListenerByType;
+  _packGens(genA, genB) {
+    return (BigInt(genA >>> 0) << 32n) | BigInt(genB >>> 0);
+  }
 
-    for (let i = 0; i < count; i++) {
-      const rawA = buf[i * stride];
-      const rawB = buf[i * stride + 1];
-      const minE = rawA < rawB ? rawA : rawB;
-      const maxE = rawA < rawB ? rawB : rawA;
-      const key = cantorPair(minE, maxE);
-      if (!active.has(key)) continue;
-      active.delete(key);
-      if (minE % totalWorkers !== myIndex) continue;
-      const aListens = collisionFlags[entityType[minE]];
-      const bListens = collisionFlags[entityType[maxE]];
-      if (aListens) gameObjects[minE]?.onCollisionExit(maxE);
-      if (bListens) gameObjects[maxE]?.onCollisionExit(minE);
+  _entityGen(i) {
+    return this.bodyGeneration ? Atomics.load(this.bodyGeneration, i) | 0 : 0;
+  }
+
+  _gensMatch(key, genA, genB) {
+    const packed = this._collisionGens.get(key);
+    if (packed === undefined) return false;
+    return packed === this._packGens(genA, genB);
+  }
+
+  _pairStillValid(minE, maxE, key) {
+    if (!Transform.active[minE] || !Transform.active[maxE]) return false;
+    const ga = this._entityGen(minE);
+    const gb = this._entityGen(maxE);
+    return this._gensMatch(key, ga, gb);
+  }
+
+  _clearContactState(reason) {
+    this.previousCollisions.clear();
+    this._collisionGens.clear();
+    this._beginSet.clear();
+    if (reason) {
+      console.warn(`LOGIC WORKER ${this.workerIndex}: contact state cleared (${reason})`);
     }
   }
 
-  _applyBox2dContactBegin(buf, count) {
-    const stride = this.box2dPairStride;
-    const totalWorkers = this.totalLogicWorkers;
-    const myIndex = this.workerIndex;
-    const gameObjects = this.gameObjects;
-    const active = this.previousCollisions;
-    const beginSet = this._beginSet;
+  _applyContactEnd(rawA, rawB, genA, genB) {
+    const minE = rawA < rawB ? rawA : rawB;
+    const maxE = rawA < rawB ? rawB : rawA;
+    const key = cantorPair(minE, maxE);
+    if (!this.previousCollisions.has(key)) return;
+    if (!this._gensMatch(key, genA, genB)) {
+      this.previousCollisions.delete(key);
+      this._collisionGens.delete(key);
+      return;
+    }
+    this.previousCollisions.delete(key);
+    this._collisionGens.delete(key);
+    if (minE % this.totalLogicWorkers !== this.workerIndex) return;
     const entityType = Transform.entityType;
     const collisionFlags = this.collisionListenerByType;
+    const gameObjects = this.gameObjects;
+    const aListens = collisionFlags[entityType[minE]];
+    const bListens = collisionFlags[entityType[maxE]];
+    if (aListens) gameObjects[minE]?.onCollisionExit(maxE);
+    if (bListens) gameObjects[maxE]?.onCollisionExit(minE);
+  }
 
-    for (let i = 0; i < count; i++) {
-      const rawA = buf[i * stride];
-      const rawB = buf[i * stride + 1];
-      const minE = rawA < rawB ? rawA : rawB;
-      const maxE = rawA < rawB ? rawB : rawA;
-      const key = cantorPair(minE, maxE);
-      const isNew = !active.has(key);
-      active.add(key);
-      beginSet.add(key);
-      if (!isNew) continue;
-      if (minE % totalWorkers !== myIndex) continue;
-      const aListens = collisionFlags[entityType[rawA]];
-      const bListens = collisionFlags[entityType[rawB]];
-      if (!aListens && !bListens) continue;
-      if (aListens) gameObjects[rawA]?.onCollisionEnter(rawB);
-      if (bListens) gameObjects[rawB]?.onCollisionEnter(rawA);
+  _applyContactBegin(rawA, rawB, genA, genB) {
+    // Reject stale gens relative to current bodyGeneration
+    if (this._entityGen(rawA) !== (genA | 0) || this._entityGen(rawB) !== (genB | 0)) {
+      return;
     }
+    if (!Transform.active[rawA] || !Transform.active[rawB]) return;
+
+    const minE = rawA < rawB ? rawA : rawB;
+    const maxE = rawA < rawB ? rawB : rawA;
+    const key = cantorPair(minE, maxE);
+    const isNew = !this.previousCollisions.has(key);
+    this.previousCollisions.add(key);
+    this._collisionGens.set(key, this._packGens(genA, genB));
+    this._beginSet.add(key);
+    if (!isNew) return;
+    if (minE % this.totalLogicWorkers !== this.workerIndex) return;
+    const entityType = Transform.entityType;
+    const collisionFlags = this.collisionListenerByType;
+    const gameObjects = this.gameObjects;
+    const aListens = collisionFlags[entityType[rawA]];
+    const bListens = collisionFlags[entityType[rawB]];
+    if (!aListens && !bListens) return;
+    if (aListens) gameObjects[rawA]?.onCollisionEnter(rawB);
+    if (bListens) gameObjects[rawB]?.onCollisionEnter(rawA);
   }
 
   _processBox2dCollisionCallbacks() {
-    const h = this.box2dEventHeader;
-    // EVENT_HEADER: CONTACT_BEGIN=2, CONTACT_END=3, SENSOR_BEGIN=5, SENSOR_END=6
-    const beginCount = h[2] | 0;
-    const endCount = h[3] | 0;
-    const sensorBeginCount = h[5] | 0;
-    const sensorEndCount = h[6] | 0;
+    if (!this.useBox2dContacts || !this.box2dContactRingI32) return;
 
     const totalWorkers = this.totalLogicWorkers;
     const myIndex = this.workerIndex;
@@ -704,19 +735,39 @@ class LogicWorker extends AbstractWorker {
     const beginSet = this._beginSet;
     const entityType = Transform.entityType;
     const collisionFlags = this.collisionListenerByType;
+    const KIND = BOX2D_CONTACT_KIND;
 
     beginSet.clear();
 
-    this._applyBox2dContactEnd(this.box2dContactEnd, endCount);
-    this._applyBox2dContactEnd(this.box2dSensorEnd, sensorEndCount);
-    this._applyBox2dContactBegin(this.box2dContactBegin, beginCount);
-    this._applyBox2dContactBegin(this.box2dSensorBegin, sensorBeginCount);
+    const result = drainContactRing(
+      this.box2dContactRingI32,
+      this.box2dContactCursor,
+      (kind, a, b, genA, genB) => {
+        if (kind === KIND.CONTACT_END || kind === KIND.SENSOR_END) {
+          this._applyContactEnd(a, b, genA, genB);
+        } else if (kind === KIND.CONTACT_BEGIN || kind === KIND.SENSOR_BEGIN) {
+          this._applyContactBegin(a, b, genA, genB);
+        }
+      },
+    );
+    this.box2dContactCursor = result.nextCursor;
+    if (result.overrun) {
+      this._clearContactState('contact ring overrun');
+      this.frameCollisions = active;
+      return;
+    }
 
+    // Purge pairs whose generation changed or entities went inactive
     for (const key of active) {
-      if (beginSet.has(key)) continue;
       cantorUnpair(key, _cantorResult);
       const minE = _cantorResult.a;
       const maxE = _cantorResult.b;
+      if (!this._pairStillValid(minE, maxE, key)) {
+        active.delete(key);
+        this._collisionGens.delete(key);
+        continue;
+      }
+      if (beginSet.has(key)) continue;
       if (minE % totalWorkers !== myIndex) continue;
       const aListens = collisionFlags[entityType[minE]];
       const bListens = collisionFlags[entityType[maxE]];
@@ -767,38 +818,16 @@ class LogicWorker extends AbstractWorker {
         if (data.commandSab) {
           bindCommandRing(data.commandSab);
         }
-        const sab = data.sab;
-        const stride = data.contactPairIntStride || 2;
-        const contactCap = data.contactEventCapacity || 0;
-        const sensorCap = data.sensorEventCapacity || 0;
-        this.box2dPairStride = stride;
-        this.box2dEventHeader = new Int32Array(
-          sab,
-          data.eventHeaderBaseIndex << 2,
-          data.eventHeaderIntCount || 8,
-        );
-        this.box2dContactBegin = new Int32Array(
-          sab,
-          data.contactBeginBaseIndex << 2,
-          contactCap * stride,
-        );
-        this.box2dContactEnd = new Int32Array(
-          sab,
-          data.contactEndBaseIndex << 2,
-          contactCap * stride,
-        );
-        this.box2dSensorBegin = new Int32Array(
-          sab,
-          data.sensorBeginBaseIndex << 2,
-          sensorCap * stride,
-        );
-        this.box2dSensorEnd = new Int32Array(
-          sab,
-          data.sensorEndBaseIndex << 2,
-          sensorCap * stride,
-        );
-        this.useBox2dContacts = true;
-        console.log(`LOGIC WORKER ${this.workerIndex}: Box2D contact views bound`);
+        if (data.contactSab) {
+          bindContactRing(data.contactSab);
+          this.box2dContactRingI32 = new Int32Array(data.contactSab);
+          this.box2dContactCursor = 0;
+          this.useBox2dContacts = true;
+          console.log(`LOGIC WORKER ${this.workerIndex}: Box2D contact ring bound`);
+        } else {
+          this.box2dContactRingI32 = null;
+          this.useBox2dContacts = false;
+        }
         break;
       }
       case 'spawn': {

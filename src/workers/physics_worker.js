@@ -19,6 +19,7 @@ import {
   createCommandRingSab,
   bindCommandRing,
 } from '../box2d/box2dCommandRing.js';
+import { createContactRingSab } from '../box2d/box2dContactRing.js';
 
 const BOX2D_WORKER_URL = '/src/box2d/box2d_wasm.js';
 
@@ -96,6 +97,7 @@ class PhysicsWorker extends AbstractWorker {
 
     this._commandSab = createCommandRingSab();
     bindCommandRing(this._commandSab);
+    this._contactSab = createContactRingSab();
 
     this._box2dWorker = new Worker(BOX2D_WORKER_URL);
     this._box2dWorker.onmessage = (event) => this._onBox2dMessage(event.data);
@@ -124,6 +126,7 @@ class PhysicsWorker extends AbstractWorker {
       sleeping: this._sleepingEnabled !== false,
       controlSab: this._controlSab,
       commandSab: this._commandSab,
+      contactSab: this._contactSab,
       stats: this.stats ? packView(this.stats) : null,
       bodySync: this.bodySyncViews
         ? {
@@ -195,6 +198,7 @@ class PhysicsWorker extends AbstractWorker {
         angularDampingRatio: packView(Joint.angularDampingRatio),
         activeIndices: packView(Joint.activeIndices),
         activeCount: packView(Joint.activeCount),
+        revision: packView(Joint.revision),
       };
     }
   }
@@ -219,6 +223,7 @@ class PhysicsWorker extends AbstractWorker {
         channelOffsets: data.channelOffsets,
         sleepingByteOffset: data.sleepingByteOffset,
         commandSab: this._commandSab,
+        contactSab: this._contactSab,
         eventHeaderBaseIndex: data.eventHeaderBaseIndex,
         contactBeginBaseIndex: data.contactBeginBaseIndex,
         contactEndBaseIndex: data.contactEndBaseIndex,

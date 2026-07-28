@@ -121,9 +121,9 @@ All lists share the same layout: `[count: Uint16, idx0: Uint16, idx1: Uint16, ..
 
 ## 4. Collision + Impact Buffers
 
-### Box2D contact events (no Weed `collisionData` SAB)
+### Box2D contact events (sequenced ring + HEAP export)
 
-Contact begin/end (and sensor begin/end) live on the **WASM HEAP** as `Int32Array` views shared after `box2dReady`. Logic workers with `CollisionListener` drive Unity-style Enter/Stay/Exit from those events. There is no separate `collisionData` SharedArrayBuffer.
+Box2D still writes begin/end into WASM HEAP buffers each step. Nested `weedjs_post` then **publishes** those records into a SharedArrayBuffer **contact ring** (`contactSab` on `box2dReady`) with `(kind, a, b, genA, genB)` and a commit sequence. Logic workers with `CollisionListener` drain with private cursors. There is no Weed `collisionData` SAB.
 
 ### `impactBuffer` -- Bullet/Projectile Impacts
 
@@ -147,7 +147,7 @@ Contact begin/end (and sensor begin/end) live on the **WASM HEAP** as `Int32Arra
 
 | Property   | Value |
 | ---------- | ----- |
-| **Size**   | `Joint.getBufferSize(maxJoints)` — type, pairs, localAnchors A/B, active, distance/revolute/weld fields, dense active list |
+| **Size**   | `Joint.getBufferSize(maxJoints)` — type, pairs, localAnchors A/B, active, distance/revolute/weld fields, dense active list, `revision` |
 | **Layout** | See `src/core/Joint.js` `initializeArrays` |
 
 ### `jointFreeList` / `jointFreeListTop`
@@ -580,7 +580,7 @@ The big picture. Who writes what, who reads what.
 | Active/visible particle lists                 | Particle worker                                                                              | Pre_render                                   |
 | Active/visible decoration lists               | Particle worker + DecorationPool                                                             | Pre_render                                   |
 | Active/visible bullet lists                   | Logic (active), particle (visible)                                                           | Pre_render                                   |
-| Box2D contact/sensor events (HEAP)            | Nested Box2D WASM (`weedjs_post`)                                                            | Logic workers (`CollisionListener`)          |
+| Box2D contact/sensor events (HEAP → contact ring) | Nested Box2D WASM (`weedjs_post` publish) | Logic workers (`CollisionListener`) |
 | Impact buffer                                 | Particle worker                                                                              | Logic workers                                |
 | Joint data                               | Logic workers (create), physics (sync)                                                    | Logic, physics                               |
 | Render queues (main + shadow)                 | Pre_render worker                                                                            | Pixi worker                                  |

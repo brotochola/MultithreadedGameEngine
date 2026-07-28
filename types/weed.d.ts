@@ -2512,6 +2512,8 @@ export declare class Joint extends SharedAtomicPool {
   static activeMeta: Int32Array | null;
   static activeCount: Int32Array | null;
   static activeListLock: Int32Array | null;
+  static revision: Uint32Array | null;
+  static bumpRevision(idx: number): void;
   static getBufferSize(maxJoints: number): number;
   static initializeArrays(buffer: SharedArrayBuffer, maxJoints: number): void;
   static addDistance(opts?: JointDistanceOpts): number;

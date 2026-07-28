@@ -1454,6 +1454,7 @@ class Scene {
         channelOffsets: e.data.channelOffsets,
         sleepingByteOffset: e.data.sleepingByteOffset,
         commandSab: e.data.commandSab,
+        contactSab: e.data.contactSab,
         eventHeaderBaseIndex: e.data.eventHeaderBaseIndex,
         contactBeginBaseIndex: e.data.contactBeginBaseIndex,
         contactEndBaseIndex: e.data.contactEndBaseIndex,
