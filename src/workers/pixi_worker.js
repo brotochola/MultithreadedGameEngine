@@ -830,9 +830,6 @@ class PixiRenderer extends AbstractWorker {
       visibleCount++;
     }
 
-    // Update particle container
-    // this.particleContainer.update();
-
     this.visibleEntityCount = visibleCount;
   }
 

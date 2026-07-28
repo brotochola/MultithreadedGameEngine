@@ -44,38 +44,6 @@ export function countTrailingZeros(n) {
 }
 
 /**
- * Binary search for range [start, end) in sorted array with count at index 0
- * Used by query system to find entity indices in a given pool range
- * @param {TypedArray} data - Sorted array with count at index 0
- * @param {number} start - Range start (inclusive)
- * @param {number} end - Range end (exclusive)
- * @returns {TypedArray} Subarray view of elements in range
- */
-export function binarySearchRange(data, start, end) {
-  const totalCount = data[0];
-  if (totalCount === 0) return data.subarray(1, 1);
-
-  let lo = 1;
-  let hi = 1 + totalCount;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (data[mid] < start) lo = mid + 1;
-    else hi = mid;
-  }
-  const first = lo;
-
-  hi = 1 + totalCount;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (data[mid] < end) lo = mid + 1;
-    else hi = mid;
-  }
-  const last = lo;
-
-  return data.subarray(first, last);
-}
-
-/**
  * Binary search to find insertion point for sorted insert
  * Returns the index where value should be inserted to maintain sorted order
  * @param {TypedArray} data - The array (layout: [count, idx0, idx1, ...])
@@ -150,28 +118,6 @@ export function formatNumber(num, fallback = '--') {
     '_' +
     String(ones).padStart(3, '0')
   );
-}
-
-/**
- * Clamp a value between 0 and 1
- * @param {number} value - The value to clamp
- * @param {number} fallback - Fallback value if input is invalid
- * @returns {number} Clamped value
- */
-export function clamp01(value, fallback) {
-  if (typeof value !== 'number') return fallback;
-  return Math.max(0, Math.min(1, value));
-}
-
-/**
- * Clamp a value between 0 and 1 (fast path - no type checking)
- * OPTIMIZED: Assumes value is already a number, uses ternary instead of Math.min/max
- * Use this in hot loops where you know the input is always a valid number
- * @param {number} value - The value to clamp (must be a number)
- * @returns {number} Clamped value
- */
-export function clamp01Fast(value) {
-  return value < 0 ? 0 : value > 1 ? 1 : value;
 }
 
 /**
@@ -306,24 +252,6 @@ export function rayCircleIntersect(rayX, rayY, dirX, dirY, circleX, circleY, rad
 }
 
 /**
- * Ray-Circle hit test (fast path when distance not needed)
- * Returns true if ray hits circle, false otherwise
- *
- * @param {number} rayX - Ray origin X
- * @param {number} rayY - Ray origin Y
- * @param {number} dirX - Normalized ray direction X
- * @param {number} dirY - Normalized ray direction Y
- * @param {number} circleX - Circle center X
- * @param {number} circleY - Circle center Y
- * @param {number} radius - Circle radius
- * @param {number} maxDist - Maximum ray distance
- * @returns {boolean} True if hit, false otherwise
- */
-export function rayCircleHit(rayX, rayY, dirX, dirY, circleX, circleY, radius, maxDist) {
-  return rayCircleIntersect(rayX, rayY, dirX, dirY, circleX, circleY, radius, maxDist) >= 0;
-}
-
-/**
  * Ray-Box (AABB) intersection test
  * Returns distance to hit point, or -1 if no hit
  *
@@ -373,25 +301,6 @@ export function rayBoxIntersect(rayX, rayY, dirX, dirY, boxX, boxY, width, heigh
   }
 
   return distance;
-}
-
-/**
- * Ray-Box hit test (fast path when distance not needed)
- * Returns true if ray hits box, false otherwise
- *
- * @param {number} rayX - Ray origin X
- * @param {number} rayY - Ray origin Y
- * @param {number} dirX - Normalized ray direction X
- * @param {number} dirY - Normalized ray direction Y
- * @param {number} boxX - Box center X
- * @param {number} boxY - Box center Y
- * @param {number} width - Box width
- * @param {number} height - Box height
- * @param {number} maxDist - Maximum ray distance
- * @returns {boolean} True if hit, false otherwise
- */
-export function rayBoxHit(rayX, rayY, dirX, dirY, boxX, boxY, width, height, maxDist) {
-  return rayBoxIntersect(rayX, rayY, dirX, dirY, boxX, boxY, width, height, maxDist) >= 0;
 }
 
 /**
@@ -459,91 +368,6 @@ export function distanceSq2D(x1, y1, x2, y2) {
 }
 
 /**
- * Normalize a 2D direction vector (make it unit length)
- * Mutates the result object to avoid GC pressure
- *
- * @param {number} dx - X component
- * @param {number} dy - Y component
- * @param {Object} result - Result object to mutate {x, y, length}
- * @returns {Object} The result object with normalized x, y and original length
- *
- * @example
- *   const dir = { x: 0, y: 0, length: 0 };
- *   normalizeDirection(targetX - sourceX, targetY - sourceY, dir);
- *   // dir.x and dir.y are now unit length, dir.length has original magnitude
- */
-export function normalizeDirection(dx, dy, result) {
-  const length = Math.sqrt(dx * dx + dy * dy);
-  result.length = length;
-
-  if (length === 0) {
-    result.x = 0;
-    result.y = 0;
-  } else {
-    result.x = dx / length;
-    result.y = dy / length;
-  }
-
-  return result;
-}
-
-/**
- * Normalize a 2D direction vector - FAST version (no zero-length check)
- * OPTIMIZED: Skips the zero-length check for cases where you KNOW the vector is non-zero
- * Use this in hot paths where division by zero is impossible (e.g., after distance check)
- *
- * WARNING: Will produce NaN/Infinity if dx=dy=0. Only use when you're certain length > 0
- *
- * @param {number} dx - X component (must not be zero if dy is also zero)
- * @param {number} dy - Y component (must not be zero if dx is also zero)
- * @param {Object} result - Result object to mutate {x, y, length}
- * @returns {Object} The result object with normalized x, y and original length
- */
-export function normalizeDirectionFast(dx, dy, result) {
-  const length = Math.sqrt(dx * dx + dy * dy);
-  const invLength = 1 / length; // Single division, two multiplications (faster)
-  result.length = length;
-  result.x = dx * invLength;
-  result.y = dy * invLength;
-  return result;
-}
-
-/**
- * Normalize a 2D direction vector using pre-calculated squared distance
- * OPTIMIZED: Avoids recalculating dx² + dy² when you already have distSq
- * Use this when you already have distSq from distanceSq2D or inline calculation
- *
- * @param {number} dx - X component
- * @param {number} dy - Y component
- * @param {number} distSq - Pre-calculated squared distance (dx² + dy²)
- * @param {Object} result - Result object to mutate {x, y, length}
- * @returns {Object} The result object with normalized x, y and original length
- */
-export function normalizeDirectionFromDistSq(dx, dy, distSq, result) {
-  const length = Math.sqrt(distSq);
-  const invLength = 1 / length; // Single division, two multiplications (faster)
-  result.length = length;
-  result.x = dx * invLength;
-  result.y = dy * invLength;
-  return result;
-}
-
-/**
- * Get normalized direction from point A to point B
- * Convenience wrapper for normalizeDirection
- *
- * @param {number} x1 - Source X
- * @param {number} y1 - Source Y
- * @param {number} x2 - Target X
- * @param {number} y2 - Target Y
- * @param {Object} result - Result object to mutate {x, y, length}
- * @returns {Object} The result object
- */
-export function directionTo(x1, y1, x2, y2, result) {
-  return normalizeDirection(x2 - x1, y2 - y1, result);
-}
-
-/**
  * Generate a unique numeric key for an ordered pair using Cantor pairing function
  * Maps two natural numbers to a single unique natural number.
  * Used for collision tracking to avoid string allocation.
@@ -596,212 +420,12 @@ export function cantorUnpair(z, result) {
 // Pre-allocated result object for cantorUnpair (zero GC in hot paths)
 export const _cantorResult = { a: 0, b: 0 };
 
-/**
- * Calculate distance between two 2D points
- * @param {number} x1 - First point X
- * @param {number} y1 - First point Y
- * @param {number} x2 - Second point X
- * @param {number} y2 - Second point Y
- * @returns {number} Distance
- */
-export function distance2D(x1, y1, x2, y2) {
-  return Math.sqrt(distanceSq2D(x1, y1, x2, y2));
-}
-
-/**
- * Check if distance between two points is within a range
- * OPTIMIZED: Uses squared distance comparison to avoid sqrt
- * This is faster than: distance2D(x1, y1, x2, y2) <= range
- *
- * @param {number} x1 - First point X
- * @param {number} y1 - First point Y
- * @param {number} x2 - Second point X
- * @param {number} y2 - Second point Y
- * @param {number} range - Maximum distance to check
- * @returns {boolean} True if distance <= range
- */
-export function isWithinRange(x1, y1, x2, y2, range) {
-  return distanceSq2D(x1, y1, x2, y2) <= range * range;
-}
-
-/**
- * Check if distance between two points is within a range (squared version)
- * OPTIMIZED: When you already have rangeSq precomputed (e.g., in a loop)
- *
- * @param {number} x1 - First point X
- * @param {number} y1 - First point Y
- * @param {number} x2 - Second point X
- * @param {number} y2 - Second point Y
- * @param {number} rangeSq - Maximum distance SQUARED to check
- * @returns {boolean} True if distanceSq <= rangeSq
- */
-export function isWithinRangeSq(x1, y1, x2, y2, rangeSq) {
-  return distanceSq2D(x1, y1, x2, y2) <= rangeSq;
-}
-
-/**
- * Apply brightness multiplier to a color while preserving hue
- * OPTIMIZED: Inlines RGB extraction to avoid function call + object allocation
- * Uses bitwise ops instead of Math.round for speed
- * @param {number} color - Original color in 0xRRGGBB format
- * @param {number} brightness - Brightness multiplier (0 to 1+)
- * @returns {number} Lit color in 0xRRGGBB format
- */
-export function applyBrightnessToColor(color, brightness) {
-  // Clamp brightness to prevent over-saturation
-  const b = brightness > 1.0 ? 1.0 : brightness;
-
-  // OPTIMIZED: Inline RGB extraction instead of calling extractRGB()
-  // This avoids both the function call overhead and object allocation
-  // Bitwise truncation (| 0) is faster than Math.round
-  const litR = (((color >> 16) & 0xff) * b) | 0;
-  const litG = (((color >> 8) & 0xff) * b) | 0;
-  const litB = ((color & 0xff) * b) | 0;
-
-  return (litR << 16) | (litG << 8) | litB;
-}
-
-// ============================================================================
-// COLLISION/GEOMETRY UTILITIES
-// ============================================================================
-
-// ============================================================================
-// PRE-ALLOCATED RESULT OBJECTS (for zero-GC hot paths)
-// These can be reused across frames to avoid garbage collection pressure.
-// WARNING: Not thread-safe - use separate instances per worker if needed.
-//
-// Scratch objects for hot paths (closestPoint, clampVelocity, etc).
-// For multi-threaded scenarios, create your own result objects per worker.
-// ============================================================================
-export const _directionResult = { x: 0, y: 0, length: 0 };
-export const _velocityResult = { vx: 0, vy: 0 };
-export const _cellResult = { col: 0, row: 0 };
-export const _pointResult = { x: 0, y: 0 };
+// Pre-allocated RGB scratch for extractRGBMut / extractRGBNormalizedMut
 export const _rgbResult = { r: 0, g: 0, b: 0 };
 
-/**
- * Find the closest point on an AABB (Axis-Aligned Bounding Box) to a given point
- * NOTE: Allocates a new object - use closestPointOnAABBMut() in hot paths
- * @param {number} pointX - Point X coordinate
- * @param {number} pointY - Point Y coordinate
- * @param {number} boxX - Box center X
- * @param {number} boxY - Box center Y
- * @param {number} boxW - Box width
- * @param {number} boxH - Box height
- * @returns {Object} Closest point {x, y} on the AABB
- */
-export function closestPointOnAABB(pointX, pointY, boxX, boxY, boxW, boxH) {
-  const halfW = boxW * 0.5;
-  const halfH = boxH * 0.5;
-  return {
-    x: Math.max(boxX - halfW, Math.min(pointX, boxX + halfW)),
-    y: Math.max(boxY - halfH, Math.min(pointY, boxY + halfH)),
-  };
-}
-
-/**
- * Find the closest point on an AABB - ZERO ALLOCATION version
- * OPTIMIZED: Mutates result object instead of allocating
- * @param {number} pointX - Point X coordinate
- * @param {number} pointY - Point Y coordinate
- * @param {number} boxX - Box center X
- * @param {number} boxY - Box center Y
- * @param {number} boxW - Box width
- * @param {number} boxH - Box height
- * @param {Object} result - Result object to mutate {x, y}
- * @returns {Object} The result object with closest point
- */
-export function closestPointOnAABBMut(pointX, pointY, boxX, boxY, boxW, boxH, result) {
-  const halfW = boxW * 0.5;
-  const halfH = boxH * 0.5;
-  result.x = Math.max(boxX - halfW, Math.min(pointX, boxX + halfW));
-  result.y = Math.max(boxY - halfH, Math.min(pointY, boxY + halfH));
-  return result;
-}
-
-/**
- * Clamp velocity vector to a maximum speed
- * NOTE: Allocates a new object - use clampVelocityMut() in hot paths
- * @param {number} vx - Velocity X component
- * @param {number} vy - Velocity Y component
- * @param {number} maxSpeed - Maximum speed (magnitude)
- * @returns {Object} Clamped velocity {vx, vy}
- */
-export function clampVelocity(vx, vy, maxSpeed) {
-  const speedSquared = vx * vx + vy * vy;
-  const maxSpeedSquared = maxSpeed * maxSpeed;
-
-  if (speedSquared > maxSpeedSquared) {
-    const velScale = maxSpeed / Math.sqrt(speedSquared);
-    return {
-      vx: vx * velScale,
-      vy: vy * velScale,
-    };
-  }
-
-  return { vx, vy };
-}
-
-/**
- * Clamp velocity vector to a maximum speed - ZERO ALLOCATION version
- * OPTIMIZED: Mutates result object instead of allocating
- * @param {number} vx - Velocity X component
- * @param {number} vy - Velocity Y component
- * @param {number} maxSpeed - Maximum speed (magnitude)
- * @param {Object} result - Result object to mutate {vx, vy}
- * @returns {Object} The result object with clamped velocity
- */
-export function clampVelocityMut(vx, vy, maxSpeed, result) {
-  const speedSquared = vx * vx + vy * vy;
-  const maxSpeedSquared = maxSpeed * maxSpeed;
-
-  if (speedSquared > maxSpeedSquared) {
-    const velScale = maxSpeed / Math.sqrt(speedSquared);
-    result.vx = vx * velScale;
-    result.vy = vy * velScale;
-  } else {
-    result.vx = vx;
-    result.vy = vy;
-  }
-
-  return result;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
+// ============================================================================
 // MASS COMPUTATION UTILITIES
-// Used by Collider component to auto-compute mass when radius/width/height change.
-// Mass is derived from collider area (2D surface), enabling mass-weighted physics.
-//
-// Why area-based mass?
-// - Simple and intuitive: bigger objects = more mass
-// - Works well for 2D games where "volume" isn't meaningful
-// - Easily computed from existing collider dimensions
-//
-// How it's used in physics (physics_worker.js):
-// - invMass (inverse mass) determines how much an object moves when hit
-// - Light objects (high invMass) bounce off heavy objects
-// - Heavy objects (low invMass) barely move when hit by light objects
-// - Static objects have invMass = 0 (infinite mass, never move)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Compute mass from circle radius (area = π * r²)
- * @param {number} radius - Circle radius
- * @returns {number} Mass value (area in square units)
- */
-export function computeCircleMass(radius) {
-  return Math.PI * radius * radius;
-}
-
-/**
- * Compute mass from box dimensions (area = width * height)
- * @param {number} width - Box width
- * @param {number} height - Box height
- * @returns {number} Mass value (area in square units)
- */
-export function computeBoxMass(width, height) {
-  return width * height;
-}
+// ============================================================================
 
 /**
  * Update RigidBody mass arrays from circle radius
@@ -860,20 +484,6 @@ export function mixTint(a, b, t) {
 }
 
 /**
- * Ray vs Oriented Box. Transforms ray into box-local space, then uses AABB slab test.
- * @returns {number} Distance along ray, or -1 if miss
- */
-export function rayOBBIntersect(rayX, rayY, dirX, dirY, boxX, boxY, width, height, cos, sin, maxDist) {
-  const dx = rayX - boxX;
-  const dy = rayY - boxY;
-  const localOx = cos * dx + sin * dy;
-  const localOy = -sin * dx + cos * dy;
-  const localDx = cos * dirX + sin * dirY;
-  const localDy = -sin * dirX + cos * dirY;
-  return rayBoxIntersect(localOx, localOy, localDx, localDy, 0, 0, width, height, maxDist);
-}
-
-/**
  * Ray vs convex polygon (local verts). Transform ray to local; clip against half-planes.
  * @returns {number} Distance along ray, or -1 if miss
  */
@@ -927,97 +537,8 @@ export function rayPolygonIntersect(
 }
 
 // ============================================================================
-// SPATIAL/GRID UTILITIES
-// ============================================================================
-
-/**
- * Convert world position to spatial grid cell index
- * @param {number} x - World X position
- * @param {number} y - World Y position
- * @param {number} cellSize - Size of each grid cell
- * @param {number} gridCols - Number of grid columns
- * @param {number} gridRows - Number of grid rows
- * @returns {number} Cell index in 1D array
- */
-export function getCellIndex(x, y, cellSize, gridCols, gridRows) {
-  const col = Math.floor(x / cellSize);
-  const row = Math.floor(y / cellSize);
-
-  // Clamp to grid bounds
-  const clampedCol = Math.max(0, Math.min(gridCols - 1, col));
-  const clampedRow = Math.max(0, Math.min(gridRows - 1, row));
-
-  return clampedRow * gridCols + clampedCol;
-}
-
-/**
- * Get grid cell coordinates from world position
- * NOTE: Allocates a new object - use getCellCoordsMut() in hot paths
- * @param {number} x - World X position
- * @param {number} y - World Y position
- * @param {number} cellSize - Size of each grid cell
- * @param {number} gridCols - Number of grid columns
- * @param {number} gridRows - Number of grid rows
- * @returns {Object} {col, row} Grid coordinates
- */
-export function getCellCoords(x, y, cellSize, gridCols, gridRows) {
-  const col = Math.floor(x / cellSize);
-  const row = Math.floor(y / cellSize);
-
-  return {
-    col: Math.max(0, Math.min(gridCols - 1, col)),
-    row: Math.max(0, Math.min(gridRows - 1, row)),
-  };
-}
-
-/**
- * Get grid cell coordinates from world position - ZERO ALLOCATION version
- * OPTIMIZED: Mutates result object instead of allocating
- * @param {number} x - World X position
- * @param {number} y - World Y position
- * @param {number} cellSize - Size of each grid cell
- * @param {number} gridCols - Number of grid columns
- * @param {number} gridRows - Number of grid rows
- * @param {Object} result - Result object to mutate {col, row}
- * @returns {Object} The result object with grid coordinates
- */
-export function getCellCoordsMut(x, y, cellSize, gridCols, gridRows, result) {
-  const col = Math.floor(x / cellSize);
-  const row = Math.floor(y / cellSize);
-
-  // Use ternary instead of Math.max/min for micro-optimization
-  result.col = col < 0 ? 0 : col >= gridCols ? gridCols - 1 : col;
-  result.row = row < 0 ? 0 : row >= gridRows ? gridRows - 1 : row;
-
-  return result;
-}
-
-// ============================================================================
 // COMPONENT/CLASS UTILITIES
 // ============================================================================
-
-/**
- * Get all parent classes in the inheritance chain
- * @param {Class} childClass - The class to get parents for
- * @returns {Array<Class>} Array of parent classes
- */
-export function getParentClasses(childClass) {
-  const parentClasses = [];
-  let currentClass = childClass;
-
-  // Loop until the prototype chain reaches null (beyond Object.prototype)
-  while (currentClass && currentClass !== Object) {
-    const parent = Object.getPrototypeOf(currentClass);
-    if (parent && parent !== Object.prototype.constructor) {
-      // Exclude the base Object constructor
-      parentClasses.push(parent);
-      currentClass = parent;
-    } else {
-      break; // Reached the top of the inheritance chain
-    }
-  }
-  return parentClasses;
-}
 
 /**
  * Collect all components from a class hierarchy
@@ -1203,6 +724,20 @@ export function normalizeAngle(angle) {
 }
 
 /**
+ * Normalize an angle to [-PI, PI)
+ * Used by angular-sweep visibility (event ordering around a light).
+ * @param {number} angle - Angle in radians
+ * @returns {number} Normalized angle in [-PI, PI)
+ */
+export function normalizeAngleSigned(angle) {
+  const TWO_PI = Math.PI * 2;
+  angle = angle % TWO_PI;
+  if (angle > Math.PI) angle -= TWO_PI;
+  else if (angle <= -Math.PI) angle += TWO_PI;
+  return angle;
+}
+
+/**
  * Normalize the difference between two angles to [-PI, PI] range
  * Useful for interpolation to avoid taking the long way around the circle
  * @param {number} angle1 - First angle in radians
@@ -1217,25 +752,6 @@ export function normalizeAngleDifference(angle1, angle2) {
     diff += 2 * Math.PI;
   }
   return diff;
-}
-
-/**
- * Linear interpolation between two angles (handles wrap-around)
- * OPTIMIZED: Takes the shortest path around the circle
- * @param {number} a - Start angle in radians
- * @param {number} b - End angle in radians
- * @param {number} t - Interpolation factor (0-1)
- * @returns {number} Interpolated angle in radians
- */
-export function lerpAngle(a, b, t) {
-  // Normalize the difference to take the shortest path
-  let diff = b - a;
-  if (diff > Math.PI) {
-    diff -= 2 * Math.PI;
-  } else if (diff < -Math.PI) {
-    diff += 2 * Math.PI;
-  }
-  return a + diff * t;
 }
 
 /**
@@ -1352,159 +868,6 @@ export function queryActiveEntitiesSlow(componentClasses) {
 
   console.warn('[queryActiveEntitiesSlow] Query system only available in worker context');
   return new Uint16Array(0);
-}
-
-// ============================================================================
-// LIGHTING UTILITIES
-// ============================================================================
-
-/**
- * Calculate light contribution using capped inverse square falloff
- * Formula: intensity / (intensity + distance²)
- *
- * This formula ensures:
- * - Maximum attenuation is 1.0 at distance=0 (no white centers)
- * - Higher intensity = light reaches farther
- * - sqrt(intensity) = distance at which brightness is 50%
- *
- * @param {number} intensity - Light intensity (also controls reach)
- * @param {number} distanceSquared - Squared distance from light to target
- * @returns {number} Light contribution (0 to 1.0)
- */
-export function calculateLightAttenuation(intensity, distanceSquared) {
-  return intensity / (intensity + distanceSquared);
-}
-
-/**
- * Calculate total light received at a position from multiple light sources
- * Uses inverse square falloff: totalLight = ambient + Σ(intensity / d²)
- *
- * @param {number} targetX - Target position X (world space)
- * @param {number} targetY - Target position Y (world space)
- * @param {Object} lightData - Object containing light arrays:
- *   - lightX: Float32Array of light X positions
- *   - lightY: Float32Array of light Y positions
- *   - lightIntensity: Float32Array of light intensities
- *   - lightEnabled: Uint8Array of enabled flags
- *   - lightCount: Number of potential lights to check
- * @param {number} ambient - Ambient light level (0-1)
- * @param {number} maxLight - Maximum light value (default: 1.5)
- * @returns {number} Total light level (clamped to maxLight)
- */
-export function calculateTotalLightAtPosition(
-  targetX,
-  targetY,
-  lightData,
-  ambient = 0.05,
-  maxLight = 1.5
-) {
-  let totalLight = ambient;
-
-  const { lightX, lightY, lightIntensity, lightEnabled, lightCount } = lightData;
-
-  for (let i = 0; i < lightCount; i++) {
-    if (!lightEnabled[i]) continue;
-
-    const distSq = distanceSq2D(targetX, targetY, lightX[i], lightY[i]);
-
-    totalLight += calculateLightAttenuation(lightIntensity[i], distSq);
-  }
-
-  return Math.min(totalLight, maxLight);
-}
-
-/**
- * Calculate total light for an entity using neighbor distances calculated on-the-fly
- * Only considers neighbors (lights within visualRange), so this is an optimization
- * for dense scenes where lights are typically nearby entities
- *
- * @param {number} entityIndex - The entity's index
- * @param {Int32Array} neighborData - Neighbor indices buffer from spatial worker
- * @param {Float32Array} lightIntensity - Light intensity per entity
- * @param {Uint8Array} lightEnabled - Light enabled flags per entity
- * @param {number} stride - Neighbor buffer stride (1 + maxNeighbors)
- * @param {Float32Array} transformX - Transform.x array
- * @param {Float32Array} transformY - Transform.y array
- * @param {Float32Array} colliderOffsetX - Collider.offsetX array
- * @param {Float32Array} colliderOffsetY - Collider.offsetY array
- * @param {number} ambient - Ambient light level (0-1)
- * @param {number} maxLight - Maximum light value (default: 1.5)
- * @returns {number} Total light level (clamped to maxLight)
- */
-export function calculateLightFromNeighbors(
-  entityIndex,
-  neighborData,
-  lightIntensity,
-  lightEnabled,
-  stride,
-  transformX,
-  transformY,
-  colliderOffsetX,
-  colliderOffsetY,
-  ambient = 0.05,
-  maxLight = 1.5
-) {
-  let totalLight = ambient;
-
-  const offset = entityIndex * stride;
-  const neighborCount = neighborData[offset];
-
-  // Get entity's collider position
-  const entityX = transformX[entityIndex] + (colliderOffsetX[entityIndex] || 0);
-  const entityY = transformY[entityIndex] + (colliderOffsetY[entityIndex] || 0);
-
-  for (let k = 0; k < neighborCount; k++) {
-    const neighborIdx = neighborData[offset + 1 + k];
-
-    // Skip if this neighbor is not a light
-    if (!lightEnabled[neighborIdx]) continue;
-
-    // Calculate squared distance on-the-fly (collider positions)
-    const neighborX = transformX[neighborIdx] + (colliderOffsetX[neighborIdx] || 0);
-    const neighborY = transformY[neighborIdx] + (colliderOffsetY[neighborIdx] || 0);
-    const distSq = distanceSq2D(entityX, entityY, neighborX, neighborY);
-
-    totalLight += calculateLightAttenuation(lightIntensity[neighborIdx], distSq);
-  }
-
-  return Math.min(totalLight, maxLight);
-}
-
-/**
- * Convert a brightness value (0-1+) to a tint color
- * Brightness 1.0 = white (0xFFFFFF), 0.0 = black (0x000000)
- *
- * @param {number} brightness - Light level (0 to 1+, will be clamped)
- * @returns {number} Tint color in 0xRRGGBB format
- */
-export function brightnessToTint(brightness) {
-  const clamped = Math.max(0, Math.min(1, brightness));
-  const value = Math.round(clamped * 255);
-  return (value << 16) | (value << 8) | value;
-}
-
-/**
- * Convert a brightness value and color to a tinted color
- * Multiplies the base color by the brightness
- *
- * @param {number} brightness - Light level (0 to 1+, will be clamped)
- * @param {number} baseColor - Base color in 0xRRGGBB format (default: white)
- * @returns {number} Tinted color in 0xRRGGBB format
- */
-export function brightnessToColoredTint(brightness, baseColor = 0xffffff) {
-  const clamped = Math.max(0, Math.min(1, brightness));
-
-  // Extract base RGB
-  const baseR = (baseColor >> 16) & 0xff;
-  const baseG = (baseColor >> 8) & 0xff;
-  const baseB = baseColor & 0xff;
-
-  // Apply brightness
-  const r = Math.round(baseR * clamped);
-  const g = Math.round(baseG * clamped);
-  const b = Math.round(baseB * clamped);
-
-  return (r << 16) | (g << 8) | b;
 }
 
 // ============================================================================
@@ -2030,132 +1393,6 @@ export function urlToPath(url) {
   } catch (e) {
     return url;
   }
-}
-
-// ============================================================================
-// DEBUG DRAWING UTILITIES
-// Helper functions for debug visualization in PixiJS
-// ============================================================================
-
-/**
- * Draw a debug line on a PIXI Graphics layer
- * Can optionally draw a dashed "remainder" portion after a hit point
- *
- * @param {PIXI.Graphics} graphics - The Graphics layer to draw on
- * @param {Object} options - Drawing options:
- *   - startX, startY: Line start position
- *   - endX, endY: Line end position
- *   - color: Line color (hex, e.g. 0x00ff00)
- *   - alpha: Line alpha (0-1)
- *   - width: Line width (will be scaled by zoom)
- *   - zoom: Camera zoom level (for consistent line width)
- *   - dashed: If true, draw as dashed line
- *   - dashLength: Length of each dash (default 10)
- */
-export function drawLine(graphics, options) {
-  const {
-    startX,
-    startY,
-    endX,
-    endY,
-    color = 0xffffff,
-    alpha = 1.0,
-    width = 1,
-    zoom = 1,
-    dashed = false,
-    dashLength = 10,
-  } = options;
-
-  const scaledWidth = width / zoom;
-
-  if (!dashed) {
-    // Solid line
-    graphics.moveTo(startX, startY).lineTo(endX, endY).stroke({ width: scaledWidth, color, alpha });
-  } else {
-    // Dashed line
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const segments = Math.ceil(dist / dashLength);
-    const stepX = dx / segments;
-    const stepY = dy / segments;
-
-    for (let s = 0; s < segments; s += 2) {
-      const x1 = startX + stepX * s;
-      const y1 = startY + stepY * s;
-      const x2 = startX + stepX * Math.min(s + 1, segments);
-      const y2 = startY + stepY * Math.min(s + 1, segments);
-
-      graphics.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: scaledWidth, color, alpha });
-    }
-  }
-}
-
-/**
- * Draw a debug circle on a PIXI Graphics layer
- *
- * @param {PIXI.Graphics} graphics - The Graphics layer to draw on
- * @param {Object} options - Drawing options:
- *   - x, y: Circle center position
- *   - radius: Circle radius
- *   - color: Fill/stroke color (hex)
- *   - alpha: Alpha (0-1)
- *   - zoom: Camera zoom level (for consistent size)
- *   - fill: If true, fill the circle (default true)
- *   - stroke: If true, stroke the circle (default false)
- *   - strokeWidth: Stroke width (default 1)
- */
-export function drawCircle(graphics, options) {
-  const {
-    x,
-    y,
-    radius,
-    color = 0xffffff,
-    alpha = 1.0,
-    zoom = 1,
-    fill = true,
-    stroke = false,
-    strokeWidth = 1,
-  } = options;
-
-  const scaledRadius = radius / zoom;
-
-  graphics.circle(x, y, scaledRadius);
-
-  if (fill) {
-    graphics.fill({ color, alpha });
-  }
-  if (stroke) {
-    graphics.stroke({ width: strokeWidth / zoom, color, alpha });
-  }
-}
-
-/**
- * Draw a debug cross marker on a PIXI Graphics layer
- *
- * @param {PIXI.Graphics} graphics - The Graphics layer to draw on
- * @param {Object} options - Drawing options:
- *   - x, y: Cross center position
- *   - size: Cross arm length
- *   - color: Line color (hex)
- *   - alpha: Alpha (0-1)
- *   - width: Line width
- *   - zoom: Camera zoom level
- */
-export function drawCross(graphics, options) {
-  const { x, y, size = 8, color = 0xffffff, alpha = 1.0, width = 2, zoom = 1 } = options;
-
-  const scaledSize = size / zoom;
-  const scaledWidth = width / zoom;
-
-  graphics
-    .moveTo(x - scaledSize, y)
-    .lineTo(x + scaledSize, y)
-    .stroke({ width: scaledWidth, color, alpha });
-  graphics
-    .moveTo(x, y - scaledSize)
-    .lineTo(x, y + scaledSize)
-    .stroke({ width: scaledWidth, color, alpha });
 }
 
 export function printLogo() {

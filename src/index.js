@@ -115,14 +115,13 @@ export {
   CAMERA_TYPES,
 } from './core/ConfigDefaults.js';
 
-// Worker files (logic_worker, physics_worker, pixi_worker, spatial_worker, pixi4webworkers)
+// Worker files (logic_worker, physics_worker, pixi_worker, spatial_worker, …)
 // are designed to be loaded as Web Workers and don't have default exports,
 // but you can import them as modules if needed for bundling:
 // import './workers/logic_worker.js';
 // import './workers/physics_worker.js';
 // import './workers/pixi_worker.js';
 // import './workers/spatial_worker.js';
-// import './workers/pixi4webworkers.js';
 
 // ============================================================================
 // WEED NAMESPACE - PIXI-style usage 🌿

@@ -46,7 +46,7 @@ import {
 } from './workers-utils.js';
 import { generateSymmetricalCirclePattern } from '../core/utils.js';
 import { SPATIAL_DEFAULTS } from '../core/ConfigDefaults.js';
-import { getColliderBounds, _boundsResult } from '../core/ColliderUtils.js';
+import { getColliderBounds, getCellRange, _boundsResult, _cellRangeResult } from '../core/ColliderUtils.js';
 
 /**
  * SpatialWorker - Row-based spatial hashing and neighbor detection
@@ -410,7 +410,7 @@ class SpatialWorker extends AbstractWorker {
 
       // Insert entities that need to be in the grid for:
       // - Collider: physics, neighbor queries
-      // - SpriteRenderer: visibility culling (particle_worker uses Grid.getEntitiesInRect)
+      // - SpriteRenderer: visibility culling (particle_worker / camera frustum)
       // Flash has neither, so it is skipped.
       if (!colliderActive[i] && !spriteRendererActive[i]) continue;
 
@@ -435,17 +435,11 @@ class SpatialWorker extends AbstractWorker {
 
       const maxHalfExtent = halfW > halfH ? halfW : halfH;
 
-      // Calculate cell range this entity's bounding box covers
-      let minCol = ((posX - halfW) * invCellSize) | 0;
-      let maxColBB = ((posX + halfW) * invCellSize) | 0;
-      let minRow = ((posY - halfH) * invCellSize) | 0;
-      let maxRowBB = ((posY + halfH) * invCellSize) | 0;
-
-      // Clamp to grid bounds
-      minCol = minCol < 0 ? 0 : minCol > maxCol ? maxCol : minCol;
-      maxColBB = maxColBB < 0 ? 0 : maxColBB > maxCol ? maxCol : maxColBB;
-      minRow = minRow < 0 ? 0 : minRow > maxRow ? maxRow : minRow;
-      maxRowBB = maxRowBB < 0 ? 0 : maxRowBB > maxRow ? maxRow : maxRowBB;
+      getCellRange(posX, posY, halfW, halfH, invCellSize, maxCol, maxRow, _cellRangeResult);
+      const minCol = _cellRangeResult.minCol;
+      const maxColBB = _cellRangeResult.maxCol;
+      const minRow = _cellRangeResult.minRow;
+      const maxRowBB = _cellRangeResult.maxRow;
 
       // Insert entity into ALL cells it overlaps, but only if we own that row
       let wroteEntityPos = false;

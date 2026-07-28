@@ -6,19 +6,11 @@
 //
 // All functions are allocation-free in the hot path (pre-allocated output arrays).
 
+import { normalizeAngleSigned } from '../../core/utils.js';
+
 const TWO_PI = Math.PI * 2;
 const EPSILON = 1e-5;
 const MAX_ARC_STEP = Math.PI / 8; // ~22.5° max gap between boundary vertices
-
-/**
- * Normalize angle to [-PI, PI)
- */
-function normalizeAngle(a) {
-  a = a % TWO_PI;
-  if (a > Math.PI) a -= TWO_PI;
-  else if (a <= -Math.PI) a += TWO_PI;
-  return a;
-}
 
 /**
  * Compute the two tangent angles from a point to a circle.
@@ -134,8 +126,8 @@ export function buildVisibilityPolygon(
     const halfAngle = tangentHalfAngle(dist, r);
     if (halfAngle < 0) continue;
 
-    const openAngle = normalizeAngle(centerAngle - halfAngle);
-    const closeAngle = normalizeAngle(centerAngle + halfAngle);
+    const openAngle = normalizeAngleSigned(centerAngle - halfAngle);
+    const closeAngle = normalizeAngleSigned(centerAngle + halfAngle);
 
     if (eventCount + 2 > MAX_EVENTS) {
       warnEventOverflow(circleCount);
@@ -176,8 +168,8 @@ export function buildVisibilityPolygon(
     const halfAngle = tangentHalfAngle(dist, r);
     if (halfAngle < 0) continue;
 
-    const openAngle = normalizeAngle(centerAngle - halfAngle);
-    const closeAngle = normalizeAngle(centerAngle + halfAngle);
+    const openAngle = normalizeAngleSigned(centerAngle - halfAngle);
+    const closeAngle = normalizeAngleSigned(centerAngle + halfAngle);
 
     // Circle is active at -PI if its arc wraps around (open > close)
     if (openAngle > closeAngle) {

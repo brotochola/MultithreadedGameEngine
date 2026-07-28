@@ -1038,9 +1038,6 @@ class ParticleWorker extends AbstractWorker {
           impactData[base + 5] = shooterEntityType[i];
           impactWrite++;
         }
-        // if (this.maxParticles > 0 && ParticleEmitter.hasCapacity()) {
-        //   ParticleEmitter.emit({ x: hitX, y: hitY, texture: 'impact_spark', count: 4, speed: 2 });
-        // }
         active[i] = 0;
         BulletPool.returnToPool(i);
         continue;

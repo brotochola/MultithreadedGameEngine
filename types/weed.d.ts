@@ -370,11 +370,6 @@ export interface GridRadiusQueryResult {
   entities: Uint16Array;
 }
 
-export interface GridNearestEntityResult {
-  entityId: number;
-  distSq: number;
-}
-
 export interface GridCellSleepingStats {
   totalCells: number;
   sleepingCells: number;
@@ -1344,7 +1339,6 @@ export declare class Grid {
   static getCellEntityCount(cellIndex: number): number;
   static getCellBase(cellIndex: number): number;
 
-  static clearCell(cellIndex: number): void;
   static addEntityToCell(cellIndex: number, entityId: number): boolean;
 
   static get neighborData(): Uint16Array | null;
@@ -1358,15 +1352,6 @@ export declare class Grid {
   static setNeighbor(entityId: number, k: number, neighborId: number): void;
 
   static getEntitiesInRadius(x: number, y: number, radius: number): GridRadiusQueryResult;
-  static getEntitiesInRect(minX: number, minY: number, maxX: number, maxY: number): GridRadiusQueryResult;
-  static getNearestEntity(
-    x: number,
-    y: number,
-    radius: number,
-  ): GridNearestEntityResult | null;
-
-  static isRowOwnedBy(row: number, workerId: number, totalWorkers: number): boolean;
-  static getOwnedRows(workerId: number, totalWorkers: number): number[];
 
   static get cellSleepingData(): Uint8Array | null;
   static getCellSleeping(cellIndex: number): number;
