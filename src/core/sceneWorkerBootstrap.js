@@ -21,6 +21,21 @@ function createSceneWorkerFactory(useInlineWorkers, cacheBust) {
   };
 }
 
+/** Bundle mode: blob URL of embedded Box2D classic worker. Dev: undefined (physics uses /src/box2d/). */
+function resolveBox2dWorkerUrl() {
+  if (
+    typeof window === 'undefined' ||
+    !window.WEED?.BUNDLE_MODE ||
+    !window.WEED.Box2dWorkerSource
+  ) {
+    return undefined;
+  }
+  if (typeof window.WEED.getBox2dWorkerUrl === 'function') {
+    return window.WEED.getBox2dWorkerUrl();
+  }
+  return undefined;
+}
+
 function createSceneWorkerInstances(scene, makeWorker) {
   const numberOfSpatialWorkers = scene.config.spatial.numberOfSpatialWorkers;
   for (let i = 0; i < numberOfSpatialWorkers; i++) {
@@ -320,13 +335,18 @@ function initializeSceneWorkers(scene, initData, sharedBuffers, workerPorts) {
   }
 
   console.log('[Scene]   → Initializing physics worker...');
+  const physicsExtra = {
+    workerPorts: workerPorts.physics,
+    frameRateIndex: physicsIndex,
+  };
+  const box2dWorkerUrl = resolveBox2dWorkerUrl();
+  if (box2dWorkerUrl) {
+    physicsExtra.box2dWorkerUrl = box2dWorkerUrl;
+  }
   postWorkerInitMessage(
     scene.workers.physics,
     initData,
-    {
-      workerPorts: workerPorts.physics,
-      frameRateIndex: physicsIndex,
-    },
+    physicsExtra,
     getPortTransferables(workerPorts.physics)
   );
 

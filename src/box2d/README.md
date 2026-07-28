@@ -11,7 +11,14 @@ Nested classic worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Weed
 | `physics-api.js` | `PhysicsWorld` / `BodyHandle` over `cwrap` |
 | `box2dConstants.impl.js` + `box2dConstants.js` | Dual-load enums / state channels |
 | `box2dCommandRing.impl.js` + `box2dCommandRing.js` | Pose / vel / fixedRotation commands |
+| `box2dContactRing.impl.js` + `box2dContactRing.js` | Contact/sensor event ring |
 | `box2dHotFields.js` | Rebind Transform/RigidBody SoA onto WASM HEAP |
+
+## Dist / npm bundle
+
+`npm run make_bundle` embeds glue + `.wasm` (base64) + the classic `importScripts` siblings into `WEED.Box2dWorkerSource` inside `weed.bundle*.min.js`. At runtime `WEED.getBox2dWorkerUrl()` creates one blob URL; physics receives it as `box2dWorkerUrl`. Do **not** ship a separate `dist/box2d/` folder or blob-inline only the glue — pthreads re-fetch the same worker URL via `_scriptName`.
+
+Unbundled demos still load `/src/box2d/box2d_wasm.js` from the repo server.
 
 ## Rebuild (from sibling `box2d_3.0_wasm_sab`)
 

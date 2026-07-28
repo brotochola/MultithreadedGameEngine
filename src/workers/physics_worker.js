@@ -21,7 +21,8 @@ import {
 } from '../box2d/box2dCommandRing.js';
 import { createContactRingSab } from '../box2d/box2dContactRing.js';
 
-const BOX2D_WORKER_URL = '/src/box2d/box2d_wasm.js';
+/** Dev / unbundled default. Bundle mode passes absolute blob URL via init. */
+const BOX2D_WORKER_URL_DEFAULT = '/src/box2d/box2d_wasm.js';
 
 const CTRL = {
   STATE: 0,
@@ -51,6 +52,7 @@ class PhysicsWorker extends AbstractWorker {
     this.maxJoints = 0;
 
     this._box2dWorker = null;
+    this._box2dWorkerUrl = BOX2D_WORKER_URL_DEFAULT;
     this._box2dReady = false;
     this._controlSab = null;
     this._ctrlI32 = null;
@@ -72,6 +74,10 @@ class PhysicsWorker extends AbstractWorker {
         data.joints.freeList,
         data.joints.freeListTop,
       );
+    }
+
+    if (data.box2dWorkerUrl) {
+      this._box2dWorkerUrl = data.box2dWorkerUrl;
     }
 
     this.applyPhysicsConfig(this.config.physics || {});
@@ -98,13 +104,6 @@ class PhysicsWorker extends AbstractWorker {
     this._commandSab = createCommandRingSab();
     bindCommandRing(this._commandSab);
     this._contactSab = createContactRingSab();
-
-    this._box2dWorker = new Worker(BOX2D_WORKER_URL);
-    this._box2dWorker.onmessage = (event) => this._onBox2dMessage(event.data);
-    this._box2dWorker.onerror = (err) => {
-      console.error('[physics] box2d worker error', err);
-      this.reportError('Box2D worker failed', err);
-    };
 
     const s = this.settings;
     this._pendingModule = {
@@ -201,6 +200,15 @@ class PhysicsWorker extends AbstractWorker {
         revision: packView(Joint.revision),
       };
     }
+
+    // Pending INIT must exist before Worker starts: embedded Box2D can post
+    // WEEDJS_MODULE_READY before the next statement runs.
+    this._box2dWorker = new Worker(this._box2dWorkerUrl);
+    this._box2dWorker.onmessage = (event) => this._onBox2dMessage(event.data);
+    this._box2dWorker.onerror = (err) => {
+      console.error('[physics] box2d worker error', err);
+      this.reportError('Box2D worker failed', err);
+    };
   }
 
   _onBox2dMessage(data) {

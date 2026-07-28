@@ -80,13 +80,82 @@ const debugUICSS = isProd
     ? ''
     : fs.readFileSync(path.join(rootDir, 'src', 'core', 'debug', 'DebugUI.css'), 'utf8');
 
+// Box2D nested classic worker: glue + wasm + importScripts siblings, one self-contained source.
+// Pthreads re-fetch this same blob via _scriptName; do not ship loose dist/box2d/.
+console.log('📦 Embedding Box2D WASM runtime into bundle...');
+const box2dDir = path.join(rootDir, 'src', 'box2d');
+const box2dSiblingNames = [
+    'weedjs_post.js',
+    'physics-api.js',
+    'box2dConstants.impl.js',
+    'box2dCommandRing.impl.js',
+    'box2dContactRing.impl.js',
+];
+const box2dSiblingScripts = {};
+for (const name of box2dSiblingNames) {
+    box2dSiblingScripts[name] = fs.readFileSync(path.join(box2dDir, name), 'utf8');
+}
+const box2dGlue = fs.readFileSync(path.join(box2dDir, 'box2d_wasm.js'), 'utf8');
+const box2dWasmB64 = fs.readFileSync(path.join(box2dDir, 'box2d_wasm.wasm')).toString('base64');
+const box2dGluePatched = box2dGlue.replace(
+    /importScripts\(\s*["']weedjs_post\.js["']\s*\)/,
+    '/* weedjs_post preloaded for bundle embed */',
+);
+const box2dWorkerSource =
+    `(function(global){\n` +
+    `  var Module = global.Module || {};\n` +
+    `  var __weedWasmBinary = (function(b64){\n` +
+    `    var binary = atob(b64);\n` +
+    `    var bytes = new Uint8Array(binary.length);\n` +
+    `    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);\n` +
+    `    return bytes;\n` +
+    `  })(${JSON.stringify(box2dWasmB64)});\n` +
+    `  // This Emscripten build never copies Module.wasmBinary into its local wasmBinary;\n` +
+    `  // instantiateWasm is the supported hook for embedded binaries.\n` +
+    `  Module["instantiateWasm"] = function(info, receiveInstance) {\n` +
+    `    var module = new WebAssembly.Module(__weedWasmBinary);\n` +
+    `    var instance = new WebAssembly.Instance(module, info);\n` +
+    `    receiveInstance(instance, module);\n` +
+    `  };\n` +
+    `  global.Module = Module;\n` +
+    `  var __weedBox2dScripts = ${JSON.stringify(box2dSiblingScripts)};\n` +
+    `  var __weedBox2dBlobs = Object.create(null);\n` +
+    `  var __importScripts = global.importScripts.bind(global);\n` +
+    `  global.importScripts = function() {\n` +
+    `    var args = Array.prototype.slice.call(arguments).map(function(u) {\n` +
+    `      var name = String(u).split("/").pop().split("?")[0];\n` +
+    `      if (__weedBox2dScripts[name]) {\n` +
+    `        if (!__weedBox2dBlobs[name]) {\n` +
+    `          __weedBox2dBlobs[name] = URL.createObjectURL(\n` +
+    `            new Blob([__weedBox2dScripts[name]], { type: "application/javascript" })\n` +
+    `          );\n` +
+    `        }\n` +
+    `        return __weedBox2dBlobs[name];\n` +
+    `      }\n` +
+    `      return u;\n` +
+    `    });\n` +
+    `    return __importScripts.apply(global, args);\n` +
+    `  };\n` +
+    `  // Load Weed bridge BEFORE createWasm().then(run) so onRuntimeInitialized is set.\n` +
+    `  // Pthreads (name em-pthread) skip weedjs_post; do not wrap/post MODULE_READY there.\n` +
+    `  if (global.name !== "em-pthread") {\n` +
+    `    global.importScripts("weedjs_post.js");\n` +
+    `    var __weedReady = Module["onRuntimeInitialized"];\n` +
+    `    Module["onRuntimeInitialized"] = function () {\n` +
+    `      if (typeof __weedReady === "function") __weedReady();\n` +
+    `      else postMessage({ type: "WEEDJS_MODULE_READY" });\n` +
+    `    };\n` +
+    `  }\n` +
+    `})(typeof self !== "undefined" ? self : this);\n` +
+    box2dGluePatched;
+
 // Step 3: Generate bundle entry with workers embedded in WEED
 console.log('🔧 Step 3: Generating bundle entry with embedded workers...');
 
 const bundleEntryCode = `
 /**
  * WeedJS Single-File Bundle Entry Point
- * Workers are embedded as strings in WEED.WorkerSources
+ * Workers + Box2D nested worker are embedded as strings in WEED.*
  * AUTO-GENERATED - DO NOT EDIT
  */
 
@@ -102,9 +171,12 @@ const WorkerSources = Object.freeze({
   pre_render_worker: ${JSON.stringify(workers.pre_render_worker)},
 });
 
+let box2dWorkerBlobUrl = null;
+
 const WEED = Object.freeze({
   ...WEED_BASE,
   WorkerSources,
+  Box2dWorkerSource: ${JSON.stringify(box2dWorkerSource)},
   AudioWorkletSource: ${JSON.stringify(audioWorkletSource)},
   DebugUICSS: ${JSON.stringify(debugUICSS)},
   BUNDLE_MODE: true,
@@ -115,6 +187,15 @@ const WEED = Object.freeze({
     }
     const blob = new Blob([source], { type: 'application/javascript' });
     return new Worker(URL.createObjectURL(blob));
+  },
+  /** Absolute blob: URL for nested Box2D classic worker (pthreads re-fetch same URL). */
+  getBox2dWorkerUrl() {
+    if (!box2dWorkerBlobUrl) {
+      box2dWorkerBlobUrl = URL.createObjectURL(
+        new Blob([this.Box2dWorkerSource], { type: 'application/javascript' })
+      );
+    }
+    return box2dWorkerBlobUrl;
   },
 });
 
@@ -188,6 +269,6 @@ const umdStats = fs.statSync(path.join(rootDir, 'dist', umdName));
 const esmStats = fs.statSync(path.join(rootDir, 'dist', esmName));
 console.log(`   ${umdName}: ${' '.repeat(Math.max(0, 30 - umdName.length))}${(umdStats.size / 1024).toFixed(1)} KB (UMD - for <script> tags)`);
 console.log(`   ${esmName}: ${' '.repeat(Math.max(0, 30 - esmName.length))}${(esmStats.size / 1024).toFixed(1)} KB (ESM - for import statements)`);
-console.log('   (both include all workers embedded as strings)');
+console.log('   (both include all workers + Box2D WASM runtime embedded as strings)');
 if (isProd) console.log('   (production build — debug modules stripped)');
 console.log('   index.html:             Bundle smoke test (open in browser)');

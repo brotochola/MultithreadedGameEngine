@@ -1,5 +1,5 @@
 Since Box2d:
--make build, test built, see what to do with wasm
+- [x] make build, test built, see what to do with wasm (embedded in weed.bundle via Box2dWorkerSource)
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar
