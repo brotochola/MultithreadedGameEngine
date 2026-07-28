@@ -125,7 +125,15 @@ class PhysicsWorker extends AbstractWorker {
       controlSab: this._controlSab,
       commandSab: this._commandSab,
       stats: this.stats ? packView(this.stats) : null,
+      bodySync: this.bodySyncViews
+        ? {
+            dirtyFlags: packView(this.bodySyncViews.dirtyFlags),
+            dirtyWords: packView(this.bodySyncViews.dirtyWords),
+            generation: packView(this.bodySyncViews.generation),
+          }
+        : null,
       views: {
+        entityActive: packView(Transform.active),
         x: packView(Transform.x),
         y: packView(Transform.y),
         rotation: packView(Transform.rotation),

@@ -132,6 +132,9 @@ export interface SceneBuffers {
   queryCache: SharedArrayBuffer | null;
   queryResults: SharedArrayBuffer | null;
   queryVersion: SharedArrayBuffer | null;
+  bodyDirtyFlags: SharedArrayBuffer | null;
+  bodyDirtyWords: SharedArrayBuffer | null;
+  bodyGeneration: SharedArrayBuffer | null;
 }
 
 export interface SceneRegisteredClassEntry {

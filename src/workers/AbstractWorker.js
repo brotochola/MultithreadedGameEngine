@@ -39,6 +39,7 @@ import { SoundManager } from '../core/SoundManager.js';
 import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
+import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
 
 import { Component } from '../core/Component.js';
 import { FSM } from '../core/FSM.js';
@@ -311,6 +312,7 @@ export class AbstractWorker {
     // );
     this.reportLog('initializing common buffers');
     this.globalEntityCount = data.globalEntityCount;
+    this.bodySyncViews = bindBodySyncBuffers(data.buffers);
 
     // Store config for worker access
     this.config = data.config || {};

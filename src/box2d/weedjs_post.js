@@ -32,8 +32,13 @@
   let views = null;
   let hasBody = null;
   let denseList = null;
+  let densePositions = null;
   let denseCount = 0;
   let lastBodySyncVisited = 0;
+  let bodyDirtyFlags = null;
+  let bodyDirtyWords = null;
+  let bodyGeneration = null;
+  let seenBodyGeneration = null;
   let jointViews = null;
   let jointHandle = null; // Int32Array, -1 = none
   let jointFp = null; // Float32Array fingerprint per joint
@@ -80,6 +85,7 @@
 
   function bindWeedViews(desc) {
     views = {
+      entityActive: viewFromDesc(desc.entityActive, Uint8Array),
       x: viewFromDesc(desc.x, Float32Array),
       y: viewFromDesc(desc.y, Float32Array),
       rotation: viewFromDesc(desc.rotation, Float32Array),
@@ -113,6 +119,18 @@
       polyVertexX: viewFromDesc(desc.polyVertexX, Float32Array),
       polyVertexY: viewFromDesc(desc.polyVertexY, Float32Array),
     };
+  }
+
+  function bindBodySyncViews(desc) {
+    if (!desc) {
+      bodyDirtyFlags = null;
+      bodyDirtyWords = null;
+      bodyGeneration = null;
+      return;
+    }
+    bodyDirtyFlags = viewFromDesc(desc.dirtyFlags, Int32Array);
+    bodyDirtyWords = viewFromDesc(desc.dirtyWords, Int32Array);
+    bodyGeneration = viewFromDesc(desc.generation, Int32Array);
   }
 
   function bindJointViews(desc, maxJ) {
@@ -263,15 +281,98 @@
     return true;
   }
 
+  function addDenseBody(i) {
+    if (densePositions[i] >= 0) return;
+    densePositions[i] = denseCount;
+    denseList[denseCount++] = i;
+  }
+
+  function removeDenseBody(i) {
+    const position = densePositions[i];
+    if (position < 0) return;
+    const lastPosition = --denseCount;
+    const lastEntity = denseList[lastPosition];
+    if (position !== lastPosition) {
+      denseList[position] = lastEntity;
+      densePositions[lastEntity] = position;
+    }
+    densePositions[i] = -1;
+  }
+
+  function syncBodySlot(i) {
+    let changes = 0;
+    const want =
+      views.entityActive[i] !== 0 &&
+      views.rbActive[i] !== 0 &&
+      views.colActive[i] !== 0
+        ? 1
+        : 0;
+    let have = hasBody[i];
+    const generation = bodyGeneration
+      ? Atomics.load(bodyGeneration, i)
+      : 0;
+
+    if (have && (!want || seenBodyGeneration[i] !== generation)) {
+      try {
+        world.destroyBody(i);
+      } catch (_) {
+        /* slot may already be clear */
+      }
+      hasBody[i] = 0;
+      have = 0;
+      removeDenseBody(i);
+      changes++;
+    }
+
+    if (want && !have) {
+      if (createBodyForEntity(i)) {
+        hasBody[i] = 1;
+        seenBodyGeneration[i] = generation;
+        addDenseBody(i);
+        changes++;
+      } else if (bodyDirtyFlags && bodyDirtyWords) {
+        // Invalid/incomplete spawn data may become valid later; retry sparsely.
+        Atomics.or(bodyDirtyFlags, i, 1);
+        Atomics.or(bodyDirtyWords, i >>> 5, 1 << (i & 31));
+      }
+    }
+    return changes;
+  }
+
   function syncBodies(entityCount) {
+    if (bodyDirtyFlags && bodyDirtyWords) {
+      let changes = 0;
+      let visited = 0;
+      for (let wordIndex = 0; wordIndex < bodyDirtyWords.length; wordIndex++) {
+        let bits = Atomics.exchange(bodyDirtyWords, wordIndex, 0) >>> 0;
+        while (bits !== 0) {
+          const bit = 31 - Math.clz32(bits & -bits);
+          const i = (wordIndex << 5) + bit;
+          bits = (bits & (bits - 1)) >>> 0;
+          if (i >= entityCount) continue;
+          Atomics.exchange(bodyDirtyFlags, i, 0);
+          visited++;
+          changes += syncBodySlot(i);
+        }
+      }
+      lastBodySyncVisited = visited;
+      return changes;
+    }
+
+    // Compatibility fallback for payloads created before sparse body sync.
     denseCount = 0;
     let changes = 0;
     const bodyCap = hasBody ? hasBody.length : 0;
     const n = Math.min(entityCount | 0, bodyCap);
     lastBodySyncVisited = n;
+    densePositions.fill(-1);
     for (let i = 0; i < n; i++) {
       const want =
-        views.rbActive[i] !== 0 && views.colActive[i] !== 0 ? 1 : 0;
+        views.entityActive[i] !== 0 &&
+        views.rbActive[i] !== 0 &&
+        views.colActive[i] !== 0
+          ? 1
+          : 0;
       const have = hasBody[i];
       if (want && !have) {
         if (createBodyForEntity(i)) {
@@ -288,7 +389,7 @@
         changes++;
       }
       if (hasBody[i]) {
-        denseList[denseCount++] = i;
+        addDenseBody(i);
       }
     }
     return changes;
@@ -753,6 +854,7 @@
     Atomics.store(ctrlI32, CTRL.STATE, 0);
 
     bindWeedViews(data.views);
+    bindBodySyncViews(data.bodySync);
     bindJointViews(data.jointViews, data.maxJoints | 0);
     if (data.stats) {
       statsF32 = viewFromDesc(data.stats, Float32Array);
@@ -762,6 +864,9 @@
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
     denseList = new Uint16Array(entityCount);
+    densePositions = new Int32Array(entityCount);
+    densePositions.fill(-1);
+    seenBodyGeneration = new Int32Array(entityCount);
 
     const ready = world.getReadyPayload();
     bindStateChannels(ready, entityCount);

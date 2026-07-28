@@ -1,0 +1,46 @@
+// Sparse lifecycle/config synchronization from Weed workers to nested Box2D.
+// Writers coalesce per-entity flags, then publish one bit in the dirty-word set.
+
+export const BODY_DIRTY = Object.freeze({
+  LIFECYCLE: 1,
+});
+
+let dirtyFlags = null;
+let dirtyWords = null;
+let generation = null;
+
+export function bindBodySyncBuffers(buffers) {
+  if (
+    !buffers?.bodyDirtyFlags ||
+    !buffers?.bodyDirtyWords ||
+    !buffers?.bodyGeneration
+  ) {
+    dirtyFlags = null;
+    dirtyWords = null;
+    generation = null;
+    return null;
+  }
+
+  dirtyFlags = new Int32Array(buffers.bodyDirtyFlags);
+  dirtyWords = new Int32Array(buffers.bodyDirtyWords);
+  generation = new Int32Array(buffers.bodyGeneration);
+  return { dirtyFlags, dirtyWords, generation };
+}
+
+export function markBodyDirty(entityIndex, flags = BODY_DIRTY.LIFECYCLE) {
+  if (!dirtyFlags || !dirtyWords) return false;
+  const i = entityIndex | 0;
+  if (i < 0 || i >= dirtyFlags.length) return false;
+  Atomics.or(dirtyFlags, i, flags | 0);
+  Atomics.or(dirtyWords, i >>> 5, 1 << (i & 31));
+  return true;
+}
+
+export function bumpBodyGeneration(entityIndex) {
+  if (!generation) return 0;
+  const i = entityIndex | 0;
+  if (i < 0 || i >= generation.length) return 0;
+  const next = (Atomics.add(generation, i, 1) + 1) >>> 0;
+  markBodyDirty(i, BODY_DIRTY.LIFECYCLE);
+  return next;
+}

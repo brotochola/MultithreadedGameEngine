@@ -49,6 +49,10 @@ import { ParticleEmitter } from './ParticleEmitter.js';
 import { Joint } from './Joint.js';
 import { SoundManager } from './SoundManager.js';
 import { MAX_COMPONENTS, MAX_ENTITIES, MAX_ENTITY_TYPES } from './QuerySystem.js';
+import {
+  BODY_DIRTY,
+  bindBodySyncBuffers,
+} from '../box2d/box2dBodySync.js';
 
 function assertIntegerInRange(label, value, min, max) {
   if (!Number.isInteger(value) || value < min || value > max) {
@@ -419,6 +423,20 @@ function initializeCollisionConstraintSunAndTrackingBuffers(scene) {
   const { buffers, config, views, registeredClasses } = scene;
   const totalEntityCount = scene.totalEntityCount;
 
+  const dirtyWordCount = Math.ceil(totalEntityCount / 32);
+  buffers.bodyDirtyFlags = new SharedArrayBuffer(totalEntityCount * 4);
+  buffers.bodyDirtyWords = new SharedArrayBuffer(dirtyWordCount * 4);
+  buffers.bodyGeneration = new SharedArrayBuffer(totalEntityCount * 4);
+  const bodySync = bindBodySyncBuffers(buffers);
+  if (bodySync) {
+    bodySync.dirtyFlags.fill(BODY_DIRTY.LIFECYCLE);
+    bodySync.dirtyWords.fill(-1);
+    const remainder = totalEntityCount & 31;
+    if (remainder && dirtyWordCount > 0) {
+      bodySync.dirtyWords[dirtyWordCount - 1] = (2 ** remainder - 1) | 0;
+    }
+  }
+
   Joint.reset();
   const maxJoints = config.physics.maxJoints || 0;
   if (maxJoints > 0) {
@@ -670,6 +688,7 @@ export function teardownSceneSharedState(scene) {
   }
 
   GameObject.activeEntitiesData = null;
+  bindBodySyncBuffers(null);
   GameObject.instances = [];
   GameObject._globalAnimationCache = {};
 

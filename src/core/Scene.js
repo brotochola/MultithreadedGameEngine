@@ -228,6 +228,9 @@ class Scene {
       queryCache: null,
       queryResults: null,
       queryVersion: null,
+      bodyDirtyFlags: null,
+      bodyDirtyWords: null,
+      bodyGeneration: null,
     };
 
     // Component type ID tracking (similar to entityType)

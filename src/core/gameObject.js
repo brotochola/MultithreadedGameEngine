@@ -44,6 +44,10 @@ import {
   enqueueSetFixedRotation,
   isCommandRingBound,
 } from '../box2d/box2dCommandRing.js';
+import {
+  bumpBodyGeneration,
+  markBodyDirty,
+} from '../box2d/box2dBodySync.js';
 // Export Keyboard for easy access (Mouse imported separately to avoid circular dep)
 // Note: SpriteSheetRegistry is registered globally in AbstractWorker.registerCoreClasses()
 export { Keyboard, SpriteSheetRegistry, SceneBridge };
@@ -1488,6 +1492,8 @@ export class GameObject {
 
     const EntityClass = this.constructor;
     const entityType = EntityClass.entityType;
+    const hadPhysicsBody =
+      !!(RigidBody.active?.[i] && Collider.active?.[i]);
 
     // ========================================
     // LIFECYCLE HOOKS (SAFE - local call)
@@ -1531,6 +1537,7 @@ export class GameObject {
       FlashComponent.initialIntensity[i] = 0;
     }
     if (this.lightOccluder) LightOccluder.active[i] = 0;
+    if (hadPhysicsBody) markBodyDirty(i);
 
     // ========================================
     // FREE LIST PUSH (ATOMIC - any thread)
@@ -1982,6 +1989,9 @@ export class GameObject {
     // Activate the entity - this enables spatial_worker to add it to Grid
     // and physics to process it. Must happen AFTER component setup.
     Transform.active[i] = 1;
+    if (has.RigidBody && has.Collider) {
+      bumpBodyGeneration(i);
+    }
 
     // ========================================
     // LIST UPDATES (QUEUED - processed by logic0)
@@ -2127,6 +2137,8 @@ export class GameObject {
         (lightOccluderActive && lightOccluderActive[i]);
 
       if (isAnyComponentActive) {
+        const hadPhysicsBody =
+          !!(rigidBodyActive?.[i] && colliderActive?.[i]);
         const instance = EntityClass.instances[i - startIndex];
 
         // Call lifecycle hook (same as individual despawn)
@@ -2159,6 +2171,7 @@ export class GameObject {
         if (flashCurrentLife) flashCurrentLife[i] = 0;
         if (flashInitialIntensity) flashInitialIntensity[i] = 0;
         if (lightOccluderActive) lightOccluderActive[i] = 0;
+        if (hadPhysicsBody) markBodyDirty(i);
       }
     }
 
