@@ -17,11 +17,7 @@
 
   const WEED_SHAPE = { CIRCLE: 0, BOX: 1, POLYGON: 2 };
   const MAX_POLY_VERTS = 8;
-  // Verlet invent grows by g*dtRatio² per move; long-term a = g / (1/60)² = g*3600,
-  // independent of subStepCount (micro-steps change path, not steady-state accel).
-  const REF_HZ = 60;
-  const TO_VEL = REF_HZ;
-  const TO_ACCEL = REF_HZ * REF_HZ;
+  // Units: px, px/s, px/s², rad, rad/s (Box2D native — no frame-unit scale).
 
   let world = null;
   let verdletSubSteps = 4;
@@ -78,7 +74,7 @@
     };
   }
 
-  function bindStateChannels(ready) {
+  function bindStateChannels(ready, entityCount) {
     const sab = ready.sab;
     const n = ready.bodyCapacity;
     const off = ready.channelOffsets;
@@ -92,6 +88,30 @@
       ready.sleepingByteOffset >= 0
         ? new Uint8Array(sab, ready.sleepingByteOffset, n)
         : null;
+
+    // Seed HEAP from Weed SoA, then point all hot views at HEAP (zero-copy).
+    const count = Math.min(entityCount | 0, n);
+    for (let i = 0; i < count; i++) {
+      pxChan[i] = views.x[i];
+      pyChan[i] = views.y[i];
+      rotChan[i] =
+        (views.shapeType[i] | 0) === WEED_SHAPE.BOX ? 0 : views.rotation[i];
+      vxChan[i] = views.vx[i];
+      vyChan[i] = views.vy[i];
+      angChan[i] = views.angularVelocity[i];
+      if (sleepingU8) {
+        sleepingU8[i] = views.sleeping[i];
+      }
+    }
+    views.x = pxChan;
+    views.y = pyChan;
+    views.rotation = rotChan;
+    views.vx = vxChan;
+    views.vy = vyChan;
+    views.angularVelocity = angChan;
+    if (sleepingU8) {
+      views.sleeping = sleepingU8;
+    }
   }
 
   function categoryBitsFor(i) {
@@ -118,9 +138,9 @@
       linearDamping,
       angularDamping,
       gravityScale: 1,
-      vx: views.vx[i] * TO_VEL,
-      vy: views.vy[i] * TO_VEL,
-      angularVelocity: views.angularVelocity[i] * TO_VEL,
+      vx: views.vx[i],
+      vy: views.vy[i],
+      angularVelocity: views.angularVelocity[i],
       isSensor: views.isTrigger[i] !== 0,
       categoryBits: categoryBitsFor(i),
       maskBits: views.collisionMask[i] >>> 0,
@@ -199,11 +219,11 @@
       const ax = views.ax[i];
       const ay = views.ay[i];
       if (ax !== 0 || ay !== 0) {
-        bodyApplyForceCenterFn(i, ax * TO_ACCEL * mass, ay * TO_ACCEL * mass, 1);
+        bodyApplyForceCenterFn(i, ax * mass, ay * mass, 1);
       }
       const aa = views.angularAccel[i];
       if (aa !== 0) {
-        bodyApplyTorqueFn(i, aa * TO_ACCEL * mass, 1);
+        bodyApplyTorqueFn(i, aa * mass, 1);
       }
       views.ax[i] = 0;
       views.ay[i] = 0;
@@ -215,7 +235,7 @@
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
       if (views.rbStatic[i] || !hasBody[i]) continue;
-      const maxV = views.maxVel[i] * TO_VEL;
+      const maxV = views.maxVel[i];
       if (!(maxV > 0)) continue;
       const vx = vxChan[i];
       const vy = vyChan[i];
@@ -230,23 +250,14 @@
     }
   }
 
-  function copyStateToWeed(entityCount) {
+  function afterStep() {
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
-      views.x[i] = pxChan[i];
-      views.y[i] = pyChan[i];
-      if ((views.shapeType[i] | 0) !== WEED_SHAPE.BOX) {
-        views.rotation[i] = rotChan[i];
-      } else {
-        views.rotation[i] = 0;
-      }
-      views.vx[i] = vxChan[i] / TO_VEL;
-      views.vy[i] = vyChan[i] / TO_VEL;
-      views.angularVelocity[i] = angChan[i] / TO_VEL;
-      if (sleepingU8) {
-        views.sleeping[i] = sleepingU8[i];
+      if ((views.shapeType[i] | 0) === WEED_SHAPE.BOX) {
+        rotChan[i] = 0;
       }
     }
+    clampMaxVel();
   }
 
   function doStep() {
@@ -260,7 +271,7 @@
     syncBodies(entityCount);
     applyForcesAndTorque();
     world.step(dt, solverSteps);
-    copyStateToWeed(entityCount);
+    afterStep();
   }
 
   function controlLoop() {
@@ -291,8 +302,8 @@
     const maxBodies = data.maxBodies | 0;
     verdletSubSteps = Math.max(1, data.subSteps | 0 || 4);
     world = new PhysicsWorld(
-      (data.gravityX || 0) * TO_ACCEL,
-      (data.gravityY || 0) * TO_ACCEL,
+      data.gravityX || 0,
+      data.gravityY || 0,
     );
     const slots = world.getMaxBodySlots();
     if (maxBodies <= 0 || maxBodies > slots) {
@@ -331,7 +342,7 @@
     denseList = new Uint16Array(entityCount);
 
     const ready = world.getReadyPayload();
-    bindStateChannels(ready);
+    bindStateChannels(ready, entityCount);
 
     postMessage({
       type: 'WEEDJS_READY',

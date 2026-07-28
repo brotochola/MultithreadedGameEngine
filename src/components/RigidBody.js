@@ -1,6 +1,7 @@
 // RigidBody.js - Physics component for entity motion and dynamics
 // Handles velocity, acceleration, mass, and physics properties
 // Position and rotation are stored in Transform component
+// Units (Box2D): vx/vy px/s, ax/ay px/s², angularVelocity rad/s, maxVel px/s
 
 import { Component } from '../core/Component.js';
 import { Collider } from './Collider.js';

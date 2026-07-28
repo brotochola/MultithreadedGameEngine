@@ -9,8 +9,8 @@ export class BluePlatformerPlayer extends GameObject {
   static components = [PlatformerCharacterComponent, AdobeAnimComponent, RigidBody, Collider, LightEmitter, CollisionListener];
   static assetName = 'blue_character';
 
-  static jumpImpulse = -30;
-  static moveAcceleration = 0.5;
+  static jumpImpulse = -108000; // px/s² burst
+  static moveAcceleration = 1800; // px/s²
   static scale = 0.35;
   static clips = Object.freeze({
     idle: 'idle',
@@ -20,7 +20,7 @@ export class BluePlatformerPlayer extends GameObject {
 
   setup() {
     this.rigidBody.static = 0;
-    this.rigidBody.maxVel = 120;
+    this.rigidBody.maxVel = 7200;
     this.rigidBody.friction = 0.001;
 
     this.collider.radius = 30;
@@ -41,7 +41,7 @@ export class BluePlatformerPlayer extends GameObject {
 
   emitPArticles() {
     ParticleEmitter.emit({
-      count: Math.floor(this.rigidBody.speed * 10),
+      count: Math.floor(this.rigidBody.speed / 60),
       x: this.x,
       y: this.y,
       z: -1,
@@ -122,8 +122,8 @@ export class BluePlatformerPlayer extends GameObject {
       this.emitPArticlesAsJump()
 
     } else {
-      this.adobeAnimComponent.playbackRate = this.rigidBody.speed * 0.2 + 0.2
-      if (Math.abs(this.rigidBody.vx) > 0.1) {
+      this.adobeAnimComponent.playbackRate = this.rigidBody.speed / 300 + 0.2
+      if (Math.abs(this.rigidBody.vx) > 6) {
         if (this.adobeAnimComponent.clipName != BluePlatformerPlayer.clips.running) {
           this.adobeAnimComponent.play(BluePlatformerPlayer.clips.running, true);
         }
@@ -154,7 +154,7 @@ export class BluePlatformerPlayer extends GameObject {
       this.addAcceleration(0, BluePlatformerPlayer.jumpImpulse);
     }
 
-    if (Math.abs(this.rigidBody.vx) < 0.05) {
+    if (Math.abs(this.rigidBody.vx) < 3) {
       this.vx = 0
     }
     if (Math.abs(this.rigidBody.vy) < 0.05) {

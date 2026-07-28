@@ -7,6 +7,7 @@ import { popFreeIndex } from './atomicFreeList.js';
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
+import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
 import { ParticleComponent } from '../components/ParticleComponent.js';
@@ -1419,6 +1420,9 @@ class Scene {
       const payload = {
         msg: 'box2dReady',
         sab: e.data.sab,
+        bodyCapacity: e.data.bodyCapacity,
+        channelOffsets: e.data.channelOffsets,
+        sleepingByteOffset: e.data.sleepingByteOffset,
         eventHeaderBaseIndex: e.data.eventHeaderBaseIndex,
         contactBeginBaseIndex: e.data.contactBeginBaseIndex,
         contactEndBaseIndex: e.data.contactEndBaseIndex,
@@ -1429,8 +1433,11 @@ class Scene {
         contactPairIntStride: e.data.contactPairIntStride || 2,
         eventHeaderIntCount: e.data.eventHeaderIntCount || 8,
       };
-      for (const worker of this.workers.logicWorkers || []) {
-        worker.postMessage(payload);
+      rebindBox2dHotFields(payload);
+      for (const worker of this.getAllWorkers()) {
+        if (worker && worker !== e.currentTarget) {
+          worker.postMessage(payload);
+        }
       }
     } else if (e.data.msg === 'backgroundReady') {
       Layer.resolveBackgroundReady(e.data.layerId, e.data.requestId);

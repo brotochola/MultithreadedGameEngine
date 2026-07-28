@@ -43,7 +43,7 @@ export class BallsAndRectanglesScene extends WEED.Scene {
       verletDamping: 0.99,
       boundaryElasticity: 0.3,
       collisionResponseStrength: 0.9,
-      gravity: { x: 0, y: 0.5 },
+      gravity: { x: 0, y: 1800 },
     },
 
     renderer: {

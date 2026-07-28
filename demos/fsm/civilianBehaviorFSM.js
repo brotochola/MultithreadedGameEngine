@@ -102,7 +102,7 @@ class FleeingCivilianBehaviorState extends FSMState {
 
 const PANIC_DURATION_MS = 20_000;
 const PANIC_FLEE_FACTOR = 120; // Run as fast as possible away from threat
-const PANIC_MAX_VEL = 5; // Higher than normal (3) for "run as fast as possible"
+const PANIC_MAX_VEL = 300; // px/s — higher than normal (180) for panic flee
 
 class PanicCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) {
@@ -136,7 +136,7 @@ class PanicCivilianBehaviorState extends FSMState {
   }
 
   static onExit(owner, i, toState) {
-    owner.rigidBody.maxVel = 3;
+    owner.rigidBody.maxVel = 180;
   }
 }
 

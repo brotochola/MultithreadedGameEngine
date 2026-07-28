@@ -79,8 +79,8 @@ export class BichosScene extends WEED.Scene {
       collisionResponseStrength: 0.66,
       verletDamping: 0.99,
       gravity: { x: 0, y: 0 },
-      sleepThreshold: 0.25,
-      wakeUpThreshold: 0.3,
+      sleepThreshold: 15,
+      wakeUpThreshold: 18,
       sleepDuration: 20,
     },
 

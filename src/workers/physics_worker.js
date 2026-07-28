@@ -14,6 +14,7 @@ import { AbstractWorker } from './AbstractWorker.js';
 import { PHYSICS_DEFAULTS } from '../core/ConfigDefaults.js';
 import { PHYSICS_STATS, createStatsWriter } from './workers-utils.js';
 import { validatePhysicsConfig } from '../core/utils.js';
+import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
 
 const BOX2D_WORKER_URL = '/src/box2d_3.0_wasm_sab/box2d_wasm.js?mode=weedjs';
 
@@ -33,6 +34,7 @@ function packView(arr) {
 
 /**
  * PhysicsWorker — drives Box2D via nested classic worker (pthread entry = box2d_wasm.js).
+ * STOP 2: hot Transform/RigidBody fields rebound to WASM HEAP (px, px/s).
  */
 class PhysicsWorker extends AbstractWorker {
   constructor(selfRef) {
@@ -159,9 +161,13 @@ class PhysicsWorker extends AbstractWorker {
     if (data.type === 'WEEDJS_READY') {
       this._box2dReady = true;
       this.box2dEventLayout = data;
+      rebindBox2dHotFields(data);
       this.self.postMessage({
         msg: 'box2dReady',
         sab: data.sab,
+        bodyCapacity: data.bodyCapacity,
+        channelOffsets: data.channelOffsets,
+        sleepingByteOffset: data.sleepingByteOffset,
         eventHeaderBaseIndex: data.eventHeaderBaseIndex,
         contactBeginBaseIndex: data.contactBeginBaseIndex,
         contactEndBaseIndex: data.contactEndBaseIndex,
@@ -172,7 +178,7 @@ class PhysicsWorker extends AbstractWorker {
         contactPairIntStride: data.contactPairIntStride || 2,
         eventHeaderIntCount: data.eventHeaderIntCount || 8,
       });
-      console.log('[physics] Box2D READY, capacity', data.bodyCapacity);
+      console.log('[physics] Box2D READY + hot rebind, capacity', data.bodyCapacity);
       return;
     }
     if (data.type === 'WEEDJS_ERROR') {

@@ -46,7 +46,7 @@ export class WaterAndBoxesScene extends WEED.Scene {
       verletDamping: 0.997,
       boundaryElasticity: 0.1,
       collisionResponseStrength: 0.125,
-      gravity: { x: 0, y: 1 },
+      gravity: { x: 0, y: 3600 },
       sleeping: false,
     },
 

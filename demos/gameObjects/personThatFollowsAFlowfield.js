@@ -47,7 +47,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
         // groupingForce now uses static class property (Civilian.groupingForce)
 
         // Physics properties
-        this.rigidBody.maxVel = 3;
+        this.rigidBody.maxVel = 180;
         this.rigidBody.minSpeed = 0;
         this.rigidBody.friction = PersonThatFollowsAFlowfield.defaultFriction;
 

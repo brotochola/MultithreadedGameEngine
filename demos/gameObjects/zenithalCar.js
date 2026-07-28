@@ -15,7 +15,7 @@ export class ZenithalCar extends GameObject {
     this.collider.radius = 22;
     this.collider.visualRange = 100;
 
-    this.rigidBody.maxVel = 3;
+    this.rigidBody.maxVel = 180;
     this.rigidBody.friction = 0.9;
     this.setAnchor(0.5, 0.5)
 

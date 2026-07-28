@@ -42,7 +42,7 @@ export class ConstraintBoxScene extends WEED.Scene {
             boundaryElasticity: 0.3,
             collisionResponseStrength: 0.9,
             sleeping: false,
-            gravity: { x: 0, y: 0.5 },
+            gravity: { x: 0, y: 1800 },
         },
 
         renderer: {
@@ -168,8 +168,8 @@ export class ConstraintBoxScene extends WEED.Scene {
             return;
         }
 
-        this._tossVx = (Mouse.x - this._prevMouseX) * this.forceToTossBodies;
-        this._tossVy = (Mouse.y - this._prevMouseY) * this.forceToTossBodies
+        this._tossVx = (Mouse.x - this._prevMouseX) * this.forceToTossBodies * 60;
+        this._tossVy = (Mouse.y - this._prevMouseY) * this.forceToTossBodies * 60;
         this._prevMouseX = Mouse.x;
         this._prevMouseY = Mouse.y;
 

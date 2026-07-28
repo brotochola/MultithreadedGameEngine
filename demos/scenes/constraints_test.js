@@ -48,9 +48,9 @@ export class ConstraintsTestScene extends Scene {
             verletDamping: 0.999,
             boundaryElasticity: 0,
             collisionResponseStrength: 0.66,
-            gravity: { x: 0, y: 0.5 },
-            sleepThreshold: 0.5,
-            wakeUpThreshold: 0.5,
+            gravity: { x: 0, y: 1800 },
+            sleepThreshold: 30,
+            wakeUpThreshold: 30,
             sleepDuration: 1000,
         },
 
@@ -400,7 +400,7 @@ export class ConstraintsTestScene extends Scene {
             this._gPressed = true;
             // Toggle gravity (send message to physics worker)
             const currentGravity = this.config.physics.gravity;
-            const newGravityY = currentGravity.y > 0 ? -0.5 : 0.5;
+            const newGravityY = currentGravity.y > 0 ? -1800 : 1800;
             this.workers.physics.postMessage({
                 msg: 'updatePhysicsConfig',
                 config: { gravity: { x: 0, y: newGravityY } }

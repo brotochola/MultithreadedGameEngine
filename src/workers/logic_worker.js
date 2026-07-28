@@ -21,6 +21,7 @@ import { AbstractWorker } from './AbstractWorker.js';
 
 import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
 import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
+import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
 
 // Note: Core engine classes (GameObject, Mouse, Keyboard, etc.) and components
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker
@@ -817,6 +818,7 @@ class LogicWorker extends AbstractWorker {
 
     switch (msg) {
       case 'box2dReady': {
+        rebindBox2dHotFields(data);
         const sab = data.sab;
         const stride = data.contactPairIntStride || 2;
         const contactCap = data.contactEventCapacity || 0;

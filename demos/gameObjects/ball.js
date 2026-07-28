@@ -30,7 +30,7 @@ class Ball extends GameObject {
 
     // this.collider.radius = spawnConfig.radius; // Mass auto-computed from area (π * r²)
     // Configure RigidBody physics properties (same for all balls)
-    this.rigidBody.maxVel = 100; // Max velocity
+    this.rigidBody.maxVel = 6000; // px/s
     this.rigidBody.minSpeed = 0; // Balls can come to rest
     this.rigidBody.friction = 0.001; // Low friction - let balls settle naturally
     // Set the texture for this static sprite
@@ -109,12 +109,12 @@ class Ball extends GameObject {
 
       if (dist2 > 300000) return; // Only affect nearby balls
 
-      // Apply repulsion force
-      this.addAcceleration(1000 * (dx / dist2), 1000 * (dy / dist2));
+      // Apply repulsion (px/s²)
+      this.addAcceleration(3600000 * (dx / dist2), 3600000 * (dy / dist2));
     }
 
     if (Keyboard.m) {
-      this.rigidBody.ax = -3;
+      this.rigidBody.ax = -10800;
     }
 
   }

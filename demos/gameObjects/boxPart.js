@@ -40,7 +40,7 @@ export class BoxPart extends GameObject {
             this.collider.collisionGroupIndex = spawnConfig.collisionGroupIndex;
         }
 
-        this.rigidBody.maxVel = 100;
+        this.rigidBody.maxVel = 6000;
         this.rigidBody.minSpeed = 0;
         this.rigidBody.friction = 0.001;
 

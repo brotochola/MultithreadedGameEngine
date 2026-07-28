@@ -37,6 +37,7 @@ import { DecorationComponent } from '../components/DecorationComponent.js';
 import { Constraint } from '../core/Constraint.js';
 import { SoundManager } from '../core/SoundManager.js';
 import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
+import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
 
 import { Component } from '../core/Component.js';
 import { FSM } from '../core/FSM.js';
@@ -1094,6 +1095,8 @@ export class AbstractWorker {
    * @param {Object} data - Message data
    */
   handleCustomMessage(data) {
-    // Override in subclass if needed
+    if (data?.msg === 'box2dReady' && data.channelOffsets) {
+      rebindBox2dHotFields(data);
+    }
   }
 }

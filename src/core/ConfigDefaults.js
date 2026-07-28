@@ -172,16 +172,16 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   /** Cap on soft bias speed (px per physics step, displacement units). */
   contactMaxBias: 4,
   verletDamping: 0.995,
-  minSpeedForRotation: 0.1,
+  minSpeedForRotation: 6,
   maxCollisionPairs: 10000,
   maxConstraints: 0,
   gravity: Object.freeze({ x: 0, y: 0 }),
   /** Master switch: when false, bodies never enter sleep (thresholds ignored). */
   sleeping: true,
-  /** Max linear speed and |angularVelocity| to count as still (particle worker). */
-  sleepThreshold: 0.1,
-  /** Accel magnitude (post-dtRatio) that resets stillnessTime on awake bodies. */
-  wakeUpThreshold: 0.05,
+  /** Max linear speed and |angularVelocity| (px/s, rad/s) to count as still. */
+  sleepThreshold: 6,
+  /** Accel magnitude (px/s²) that resets stillnessTime on awake bodies. */
+  wakeUpThreshold: 3,
   /** Consecutive particle ticks still before sleeping = 1 (frames, not seconds). */
   sleepDuration: 30,
 });

@@ -39,7 +39,7 @@ export class OrientedBoxScene extends WEED.Scene {
             // sleepThreshold: 0.1,
             // wakeUpThreshold: 0.2,
             // sleepDuration: 1,
-            gravity: { x: 0, y: 0.55 },
+            gravity: { x: 0, y: 1980.0000000000002 },
             sleeping: false,
         },
 
@@ -163,12 +163,12 @@ export class OrientedBoxScene extends WEED.Scene {
 
         const mx = Mouse.x;
         const my = Mouse.y;
-        this._tossVx = mx - this._prevMouseX;
-        this._tossVy = my - this._prevMouseY;
+        this._tossVx = (mx - this._prevMouseX) * 60;
+        this._tossVy = (my - this._prevMouseY) * 60;
         // Rough spin from off-center grab
         const rx = (mx + this._dragOffX) - Transform.x[this._dragIdx];
         const ry = (my + this._dragOffY) - Transform.y[this._dragIdx];
-        this._tossOmega = (rx * this._tossVy - ry * this._tossVx) * 0.00005;
+        this._tossOmega = (rx * this._tossVy - ry * this._tossVx) * 0.00005 / 60;
         this._prevMouseX = mx;
         this._prevMouseY = my;
 

@@ -19,7 +19,7 @@ export class PlatformerGameScene extends Scene {
     },
     physics: {
       noLimitFPS: false,
-      gravity: { x: 0, y: 1 },
+      gravity: { x: 0, y: 3600 },
       maxCollisionPairs: 5000,
       sleeping: false,
     },

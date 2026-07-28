@@ -47,9 +47,9 @@ export class BallsScene extends Scene {
       verletDamping: 0.9999,
       boundaryElasticity: 0,
       collisionResponseStrength: 0.66,
-      gravity: { x: 0, y: 0.5 },
-      sleepThreshold: 0.5,
-      wakeUpThreshold: 0.5,
+      gravity: { x: 0, y: 1800 },
+      sleepThreshold: 30,
+      wakeUpThreshold: 30,
       sleepDuration: 10,
     },
 

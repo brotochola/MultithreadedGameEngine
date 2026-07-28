@@ -25,7 +25,7 @@ export class CarPart extends GameObject {
         this.collider.visualRange = radius * 3;
 
         // Configure physics - tuned for arcade feel
-        this.rigidBody.maxVel = 400;
+        this.rigidBody.maxVel = 24000;
         this.rigidBody.minSpeed = 0;
         this.rigidBody.friction = 0.01;  // Slight coast drag when off gas
 

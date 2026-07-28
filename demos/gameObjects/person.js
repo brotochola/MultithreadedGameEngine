@@ -84,7 +84,7 @@ export class Person extends Lootable {
 
   setup() {
     // Physics properties
-    this.rigidBody.maxVel = 3;
+    this.rigidBody.maxVel = 180;
     this.rigidBody.minSpeed = 0;
     this.rigidBody.friction = Person.defaultFriction;
 
@@ -372,8 +372,9 @@ export class Person extends Lootable {
     if (!this.canFire(weapon)) return false;
 
     // Face the target
-    const targetX = Transform.x[targetEntityIndex] + RigidBody.vx[targetEntityIndex] * 10;
-    const targetY = Transform.y[targetEntityIndex] + RigidBody.vy[targetEntityIndex] * 10;
+    // Lead ~10 frames at 60Hz → 1/6 s
+    const targetX = Transform.x[targetEntityIndex] + RigidBody.vx[targetEntityIndex] * (10 / 60);
+    const targetY = Transform.y[targetEntityIndex] + RigidBody.vy[targetEntityIndex] * (10 / 60);
 
     const angle = Math.atan2(targetY - this.y, targetX - this.x) + HALF_PI;
 
@@ -607,7 +608,7 @@ export class Person extends Lootable {
    */
   keepWithinBounds(dtRatio) {
     const margin = 50;
-    const turnFactor = 0.1;
+    const turnFactor = 360; // px/s²
     const i = this.index;
 
     const x = Transform.x[i];
