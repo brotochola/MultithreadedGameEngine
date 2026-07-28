@@ -221,7 +221,14 @@ Module.onRuntimeInitialized = function () {
   try {
     const { PhysicsWorld } = createPhysicsApi(Module);
     console.log("[physics] bindBuffers", BODY_COUNT);
-    world = new PhysicsWorld(0.0, -9.8);
+    world = new PhysicsWorld(0.0, -9.8, {
+      lengthUnitsPerMeter: 1,
+      contactHertz: 30,
+      contactDampingRatio: 10,
+      contactSpeed: 3,
+      maximumLinearSpeed: 400,
+      box2dWorkerCount: 4,
+    });
     world.bindBuffers(BODY_COUNT);
 
     spawnArena(world);

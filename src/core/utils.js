@@ -1958,6 +1958,31 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
           ? newConfig.gravity.y
           : (current.gravity?.y ?? 0),
     },
+    lengthUnitsPerMeter: Math.max(
+      1e-6,
+      newConfig.lengthUnitsPerMeter ??
+        current.lengthUnitsPerMeter ??
+        PHYSICS_DEFAULTS.lengthUnitsPerMeter
+    ),
+    contactSpeed: Math.max(
+      0,
+      newConfig.contactSpeed ?? current.contactSpeed ?? PHYSICS_DEFAULTS.contactSpeed
+    ),
+    maximumLinearSpeed: Math.max(
+      1,
+      newConfig.maximumLinearSpeed ??
+        current.maximumLinearSpeed ??
+        PHYSICS_DEFAULTS.maximumLinearSpeed
+    ),
+    box2dWorkerCount: Math.max(
+      1,
+      Math.min(
+        4,
+        (newConfig.box2dWorkerCount ??
+          current.box2dWorkerCount ??
+          PHYSICS_DEFAULTS.box2dWorkerCount) | 0
+      )
+    ),
   };
 }
 

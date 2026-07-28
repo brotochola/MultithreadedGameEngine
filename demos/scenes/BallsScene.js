@@ -41,8 +41,9 @@ export class BallsScene extends Scene {
 
     // Physics configuration
     physics: {
+      box2dWorkerCount: 4,
       subStepCount: 4, // Subdivide each 60fps frame into 4 constraint-solving passes
-      noLimitFPS: true, // Run physics as fast as possible (uses fixed-timestep accumulator)
+      noLimitFPS: false, // Run physics as fast as possible (uses fixed-timestep accumulator)
       maxCollisionPairs: 100000, //this is to trigger the collision callbacks, not the resolve collisions
       verletDamping: 0.9999,
       boundaryElasticity: 0,

@@ -88,7 +88,7 @@ class FleeingCivilianBehaviorState extends FSMState {
     }
 
     // Apply flee acceleration
-    const fleeFactor = 50; // How strongly to flee
+    const fleeFactor = 180000; // px/s² — was 50 frame
     owner.addAcceleration(
       fleeX * fleeFactor * dt,
       fleeY * fleeFactor * dt
@@ -101,7 +101,7 @@ class FleeingCivilianBehaviorState extends FSMState {
 }
 
 const PANIC_DURATION_MS = 20_000;
-const PANIC_FLEE_FACTOR = 120; // Run as fast as possible away from threat
+const PANIC_FLEE_FACTOR = 432000; // px/s² — was 120 frame
 const PANIC_MAX_VEL = 300; // px/s — higher than normal (180) for panic flee
 
 class PanicCivilianBehaviorState extends FSMState {

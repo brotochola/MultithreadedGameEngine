@@ -109,9 +109,9 @@ class Box extends GameObject {
 
       if (dist2 > 30000) return; // Only affect nearby boxes
 
-      // Apply repulsion force
-      this.rigidBody.ax = dx; //* 0.15;
-      this.rigidBody.ay = dy; //* 0.15;
+      // Apply repulsion (px/s²) — was raw dx/dy frame accel
+      this.rigidBody.ax = dx * 3600;
+      this.rigidBody.ay = dy * 3600;
     }
   }
 }

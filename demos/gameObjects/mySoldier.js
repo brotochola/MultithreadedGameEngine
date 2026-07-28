@@ -19,12 +19,12 @@ export class MySoldier extends Person {
   static punchRangeSq = 35 ** 2; // Distance to start punching
   static punchDamage = 0.4; // Damage per punch
 
-  // Flocking behavior (override Person defaults)
-  static groupingForce = 0.33;
-  static separationForce = 10;
-  static chaseStrength = 20;
+  // Flocking behavior (override Person defaults) — px/s² (was frame × 3600)
+  static groupingForce = 1188;
+  static separationForce = 36000;
+  static chaseStrength = 72000;
 
-  static followDestinationStrength = 0.1;
+  static followDestinationStrength = 360;
 
   // Damage resistance (override Person default)
   static resistance = 0.6;

@@ -281,7 +281,7 @@ export class Car extends GameObject {
         const forwardY = Math.sin(angle);
         const lateralX = -forwardY;
         const lateralY = forwardX;
-        const strength = (1 - this.carComponent.lateralDampening) * 0.25 * dtRatio;
+        const strength = (1 - this.carComponent.lateralDampening) * 900 * dtRatio; // was 0.25 frame
 
         for (const partIdx of this._getAllPartIndices()) {
             const vx = RigidBody.vx[partIdx];
@@ -355,9 +355,9 @@ export class Car extends GameObject {
 
         const slipSpeed = this.carComponent.slipSpeed;
         const traction = speed > slipSpeed ? this.carComponent.tractionLoose : this.carComponent.tractionTight;
-        const redirectK = 0.008 * traction * dtRatio;
+        const redirectK = 0.48 * traction * dtRatio; // was 0.008 on frame vel
 
-        if (speed > 1) {
+        if (speed > 60) { // px/s — was 1 frame unit
             const dir = forwardSpeed >= 0 ? 1 : -1;
             const desiredVx = newHeadingX * speed * dir;
             const desiredVy = newHeadingY * speed * dir;

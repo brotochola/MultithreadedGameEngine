@@ -103,7 +103,8 @@ export class AdobeAnimateCharacter extends GameObject {
         this.playCachedClip(jumpClipName, false);
       }
 
-      this.addAcceleration(dx * 0.1, dy * 0.1);
+      // Mouse pull (px/s²) — was dx*0.1 in frame units
+      this.addAcceleration(dx * 360, dy * 360);
     }
   }
 }

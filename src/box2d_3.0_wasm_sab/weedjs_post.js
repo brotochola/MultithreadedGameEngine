@@ -301,10 +301,14 @@
     const { PhysicsWorld } = createPhysicsApi(Module);
     const maxBodies = data.maxBodies | 0;
     verdletSubSteps = Math.max(1, data.subSteps | 0 || 4);
-    world = new PhysicsWorld(
-      data.gravityX || 0,
-      data.gravityY || 0,
-    );
+    world = new PhysicsWorld(data.gravityX || 0, data.gravityY || 0, {
+      lengthUnitsPerMeter: data.lengthUnitsPerMeter,
+      contactHertz: data.contactHertz,
+      contactDampingRatio: data.contactDampingRatio,
+      contactSpeed: data.contactSpeed,
+      maximumLinearSpeed: data.maximumLinearSpeed,
+      box2dWorkerCount: data.box2dWorkerCount,
+    });
     const slots = world.getMaxBodySlots();
     if (maxBodies <= 0 || maxBodies > slots) {
       throw new Error(

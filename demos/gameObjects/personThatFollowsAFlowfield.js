@@ -17,7 +17,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
     static components = [RigidBody, Collider, CollisionListener, SpriteRenderer, PersonAnimationFSM, PersonComponent, LootableComponent];
 
     // Flocking behavior (override Person defaults)
-    static groupingForce = 1;
+    static groupingForce = 3600; // px/s² — was 1 frame
 
     static defaultFriction = 0.05;
 
@@ -29,7 +29,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
     // Flocking behavior (static - same for all Person instances)
     static minSquaredDistanceToGroup = 140 ** 2;
     static groupingForce = 0;
-    static separationForce = 0.66;
+    static separationForce = 2376; // px/s² — was 0.66 frame
     static separationRadius = 30;
     static separationRadiusSq = this.separationRadius * this.separationRadius;
     // Damage resistance (static - same for all Person instances)
@@ -210,7 +210,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
         const myX = this.x;
         const myY = this.y;
 
-        const lookAhead = 10;
+        const lookAhead = 10 / 60; // seconds
 
         for (let n = 0; n < this.neighborCount; n++) {
             const neighborIndex = this.getNeighbor(n);
@@ -225,7 +225,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
             const dy = myY - carY;
             const dist2 = dx * dx + dy * dy;
 
-            const avoidStrength = 0.005 + speed * 0.5
+            const avoidStrength = 18 + speed * 30
             // Push away from car (normalized direction * strength)
             this.addAcceleration((dx / dist2) * avoidStrength, (dy / dist2) * avoidStrength);
         }
@@ -254,7 +254,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
 
         // Flowfield navigation
         NavGrid.requestVectorFromStaticFlowfield(PersonThatFollowsAFlowfield.flowfieldName, this.x, this.y, _navVec);
-        const factor = 0.05;
+        const factor = 180; // px/s² — was 0.05 frame
         this.addAcceleration(_navVec.x * factor, _navVec.y * factor);
 
         // Separation: push away from neighbors that are too close

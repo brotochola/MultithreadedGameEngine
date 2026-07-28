@@ -14,8 +14,8 @@ export class Civilian extends Person {
 
   static components = [...Person.components, CivilianBehaviorFSM, CivilianComponent];
 
-  // Flocking behavior (override Person defaults)
-  static groupingForce = 1;
+  // Flocking behavior (override Person defaults) — px/s²
+  static groupingForce = 3600;
 
   onSpawned(spawnConfig = {}) {
     // Random spritesheet for variety

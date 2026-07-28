@@ -47,10 +47,10 @@ class Boid extends GameObject {
 
     // Initialize Flocking component behavior properties
     this.flocking.protectedRange = this.collider.radius * 2; // Minimum distance from others
-    this.flocking.centeringFactor = 0.001; // Cohesion strength
-    this.flocking.avoidFactor = 0.3; // Separation strength
-    this.flocking.matchingFactor = 0.1; // Alignment strength
-    this.flocking.turnFactor = 0.01; // Boundary avoidance strength
+    this.flocking.centeringFactor = 3.6; // Cohesion (px/s² per px) — was 0.001 frame
+    this.flocking.avoidFactor = 1080; // Separation — was 0.3 frame
+    this.flocking.matchingFactor = 360; // Alignment — was 0.1 frame
+    this.flocking.turnFactor = 36; // Boundary — was 0.01 frame
     this.flocking.margin = 20; // Distance from edge to start turning
 
     // Shadow uses default heightMultiplier = 1 (matches sprite scale)
@@ -262,7 +262,7 @@ class Boid extends GameObject {
     const avoidRange2 = 10000; // 100px squared
     if (dist2 > avoidRange2 || dist2 === 0) return;
 
-    const strength = 10;
+    const strength = 36000; // was 10 frame units
     rbAX[i] -= (dx / dist2) * strength * dtRatio;
     rbAY[i] -= (dy / dist2) * strength * dtRatio;
   }

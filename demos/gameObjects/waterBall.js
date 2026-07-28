@@ -53,7 +53,7 @@ class WaterBall extends GameObject {
       const dy = this.y - Mouse.y;
       const dist2 = dx * dx + dy * dy;
       if (dist2 > 360000) return;
-      const force = 1000 / dist2
+      const force = 3600000 / dist2;
       this.addAcceleration(dx * force, dy * force);
     }
   }
@@ -70,7 +70,7 @@ class WaterBall extends GameObject {
     const difVelY = rb.vy[otherIndex] - rb.vy[this.index]
     const difVel = difVelX + difVelY
     const energy = difVel * rb.mass[otherIndex]
-    const energyRatio = energy / 10000
+    const energyRatio = energy / 600000; // was 10000 on frame-unit vel
 
     if (energyRatio < 3) return
 

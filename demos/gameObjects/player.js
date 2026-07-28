@@ -71,8 +71,8 @@ export class Player extends GameObject {
     // Store last direction for idle animations
     this.lastDirection = 'down';
 
-    // Movement acceleration strength
-    this.moveAcceleration = 0.3;
+    // Movement acceleration (px/s²) — was 0.3 frame units
+    this.moveAcceleration = 1080;
   }
   // Reusable vectors (zero GC)
   _flowVec = { x: 0, y: 0 };
@@ -237,12 +237,12 @@ export class Player extends GameObject {
       this.lastDirection = direction;
 
       // Choose walk or run based on speed threshold
-      const isRunning = speed > 3;
+      const isRunning = speed > 180; // px/s — was 3 frame units
       const animPrefix = isRunning ? 'run' : 'walk';
 
       // Set animation with speed-based animation speed
       this.setAnimation(`${animPrefix}_${direction}`);
-      this.setAnimationSpeed(speed * 0.07);
+      this.setAnimationSpeed(speed / 860); // was speed * 0.07 on frame vel
     } else {
       // Idle - use last facing direction
       this.setAnimation(`idle_${this.lastDirection}`);

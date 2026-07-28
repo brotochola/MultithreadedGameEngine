@@ -175,7 +175,16 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   minSpeedForRotation: 6,
   maxCollisionPairs: 10000,
   maxConstraints: 0,
+  /** Gravity (px/s²). */
   gravity: Object.freeze({ x: 0, y: 0 }),
+  /** Pixels treated as 1 meter for Box2D scale-dependent thresholds. */
+  lengthUnitsPerMeter: 100,
+  /** Overlap push speed cap (px/s). */
+  contactSpeed: 1000,
+  /** Hard linear speed clamp (px/s). */
+  maximumLinearSpeed: 50000,
+  /** Box2D internal pthread count (not Weed logic/spatial). Clamped to PTHREAD_POOL_SIZE (4). */
+  box2dWorkerCount: 4,
   /** Master switch: when false, bodies never enter sleep (thresholds ignored). */
   sleeping: true,
   /** Max linear speed and |angularVelocity| (px/s, rad/s) to count as still. */

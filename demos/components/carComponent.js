@@ -7,17 +7,17 @@ import { Component } from '/src/core/Component.js';
 // Max 4 cols x 2 rows = 8 parts, triangular mesh gives ~13 constraints
 // Default tuning values - hybrid: torque (rotation) + Godot-style velocity redirection (trajectory)
 export const CAR_DEFAULTS = {
-    accelerationForce: 0.25,
-    turnForce: 0.36,
+    accelerationForce: 900, // px/s² — was 0.25 frame
+    turnForce: 1296, // was 0.36 frame
     steeringAngle: 0.5,     // Radians (~23°) for bicycle model
-    brakeForce: 1.4,
+    brakeForce: 5040, // was 1.4 frame
     spriteScale: 1.5,
     constraintStiffness: 0.99,
-    maxSteerSpeed: 4,
+    maxSteerSpeed: 240, // px/s — was 4 frame
     minSteerFactor: 0.5,
-    slipSpeed: 100,         // Speed above which traction drops (more drift)
-    tractionTight: 10,      // At low speed
-    tractionLoose: 2.5,     // At high speed (drift)
+    slipSpeed: 6000,         // px/s — was 100 frame
+    tractionTight: 10,       // At low speed
+    tractionLoose: 2.5,      // At high speed (drift)
     lateralDampening: 0.2,
 };
 

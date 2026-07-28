@@ -82,7 +82,7 @@ export class Barrel extends GameObject {
       despawnOnGroundContact: true,
     });
 
-    this.addAcceleration(hitX - this.x, hitY - this.y);
+    this.addAcceleration((hitX - this.x) * 3600, (hitY - this.y) * 3600);
 
     Flash.create({
       x: hitX,

@@ -4,7 +4,16 @@
 function createPhysicsApi(Module) {
   const wrap = (name, ret, args) => Module.cwrap(name, ret, args);
 
-  const createWorld = wrap("create_world", "number", ["number", "number"]);
+  const createWorld = wrap("create_world", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
   const bindGameBuffers = wrap("bind_game_buffers", "number", ["number"]);
   const createBodyBox = wrap("create_body_box", "number", [
     "number",
@@ -484,8 +493,18 @@ function createPhysicsApi(Module) {
     static DEFAULT_MATERIAL = DEFAULT_MATERIAL;
     static EVENT_HEADER = EVENT_HEADER;
 
-    constructor(gravityX = 0.0, gravityY = -9.8) {
-      this.worldId = createWorld(gravityX, gravityY);
+    constructor(gravityX = 0.0, gravityY = -9.8, options = {}) {
+      const o = options || {};
+      this.worldId = createWorld(
+        gravityX,
+        gravityY,
+        o.lengthUnitsPerMeter ?? 1,
+        o.contactHertz ?? 30,
+        o.contactDampingRatio ?? 10,
+        o.contactSpeed ?? 3,
+        o.maximumLinearSpeed ?? 400,
+        o.box2dWorkerCount ?? 4,
+      );
       this._buffersBound = false;
     }
 

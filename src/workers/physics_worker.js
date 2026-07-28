@@ -85,7 +85,7 @@ class PhysicsWorker extends AbstractWorker {
 
   _bootBox2d() {
     const entityCount = this.globalEntityCount | 0;
-    const maxSlotsHint = 32768;
+    const maxSlotsHint = 65535;
     const maxBodies = Math.min(entityCount, maxSlotsHint);
     if (entityCount > maxSlotsHint) {
       throw new Error(
@@ -107,13 +107,23 @@ class PhysicsWorker extends AbstractWorker {
       this.reportError('Box2D worker failed', err);
     };
 
+    const s = this.settings;
     this._pendingModule = {
       type: 'WEEDJS_INIT',
-      gravityX: this.settings.gravity?.x ?? 0,
-      gravityY: this.settings.gravity?.y ?? 0,
+      gravityX: s.gravity?.x ?? 0,
+      gravityY: s.gravity?.y ?? 0,
+      lengthUnitsPerMeter:
+        s.lengthUnitsPerMeter ?? PHYSICS_DEFAULTS.lengthUnitsPerMeter,
+      contactHertz: s.contactHertz ?? PHYSICS_DEFAULTS.contactHertz,
+      contactDampingRatio:
+        s.contactDampingRatio ?? PHYSICS_DEFAULTS.contactDampingRatio,
+      contactSpeed: s.contactSpeed ?? PHYSICS_DEFAULTS.contactSpeed,
+      maximumLinearSpeed:
+        s.maximumLinearSpeed ?? PHYSICS_DEFAULTS.maximumLinearSpeed,
+      box2dWorkerCount: s.box2dWorkerCount ?? PHYSICS_DEFAULTS.box2dWorkerCount,
       maxBodies,
       entityCount,
-      subSteps: this.settings.subStepCount,
+      subSteps: s.subStepCount,
       controlSab: this._controlSab,
       views: {
         x: packView(Transform.x),
