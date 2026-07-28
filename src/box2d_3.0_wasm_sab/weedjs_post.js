@@ -7,7 +7,7 @@
     return;
   }
 
-  importScripts('game-constants.js', 'physics-api.js');
+  importScripts('game-constants.js', 'physics-api.js', 'box2dCommandRing.classic.js');
 
   const CTRL = {
     STATE: 0, // 0 idle, 1 step, 2 done, 3 fatal
@@ -23,6 +23,8 @@
   let verdletSubSteps = 4;
   let ctrlI32 = null;
   let ctrlF32 = null;
+  let cmdI32 = null;
+  let cmdF32 = null;
   let views = null;
   let hasBody = null;
   let denseList = null;
@@ -204,6 +206,43 @@
   let bodyApplyForceCenterFn = null;
   let bodyApplyTorqueFn = null;
   let bodySetLinearVelocityFn = null;
+  let bodySetTransformFn = null;
+  let bodySetAngularVelocityFn = null;
+  let bodySetAwakeFn = null;
+
+  function drainCommands() {
+    if (!cmdI32 || !cmdF32) return;
+    drainBox2dCommandRing(cmdI32, cmdF32, {
+      setTransform(entity, x, y, angle) {
+        if (!hasBody[entity]) return;
+        bodySetAwakeFn(entity, 1);
+        bodySetTransformFn(entity, x, y, angle);
+        if ((views.shapeType[entity] | 0) === WEED_SHAPE.BOX) {
+          rotChan[entity] = 0;
+        }
+      },
+      setVelocity(entity, vx, vy) {
+        if (!hasBody[entity]) return;
+        if (vx !== 0 || vy !== 0) bodySetAwakeFn(entity, 1);
+        bodySetLinearVelocityFn(entity, vx, vy);
+      },
+      setAngle(entity, angle) {
+        if (!hasBody[entity]) return;
+        bodySetAwakeFn(entity, 1);
+        const x = pxChan[entity];
+        const y = pyChan[entity];
+        bodySetTransformFn(entity, x, y, angle);
+        if ((views.shapeType[entity] | 0) === WEED_SHAPE.BOX) {
+          rotChan[entity] = 0;
+        }
+      },
+      setAngularVelocity(entity, w) {
+        if (!hasBody[entity]) return;
+        if (w !== 0) bodySetAwakeFn(entity, 1);
+        bodySetAngularVelocityFn(entity, w);
+      },
+    });
+  }
 
   function applyForcesAndTorque() {
     for (let n = 0; n < denseCount; n++) {
@@ -269,6 +308,7 @@
       return;
     }
     syncBodies(entityCount);
+    drainCommands();
     applyForcesAndTorque();
     world.step(dt, solverSteps);
     afterStep();
@@ -333,9 +373,25 @@
       null,
       ['number', 'number', 'number'],
     );
+    bodySetTransformFn = Module.cwrap('body_set_transform', null, [
+      'number',
+      'number',
+      'number',
+      'number',
+    ]);
+    bodySetAngularVelocityFn = Module.cwrap(
+      'body_set_angular_velocity',
+      null,
+      ['number', 'number'],
+    );
+    bodySetAwakeFn = Module.cwrap('body_set_awake', null, ['number', 'number']);
 
     ctrlI32 = new Int32Array(data.controlSab);
     ctrlF32 = new Float32Array(data.controlSab, 16, 4);
+    if (data.commandSab) {
+      cmdI32 = new Int32Array(data.commandSab);
+      cmdF32 = new Float32Array(data.commandSab);
+    }
     Atomics.store(ctrlI32, CTRL.ENTITY_COUNT, data.entityCount | 0);
     Atomics.store(ctrlI32, CTRL.SUBSTEPS, data.subSteps | 0 || 4);
     Atomics.store(ctrlI32, CTRL.STATE, 0);

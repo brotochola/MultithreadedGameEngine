@@ -15,6 +15,10 @@ import { PHYSICS_DEFAULTS } from '../core/ConfigDefaults.js';
 import { PHYSICS_STATS, createStatsWriter } from './workers-utils.js';
 import { validatePhysicsConfig } from '../core/utils.js';
 import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
+import {
+  createCommandRingSab,
+  bindCommandRing,
+} from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
 
 const BOX2D_WORKER_URL = '/src/box2d_3.0_wasm_sab/box2d_wasm.js?mode=weedjs';
 
@@ -35,6 +39,7 @@ function packView(arr) {
 /**
  * PhysicsWorker — drives Box2D via nested classic worker (pthread entry = box2d_wasm.js).
  * STOP 2: hot Transform/RigidBody fields rebound to WASM HEAP (px, px/s).
+ * STOP 4: command ring SAB for mid-sim teleport / velocity.
  */
 class PhysicsWorker extends AbstractWorker {
   constructor(selfRef) {
@@ -100,6 +105,9 @@ class PhysicsWorker extends AbstractWorker {
     Atomics.store(this._ctrlI32, CTRL.SUBSTEPS, this.settings.subStepCount | 0);
     Atomics.store(this._ctrlI32, CTRL.ENTITY_COUNT, entityCount);
 
+    this._commandSab = createCommandRingSab();
+    bindCommandRing(this._commandSab);
+
     this._box2dWorker = new Worker(BOX2D_WORKER_URL);
     this._box2dWorker.onmessage = (event) => this._onBox2dMessage(event.data);
     this._box2dWorker.onerror = (err) => {
@@ -125,6 +133,7 @@ class PhysicsWorker extends AbstractWorker {
       entityCount,
       subSteps: s.subStepCount,
       controlSab: this._controlSab,
+      commandSab: this._commandSab,
       views: {
         x: packView(Transform.x),
         y: packView(Transform.y),
@@ -178,6 +187,7 @@ class PhysicsWorker extends AbstractWorker {
         bodyCapacity: data.bodyCapacity,
         channelOffsets: data.channelOffsets,
         sleepingByteOffset: data.sleepingByteOffset,
+        commandSab: this._commandSab,
         eventHeaderBaseIndex: data.eventHeaderBaseIndex,
         contactBeginBaseIndex: data.contactBeginBaseIndex,
         contactEndBaseIndex: data.contactEndBaseIndex,
@@ -188,7 +198,7 @@ class PhysicsWorker extends AbstractWorker {
         contactPairIntStride: data.contactPairIntStride || 2,
         eventHeaderIntCount: data.eventHeaderIntCount || 8,
       });
-      console.log('[physics] Box2D READY + hot rebind, capacity', data.bodyCapacity);
+      console.log('[physics] Box2D READY + hot rebind + command ring', data.bodyCapacity);
       return;
     }
     if (data.type === 'WEEDJS_ERROR') {

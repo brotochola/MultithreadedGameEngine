@@ -35,6 +35,13 @@ import { DecorationPool } from './DecorationPool.js';
 import { Decoration } from './Decoration.js';
 import { AdobeAnimRegistry } from './AdobeAnimRegistry.js';
 import { SceneBridge } from './SceneBridge.js';
+import {
+  enqueueSetTransform,
+  enqueueSetVelocity,
+  enqueueSetAngle,
+  enqueueSetAngularVelocity,
+  isCommandRingBound,
+} from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
 // Export Keyboard for easy access (Mouse imported separately to avoid circular dep)
 // Note: SpriteSheetRegistry is registered globally in AbstractWorker.registerCoreClasses()
 export { Keyboard, SpriteSheetRegistry, SceneBridge };
@@ -459,8 +466,11 @@ export class GameObject {
     return Transform.x[this.index];
   }
   set x(value) {
-    Transform.x[this.index] = value;
-    // Box2D: mid-sim teleport needs command ring (STOP 3). Pose copy may overwrite until then.
+    const i = this.index;
+    Transform.x[i] = value;
+    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+      enqueueSetTransform(i, value, Transform.y[i], Transform.rotation[i]);
+    }
   }
 
   /**
@@ -470,7 +480,11 @@ export class GameObject {
     return Transform.y[this.index];
   }
   set y(value) {
-    Transform.y[this.index] = value;
+    const i = this.index;
+    Transform.y[i] = value;
+    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+      enqueueSetTransform(i, Transform.x[i], value, Transform.rotation[i]);
+    }
   }
 
   /** Rotation in radians */
@@ -478,7 +492,11 @@ export class GameObject {
     return Transform.rotation[this.index];
   }
   set rotation(value) {
-    Transform.rotation[this.index] = value;
+    const i = this.index;
+    Transform.rotation[i] = value;
+    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+      enqueueSetAngle(i, value);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -492,8 +510,11 @@ export class GameObject {
   }
   set vx(value) {
     if (this._hasComponents.RigidBody) {
-      RigidBody.vx[this.index] = value;
-      // Box2D: SoA write only until command ring (STOP 3) pushes to body.
+      const i = this.index;
+      RigidBody.vx[i] = value;
+      if (isCommandRingBound()) {
+        enqueueSetVelocity(i, value, RigidBody.vy[i]);
+      }
     }
   }
 
@@ -504,18 +525,26 @@ export class GameObject {
   }
   set vy(value) {
     if (this._hasComponents.RigidBody) {
-      RigidBody.vy[this.index] = value;
+      const i = this.index;
+      RigidBody.vy[i] = value;
+      if (isCommandRingBound()) {
+        enqueueSetVelocity(i, RigidBody.vx[i], value);
+      }
     }
   }
 
-  /** Angular velocity (rad per dtRatio unit) — integrated into Transform.rotation by physics */
+  /** Angular velocity (rad/s) */
   get angularVelocity() {
     if (!this._hasComponents.RigidBody) return 0;
     return RigidBody.angularVelocity[this.index];
   }
   set angularVelocity(value) {
     if (this._hasComponents.RigidBody) {
-      RigidBody.angularVelocity[this.index] = value;
+      const i = this.index;
+      RigidBody.angularVelocity[i] = value;
+      if (isCommandRingBound()) {
+        enqueueSetAngularVelocity(i, value);
+      }
     }
   }
 
@@ -868,27 +897,35 @@ export class GameObject {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Set position (batch update, syncs previous position for Verlet)
+   * Set position (writes SoA + enqueues Box2D SET_TRANSFORM).
    * @param {number} x - Position X
    * @param {number} y - Position Y
    * @returns {this} For chaining
    */
   setPosition(x, y) {
-    Transform.x[this.index] = x;
-    Transform.y[this.index] = y;
+    const i = this.index;
+    Transform.x[i] = x;
+    Transform.y[i] = y;
+    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+      enqueueSetTransform(i, x, y, Transform.rotation[i]);
+    }
     return this;
   }
 
   /**
-   * Set velocity (absolute). Box2D body sync via command ring comes in STOP 3.
-   * @param {number} vx - Velocity X
-   * @param {number} vy - Velocity Y
+   * Set velocity (absolute). Writes SoA + enqueues Box2D SET_VELOCITY.
+   * @param {number} vx - Velocity X (px/s)
+   * @param {number} vy - Velocity Y (px/s)
    * @returns {this} For chaining
    */
   setVelocity(vx, vy) {
     if (this._hasComponents.RigidBody) {
-      RigidBody.vx[this.index] = vx;
-      RigidBody.vy[this.index] = vy;
+      const i = this.index;
+      RigidBody.vx[i] = vx;
+      RigidBody.vy[i] = vy;
+      if (isCommandRingBound()) {
+        enqueueSetVelocity(i, vx, vy);
+      }
     }
     return this;
   }
@@ -909,9 +946,8 @@ export class GameObject {
 
   /**
    * Add to velocity (additive)
-   * Syncs previous position for Verlet integration
-   * @param {number} dvx - Velocity X to add
-   * @param {number} dvy - Velocity Y to add
+   * @param {number} dvx - Velocity X to add (px/s)
+   * @param {number} dvy - Velocity Y to add (px/s)
    * @returns {this} For chaining
    */
   addVelocity(dvx, dvy) {
@@ -919,6 +955,9 @@ export class GameObject {
       const i = this.index;
       RigidBody.vx[i] += dvx;
       RigidBody.vy[i] += dvy;
+      if (isCommandRingBound()) {
+        enqueueSetVelocity(i, RigidBody.vx[i], RigidBody.vy[i]);
+      }
     }
     return this;
   }
@@ -933,6 +972,9 @@ export class GameObject {
       const i = this.index;
       RigidBody.vx[i] *= factor;
       RigidBody.vy[i] *= factor;
+      if (isCommandRingBound()) {
+        enqueueSetVelocity(i, RigidBody.vx[i], RigidBody.vy[i]);
+      }
     }
     return this;
   }
@@ -1838,12 +1880,6 @@ export class GameObject {
       if (instance[key] !== undefined) {
         instance[key] = spawnConfig[key];
       }
-    }
-
-    // Initialize previous positions for Verlet integration
-    if (has.RigidBody) {
-      RigidBody.px[i] = Transform.x[i] - RigidBody.vx[i];
-      RigidBody.py[i] = Transform.y[i] - RigidBody.vy[i];
     }
 
     // ========================================

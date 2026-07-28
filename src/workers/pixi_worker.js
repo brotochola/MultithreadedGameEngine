@@ -18,6 +18,7 @@ import { DecorationPool } from '../core/DecorationPool.js';
 import { SpriteSheetRegistry } from '../core/SpriteSheetRegistry.js';
 import { AbstractWorker } from './AbstractWorker.js';
 import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
+import { bindCommandRing } from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
 
 import { LightEmitter } from '../components/LightEmitter.js';
 import { Sun } from '../core/Sun.js';
@@ -2103,6 +2104,9 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     const { msg } = data;
     if (msg === 'box2dReady' && data.channelOffsets) {
       rebindBox2dHotFields(data);
+      if (data.commandSab) {
+        bindCommandRing(data.commandSab);
+      }
       return;
     }
     console.log(`PIXI WORKER: handleCustomMessage called with msg: ${msg}`);

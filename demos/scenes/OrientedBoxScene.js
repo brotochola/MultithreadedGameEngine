@@ -150,13 +150,10 @@ export class OrientedBoxScene extends WEED.Scene {
         if (this._dragIdx == null) return;
 
         if (!Mouse.isButton0Down || !Transform.active[this._dragIdx]) {
-            const i = this._dragIdx;
-            RigidBody.px[i] = Transform.x[i] - this._tossVx;
-            RigidBody.py[i] = Transform.y[i] - this._tossVy;
-            RigidBody.vx[i] = this._tossVx;
-            RigidBody.vy[i] = this._tossVy;
-            RigidBody.angularVelocity[i] = this._tossOmega;
-            RigidBody.sleeping[i] = 0;
+            const box = this.getEntityView(this._dragIdx, { cache: true });
+            box.setVelocity(this._tossVx, this._tossVy);
+            box.angularVelocity = this._tossOmega;
+            RigidBody.sleeping[this._dragIdx] = 0;
             this._dragIdx = null;
             return;
         }
@@ -172,15 +169,10 @@ export class OrientedBoxScene extends WEED.Scene {
         this._prevMouseX = mx;
         this._prevMouseY = my;
 
-        const targetX = mx + this._dragOffX;
-        const targetY = my + this._dragOffY;
-        Transform.x[this._dragIdx] = targetX;
-        Transform.y[this._dragIdx] = targetY;
-        RigidBody.px[this._dragIdx] = targetX;
-        RigidBody.py[this._dragIdx] = targetY;
-        RigidBody.vx[this._dragIdx] = 0;
-        RigidBody.vy[this._dragIdx] = 0;
-        RigidBody.angularVelocity[this._dragIdx] = 0;
+        const box = this.getEntityView(this._dragIdx, { cache: true });
+        box.setPosition(mx + this._dragOffX, my + this._dragOffY);
+        box.setVelocity(0, 0);
+        box.angularVelocity = 0;
         RigidBody.sleeping[this._dragIdx] = 0;
     }
 

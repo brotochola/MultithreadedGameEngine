@@ -8,6 +8,7 @@ import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { rebindBox2dHotFields } from '../box2d_3.0_wasm_sab/box2dHotFields.js';
+import { bindCommandRing } from '../box2d_3.0_wasm_sab/box2dCommandRing.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
 import { ParticleComponent } from '../components/ParticleComponent.js';
@@ -1423,6 +1424,7 @@ class Scene {
         bodyCapacity: e.data.bodyCapacity,
         channelOffsets: e.data.channelOffsets,
         sleepingByteOffset: e.data.sleepingByteOffset,
+        commandSab: e.data.commandSab,
         eventHeaderBaseIndex: e.data.eventHeaderBaseIndex,
         contactBeginBaseIndex: e.data.contactBeginBaseIndex,
         contactEndBaseIndex: e.data.contactEndBaseIndex,
@@ -1434,6 +1436,9 @@ class Scene {
         eventHeaderIntCount: e.data.eventHeaderIntCount || 8,
       };
       rebindBox2dHotFields(payload);
+      if (payload.commandSab) {
+        bindCommandRing(payload.commandSab);
+      }
       for (const worker of this.getAllWorkers()) {
         if (worker && worker !== e.currentTarget) {
           worker.postMessage(payload);
