@@ -105,12 +105,9 @@ export function rng(): number;
 export function query(componentClasses: unknown[]): number[];
 export function queryActiveEntities(componentClasses: unknown[]): number[];
 export function queryActiveEntitiesSlow(componentClasses: unknown[]): number[];
-export function createCircularGradientCanvas(radius?: number, color?: number): HTMLCanvasElement;
-export function createBulletTrailCanvas(
-  width?: number,
-  height?: number,
-  color?: number,
-): HTMLCanvasElement;
+export function create2dCanvas(width?: number, height?: number): HTMLCanvasElement | OffscreenCanvas;
+export function createCircularGradientCanvas(radius?: number, color?: number): HTMLCanvasElement | OffscreenCanvas;
+export function createBulletTrailCanvas(width?: number, height?: number, color?: number): HTMLCanvasElement | OffscreenCanvas;
 export function extractRGB(color: number): { r: number; g: number; b: number };
 export function extractRGBMut(color: number, result: { r: number; g: number; b: number }): void;
 export function extractRGBNormalized(color: number): { r: number; g: number; b: number };

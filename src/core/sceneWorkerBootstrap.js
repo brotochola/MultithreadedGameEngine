@@ -450,8 +450,8 @@ export async function createSceneWorkers(scene) {
   attachEarlyWorkerErrorHandlers(scene);
 
   const spritesheetConfigs = scene.imageUrls.spritesheets || {};
-  await scene.preloadAssets(scene.imageUrls, spritesheetConfigs);
-  scene.loadedAudioNames = await scene.preloadAudios(scene.audioUrls);
+  // preloadAssets overlaps atlas ∥ audio ∥ tilemaps ∥ flowfields ∥ shaders
+  await scene.preloadAssets(scene.imageUrls, spritesheetConfigs, scene.audioUrls);
 
   scene.textureMetadata = scene.buildTextureMetadata();
   injectLoadedShaderSources(scene);

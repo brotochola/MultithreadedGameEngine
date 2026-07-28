@@ -187,6 +187,10 @@ export class PredatorScene extends WEED.Scene {
   // ========================================
 
   static assets = {
+    bigAtlas: {
+      json: '/demos/img/baked/PredatorScene/bigAtlas.json',
+      png: '/demos/img/baked/PredatorScene/bigAtlas.png',
+    },
     textures: {
       cloud: '/demos/img/cloud.png',
       bullet: '/demos/img/bullet.png',

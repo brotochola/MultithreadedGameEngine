@@ -2,7 +2,11 @@
 // Provides string->index mapping for animations without runtime overhead
 // String lookups happen ONCE at setup, game loop uses fast numeric indices
 
-import { createCircularGradientCanvas, createBulletTrailCanvas } from './utils.js';
+import {
+  create2dCanvas,
+  createCircularGradientCanvas,
+  createBulletTrailCanvas,
+} from './utils.js';
 
 /**
  * MaxRectsPacker - Rectangle packing algorithm for texture atlas generation
@@ -874,9 +878,7 @@ class SpriteSheetRegistry {
               maxW = Math.max(maxW, frameData.frame.w);
               maxH = Math.max(maxH, frameData.frame.h);
             }
-            const extractCanvas = document.createElement('canvas');
-            extractCanvas.width = maxW;
-            extractCanvas.height = maxH;
+            const extractCanvas = create2dCanvas(maxW, maxH);
             const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
 
             // Stats for logging
@@ -915,9 +917,7 @@ class SpriteSheetRegistry {
                   trimOffsetY = trimBounds.y;
 
                   // Create trimmed canvas for this frame
-                  trimmedCanvas = document.createElement('canvas');
-                  trimmedCanvas.width = packedWidth;
-                  trimmedCanvas.height = packedHeight;
+                  trimmedCanvas = create2dCanvas(packedWidth, packedHeight);
                   const trimmedCtx = trimmedCanvas.getContext('2d');
                   trimmedCtx.drawImage(
                     extractCanvas,
@@ -988,9 +988,7 @@ class SpriteSheetRegistry {
     // ========================================
     // Empty transparent pixel - reserved as animation index 0 so accidental
     // textureId=0 fallbacks render invisibly instead of showing a real asset.
-    const emptyCanvas = document.createElement('canvas');
-    emptyCanvas.width = 1;
-    emptyCanvas.height = 1;
+    const emptyCanvas = create2dCanvas(1, 1);
     const emptyCtx = emptyCanvas.getContext('2d');
     emptyCtx.clearRect(0, 0, 1, 1);
     imagesToPack.push({
@@ -1046,9 +1044,7 @@ class SpriteSheetRegistry {
     );
 
     // White square (8x8 solid white - used as default/background texture)
-    const whiteSquareCanvas = document.createElement('canvas');
-    whiteSquareCanvas.width = 8;
-    whiteSquareCanvas.height = 8;
+    const whiteSquareCanvas = create2dCanvas(8, 8);
     const whiteCtx = whiteSquareCanvas.getContext('2d');
     whiteCtx.fillStyle = '#ffffff';
     whiteCtx.fillRect(0, 0, 8, 8);
@@ -1068,9 +1064,7 @@ class SpriteSheetRegistry {
     console.log(`  ✅ Generated built-in: _white (8x8)`);
 
     // White circle (radius 4px - used for particles, bullets, etc.)
-    const whiteCircleCanvas = document.createElement('canvas');
-    whiteCircleCanvas.width = 8;
-    whiteCircleCanvas.height = 8;
+    const whiteCircleCanvas = create2dCanvas(8, 8);
     const whiteCircleCtx = whiteCircleCanvas.getContext('2d');
     whiteCircleCtx.fillStyle = '#ffffff';
     whiteCircleCtx.beginPath();
@@ -1095,9 +1089,7 @@ class SpriteSheetRegistry {
     /// bigger white circle:
 
     // White circle filling the 64x64 frame (used when a larger centered circle is needed)
-    const biggerwhiteCircleCanvas = document.createElement('canvas');
-    biggerwhiteCircleCanvas.width = 64;
-    biggerwhiteCircleCanvas.height = 64;
+    const biggerwhiteCircleCanvas = create2dCanvas(64, 64);
     const biggerwhiteCircleCtx = biggerwhiteCircleCanvas.getContext('2d');
     biggerwhiteCircleCtx.fillStyle = '#ffffff';
     biggerwhiteCircleCtx.beginPath();
@@ -1178,9 +1170,7 @@ class SpriteSheetRegistry {
     }
 
     // Create canvas and draw packed atlas
-    const canvas = document.createElement('canvas');
-    canvas.width = actualWidth;
-    canvas.height = actualHeight;
+    const canvas = create2dCanvas(actualWidth, actualHeight);
     const ctx = canvas.getContext('2d');
 
     ctx.clearRect(0, 0, actualWidth, actualHeight);
@@ -1210,17 +1200,6 @@ class SpriteSheetRegistry {
       }
     }
 
-    const atlasJson = {
-      frames: frames,
-      animations: animations,
-      meta: {
-        image: 'bigAtlas.png',
-        format: 'RGBA8888',
-        size: { w: actualWidth, h: actualHeight },
-        scale: 1,
-      },
-    };
-
     // Register individual texture names as spritesheet IDs
     // This allows setSpritesheet("ball") to work for static textures
     const individualTextures = [];
@@ -1229,6 +1208,19 @@ class SpriteSheetRegistry {
       this.registerSpritesheetId(name);
       individualTextures.push(name);
     }
+
+    const atlasJson = {
+      frames: frames,
+      animations: animations,
+      meta: {
+        image: 'bigAtlas.png',
+        format: 'RGBA8888',
+        size: { w: actualWidth, h: actualHeight },
+        scale: 1,
+        proxySheets,
+        individualTextures,
+      },
+    };
 
     // Log creation summary with trim stats
     const frameCount = Object.keys(frames).length;
@@ -1259,6 +1251,14 @@ class SpriteSheetRegistry {
    * @private
    */
   static async _loadImage(url) {
+    // Workers (and some environments) have no HTMLImageElement — use fetch + ImageBitmap.
+    if (typeof Image === 'undefined') {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load image: ${url}`);
+      }
+      return createImageBitmap(await response.blob());
+    }
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -1284,7 +1284,7 @@ class SpriteSheetRegistry {
 
     // Reuse trim canvas if available
     if (!this._trimCanvas) {
-      this._trimCanvas = document.createElement('canvas');
+      this._trimCanvas = create2dCanvas(w, h);
       this._trimCtx = this._trimCanvas.getContext('2d', { willReadFrequently: true });
     }
     const canvas = this._trimCanvas;
@@ -1387,9 +1387,7 @@ class SpriteSheetRegistry {
     }
 
     // Create trimmed canvas
-    const trimmedCanvas = document.createElement('canvas');
-    trimmedCanvas.width = bounds.width;
-    trimmedCanvas.height = bounds.height;
+    const trimmedCanvas = create2dCanvas(bounds.width, bounds.height);
     const trimmedCtx = trimmedCanvas.getContext('2d');
 
     trimmedCtx.drawImage(

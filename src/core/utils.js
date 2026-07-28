@@ -883,13 +883,27 @@ export function queryActiveEntitiesSlow(componentClasses) {
  * @param {number} color - Color in 0xRRGGBB format (default: white)
  * @returns {HTMLCanvasElement} Canvas with the gradient drawn
  */
+/** Canvas usable on main thread or in workers (OffscreenCanvas). */
+export function create2dCanvas(width = 1, height = 1) {
+  const w = Math.max(1, width | 0);
+  const h = Math.max(1, height | 0);
+  if (typeof document !== 'undefined' && document.createElement) {
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    return canvas;
+  }
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(w, h);
+  }
+  throw new Error('No canvas API available');
+}
+
 export function createCircularGradientCanvas(radius = 100, color = 0xffffff) {
   radius = Math.round(radius);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
   const size = radius * 2;
-  canvas.width = size;
-  canvas.height = size;
+  const canvas = create2dCanvas(size, size);
+  const ctx = canvas.getContext('2d');
 
   // Create radial gradient centered in canvas
   const gradient = ctx.createRadialGradient(
@@ -939,10 +953,8 @@ export function createCircularGradientCanvas(radius = 100, color = 0xffffff) {
 export function createBulletTrailCanvas(width = 10, height = 1, color = 0xffffff) {
   width = Math.max(1, Math.round(width));
   height = Math.max(1, Math.round(height));
-  const canvas = document.createElement('canvas');
+  const canvas = create2dCanvas(width, height);
   const ctx = canvas.getContext('2d');
-  canvas.width = width;
-  canvas.height = height;
 
   const r = (color >> 16) & 255;
   const g = (color >> 8) & 255;

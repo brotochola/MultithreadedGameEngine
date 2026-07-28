@@ -1007,39 +1007,41 @@ class Scene {
     const compiledAssets = {};
     const spritesheetConfigs = {};
 
-    for (const [assetName, config] of Object.entries(adobeConfigs)) {
-      try {
-        const [atlasResponse, animationResponse, image] = await Promise.all([
-          fetch(config.atlas),
-          fetch(config.animation),
-          SpriteSheetRegistry._loadImage(config.png),
-        ]);
+    await Promise.all(
+      Object.entries(adobeConfigs).map(async ([assetName, config]) => {
+        try {
+          const [atlasResponse, animationResponse, image] = await Promise.all([
+            fetch(config.atlas),
+            fetch(config.animation),
+            SpriteSheetRegistry._loadImage(config.png),
+          ]);
 
-        if (!atlasResponse.ok) {
-          throw new Error(`Failed to load Adobe atlas JSON: ${config.atlas}`);
+          if (!atlasResponse.ok) {
+            throw new Error(`Failed to load Adobe atlas JSON: ${config.atlas}`);
+          }
+          if (!animationResponse.ok) {
+            throw new Error(`Failed to load Adobe animation JSON: ${config.animation}`);
+          }
+
+          const [atlasData, animationData] = await Promise.all([
+            atlasResponse.json(),
+            animationResponse.json(),
+          ]);
+
+          spritesheetConfigs[assetName] = {
+            jsonData: AdobeAnimCompiler.buildAtlasSpritesheetJson(atlasData),
+            img: image,
+          };
+          compiledAssets[assetName] = AdobeAnimCompiler.compile(
+            assetName,
+            animationData,
+            atlasData
+          );
+        } catch (error) {
+          console.error(`❌ Failed to prepare Adobe Animate asset "${assetName}":`, error);
         }
-        if (!animationResponse.ok) {
-          throw new Error(`Failed to load Adobe animation JSON: ${config.animation}`);
-        }
-
-        const [atlasData, animationData] = await Promise.all([
-          atlasResponse.json(),
-          animationResponse.json(),
-        ]);
-
-        spritesheetConfigs[assetName] = {
-          jsonData: AdobeAnimCompiler.buildAtlasSpritesheetJson(atlasData),
-          img: image,
-        };
-        compiledAssets[assetName] = AdobeAnimCompiler.compile(
-          assetName,
-          animationData,
-          atlasData
-        );
-      } catch (error) {
-        console.error(`❌ Failed to prepare Adobe Animate asset "${assetName}":`, error);
-      }
-    }
+      })
+    );
 
     return { compiledAssets, spritesheetConfigs };
   }
@@ -1062,65 +1064,46 @@ class Scene {
     }
   }
 
-  async preloadAssets(imageUrls, spritesheetConfigs = {}) {
-    this.loadedTextures = {};
-    this.loadedSpritesheets = {};
-    this.loadedTilemaps = {}; // Store loaded tilemap data
-    this.loadedAdobeAnimateAssets = {};
+  /**
+   * Install a packed or prebaked bigAtlas onto the scene + registry.
+   * @param {{ json: object, imageBitmap: ImageBitmap, canvas: HTMLCanvasElement }} atlas
+   * @param {object} [compiledAdobeAssets]
+   */
+  _installBigAtlas(atlas, compiledAdobeAssets = {}) {
+    const { json, imageBitmap, canvas } = atlas;
+    const proxySheets = json?.meta?.proxySheets || {};
+    const individualTextures = json?.meta?.individualTextures || [];
 
-    const textures = imageUrls?.textures || {};
-    const sceneSpritesheets = imageUrls?.spritesheets || {};
-    const adobeAnimateAnimations = imageUrls?.AdobeAnimateAnimations || {};
-    const preparedAdobeAssets = await this.prepareAdobeAnimateAssets(adobeAnimateAnimations);
-    const spritesheets = {
-      ...sceneSpritesheets,
-      ...preparedAdobeAssets.spritesheetConfigs,
-    };
-    const assetsToLoad = {
-      ...textures,
-      spritesheets,
+    this.loadedSpritesheets['bigAtlas'] = {
+      json,
+      imageBitmap,
     };
 
-    try {
-      // Use config.assets for atlas options (with defaults from ASSETS_DEFAULTS)
-      const assetsConfig = this.config.assets || {};
-      const bigAtlas = await SpriteSheetRegistry.createBigAtlas(assetsToLoad, {
-        maxAtlasWidth: assetsConfig.maxAtlasWidth ?? 4096,
-        maxAtlasHeight: assetsConfig.maxAtlasHeight ?? 4096,
-        atlasPadding: assetsConfig.atlasPadding ?? 2,
-        trimImages: assetsConfig.trimImages ?? true,
-        trimAlphaThreshold: assetsConfig.trimAlphaThreshold ?? 0,
-        heuristic: 'best-short-side',
-      });
+    SpriteSheetRegistry.register('bigAtlas', json);
 
-      const imageBitmap = await createImageBitmap(bigAtlas.canvas);
+    for (const [sheetName, proxyData] of Object.entries(proxySheets)) {
+      SpriteSheetRegistry.registerProxy(sheetName, proxyData);
+    }
 
-      this.loadedSpritesheets['bigAtlas'] = {
-        json: bigAtlas.json,
-        imageBitmap: imageBitmap,
-      };
+    for (const textureName of individualTextures) {
+      SpriteSheetRegistry.registerSpritesheetId(textureName);
+    }
 
-      SpriteSheetRegistry.register('bigAtlas', bigAtlas.json);
+    this.finalizeAdobeAnimateAssets(compiledAdobeAssets);
 
-      for (const [sheetName, proxyData] of Object.entries(bigAtlas.proxySheets)) {
-        SpriteSheetRegistry.registerProxy(sheetName, proxyData);
-      }
+    this.bigAtlasProxySheets = proxySheets;
+    this.bigAtlasCanvas = canvas;
+    this.bigAtlasJson = json;
 
-      this.finalizeAdobeAnimateAssets(preparedAdobeAssets.compiledAssets);
+    if (this.config.particle.decals && canvas) {
+      this.decalTextureData = this.extractDecalTextures(canvas, json);
+    }
 
-      this.bigAtlasProxySheets = bigAtlas.proxySheets;
-      this.bigAtlasCanvas = bigAtlas.canvas;
-      this.bigAtlasJson = bigAtlas.json;
-
-      // Extract decal textures
-      if (this.config.particle.decals) {
-        this.decalTextureData = this.extractDecalTextures(bigAtlas.canvas, bigAtlas.json);
-      }
-
-      // Make helper functions available globally
+    if (typeof window !== 'undefined') {
       window.downloadBigAtlas = () => {
         const link = document.createElement('a');
-        link.download = `bigAtlas_${bigAtlas.json.meta.size.w}x${bigAtlas.json.meta.size.h}.png`;
+        const size = json.meta?.size || {};
+        link.download = `bigAtlas_${size.w || 0}x${size.h || 0}.png`;
         link.href = this.bigAtlasCanvas.toDataURL();
         link.click();
       };
@@ -1128,63 +1111,86 @@ class Scene {
       window.inspectBigAtlas = () => {
         BigAtlasInspector.show(this.bigAtlasCanvas, this.bigAtlasJson);
       };
-    } catch (error) {
-      console.error('❌ Failed to generate BigAtlas:', error);
-      throw error;
     }
+  }
 
-    // Load tilemaps (Tiled JSON + tileset images)
-    if (imageUrls.tilemaps) {
+  /** @returns {HTMLCanvasElement} */
+  _canvasFromImageBitmap(imageBitmap) {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageBitmap.width;
+    canvas.height = imageBitmap.height;
+    canvas.getContext('2d').drawImage(imageBitmap, 0, 0);
+    return canvas;
+  }
 
-      for (const [tilemapId, tilemapConfig] of Object.entries(imageUrls.tilemaps)) {
+  async _loadBakedBigAtlas(bigAtlasAsset) {
+    const [jsonResponse, pngResponse] = await Promise.all([
+      fetch(bigAtlasAsset.json),
+      fetch(bigAtlasAsset.png),
+    ]);
+    if (!jsonResponse.ok) {
+      throw new Error(`Failed to load baked bigAtlas JSON: ${bigAtlasAsset.json}`);
+    }
+    if (!pngResponse.ok) {
+      throw new Error(`Failed to load baked bigAtlas PNG: ${bigAtlasAsset.png}`);
+    }
+    const json = await jsonResponse.json();
+    const imageBitmap = await createImageBitmap(await pngResponse.blob());
+    const canvas = this._canvasFromImageBitmap(imageBitmap);
+    return { json, imageBitmap, canvas };
+  }
+
+  async _packBigAtlasOnMainThread(assetsToLoad, options) {
+    const packed = await SpriteSheetRegistry.createBigAtlas(assetsToLoad, options);
+    const imageBitmap = await createImageBitmap(packed.canvas);
+    return { json: packed.json, imageBitmap, canvas: packed.canvas };
+  }
+
+  async _loadTilemapsParallel(tilemaps) {
+    if (!tilemaps) return;
+    const entries = Object.entries(tilemaps);
+    await Promise.all(
+      entries.map(async ([tilemapId, tilemapConfig]) => {
         try {
-          // Load Tiled JSON file
           const jsonResponse = await fetch(tilemapConfig.json);
           if (!jsonResponse.ok) {
             throw new Error(`Failed to load tilemap JSON: ${tilemapConfig.json}`);
           }
           const tilemapData = await jsonResponse.json();
 
-          // Load tileset image
           const tilesetResponse = await fetch(tilemapConfig.png);
           if (!tilesetResponse.ok) {
             throw new Error(`Failed to load tileset image: ${tilemapConfig.png}`);
           }
-          const tilesetBlob = await tilesetResponse.blob();
-          const tilesetBitmap = await createImageBitmap(tilesetBlob);
+          const tilesetBitmap = await createImageBitmap(await tilesetResponse.blob());
 
-          // Store loaded tilemap data
           this.loadedTilemaps[tilemapId] = {
             data: tilemapData,
-            tilesetBitmap: tilesetBitmap,
+            tilesetBitmap,
           };
-
         } catch (error) {
           console.error(`❌ Failed to load tilemap "${tilemapId}":`, error);
         }
-      }
+      })
+    );
 
-      // Initialize TileMap static class from loaded tilemap data (creates SABs)
+    if (Object.keys(this.loadedTilemaps).length > 0) {
       TileMap.initializeFromLoaded(this.loadedTilemaps);
     }
+  }
 
-    // Load static flowfields (pre-baked direction grids from JSON)
-    if (imageUrls.flowfields) {
-      await NavGrid.loadStaticFlowfieldsFromJSON(imageUrls.flowfields, this.config.worldWidth, this.config.worldHeight);
-    }
-
-    // Load shader assets declared in static assets.shaders (name → path)
+  async _loadShaderSources(imageUrls) {
     this._loadedShaderSources = {};
     const shaderAssets = imageUrls?.shaders || {};
     const shaderAssetPromises = [];
     for (const [shaderName, shaderPath] of Object.entries(shaderAssets)) {
       shaderAssetPromises.push(
         fetch(shaderPath)
-          .then(res => {
+          .then((res) => {
             if (!res.ok) throw new Error(`Failed to load shader asset "${shaderName}": ${shaderPath}`);
             return res.text();
           })
-          .then(source => {
+          .then((source) => {
             this._loadedShaderSources[shaderName] = source;
           })
       );
@@ -1194,21 +1200,20 @@ class Scene {
       console.log(`[Scene] Loaded ${shaderAssetPromises.length} shader asset(s)`);
     }
 
-    // Resolve layer shader references: name lookup into loaded assets, or direct URL fetch
     if (this.config.layers) {
       const inlinePromises = [];
-      for (const [layerName, layerConfig] of Object.entries(this.config.layers)) {
+      for (const layerConfig of Object.values(this.config.layers)) {
         const fragRef = layerConfig.shader?.fragment;
         if (!fragRef) continue;
-        if (this._loadedShaderSources[fragRef]) continue; // already loaded as named asset
+        if (this._loadedShaderSources[fragRef]) continue;
         if (fragRef.includes('/') || fragRef.includes('.')) {
           inlinePromises.push(
             fetch(fragRef)
-              .then(res => {
+              .then((res) => {
                 if (!res.ok) throw new Error(`Failed to load shader: ${fragRef}`);
                 return res.text();
               })
-              .then(source => {
+              .then((source) => {
                 this._loadedShaderSources[fragRef] = source;
               })
           );
@@ -1218,6 +1223,72 @@ class Scene {
         await Promise.all(inlinePromises);
       }
     }
+  }
+
+  async preloadAssets(imageUrls, spritesheetConfigs = {}, audioManifest = null) {
+    this.loadedTextures = {};
+    this.loadedSpritesheets = {};
+    this.loadedTilemaps = {};
+    this.loadedAdobeAnimateAssets = {};
+
+    const textures = imageUrls?.textures || {};
+    const sceneSpritesheets = imageUrls?.spritesheets || {};
+    const adobeAnimateAnimations = imageUrls?.AdobeAnimateAnimations || {};
+    const preparedAdobeAssets = await this.prepareAdobeAnimateAssets(adobeAnimateAnimations);
+    const bakedBigAtlas = imageUrls?.bigAtlas;
+    const assetsConfig = this.config.assets || {};
+    const atlasOptions = {
+      maxAtlasWidth: assetsConfig.maxAtlasWidth ?? 4096,
+      maxAtlasHeight: assetsConfig.maxAtlasHeight ?? 4096,
+      atlasPadding: assetsConfig.atlasPadding ?? 2,
+      trimImages: assetsConfig.trimImages ?? true,
+      trimAlphaThreshold: assetsConfig.trimAlphaThreshold ?? 0,
+      heuristic: 'best-short-side',
+    };
+
+    const atlasPromise = (async () => {
+      try {
+        if (bakedBigAtlas?.json && bakedBigAtlas?.png) {
+          console.log('[Scene] Loading prebaked bigAtlas...');
+          return await this._loadBakedBigAtlas(bakedBigAtlas);
+        }
+        const spritesheets = {
+          ...sceneSpritesheets,
+          ...preparedAdobeAssets.spritesheetConfigs,
+        };
+        const assetsToLoad = {
+          ...textures,
+          spritesheets,
+        };
+        return await this._packBigAtlasOnMainThread(assetsToLoad, atlasOptions);
+      } catch (error) {
+        console.error('❌ Failed to generate BigAtlas:', error);
+        throw error;
+      }
+    })();
+
+    const flowfieldsPromise = imageUrls?.flowfields
+      ? NavGrid.loadStaticFlowfieldsFromJSON(
+          imageUrls.flowfields,
+          this.config.worldWidth,
+          this.config.worldHeight
+        )
+      : Promise.resolve();
+
+    const audioPromise = this.preloadAudios(
+      audioManifest !== null && audioManifest !== undefined ? audioManifest : this.audioUrls
+    );
+
+    const [atlasResult, , , , loadedAudioNames] = await Promise.all([
+      atlasPromise,
+      this._loadTilemapsParallel(imageUrls?.tilemaps),
+      flowfieldsPromise,
+      this._loadShaderSources(imageUrls),
+      audioPromise,
+    ]);
+
+    this._installBigAtlas(atlasResult, preparedAdobeAssets.compiledAssets);
+    this.loadedAudioNames = loadedAudioNames;
   }
 
   async preloadAudios(audioManifest) {

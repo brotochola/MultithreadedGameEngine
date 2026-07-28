@@ -1,6 +1,6 @@
 {
   "name": "@weed.js/engine",
-  "version": "0.6.9",
+  "version": "0.6.10",
   "description": "A multithreaded 2D web game engine for high-entity-count browser games",
   "type": "module",
   "main": "dist/weed.bundle.min.js",
@@ -48,6 +48,7 @@
     "bench:spatial:hypothesis-battery": "node tests/bench/run-spatial-hypothesis-battery.mjs",
     "bench:study:spatial-cell": "node tests/bench/run-spatial-cell-study.mjs",
     "bench:workers": "node tests/bench/run-integrated-worker-benchmark.mjs",
+    "bake:atlas": "node scripts/bake-big-atlas.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "premake_bundle": "node scripts/sync-version.js",

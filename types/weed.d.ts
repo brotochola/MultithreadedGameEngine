@@ -485,6 +485,17 @@ export interface AdobeAnimSerializedBundle {
   assets: Record<string, AdobeAnimSerializedClip>;
 }
 
+export interface BigAtlasJsonMeta {
+  image?: string;
+  format?: string;
+  size?: { w: number; h: number };
+  scale?: number;
+  /** Proxy sheet metadata for spritesheet name → bigAtlas prefixed lookups */
+  proxySheets?: Record<string, unknown>;
+  /** Static texture names registered as spritesheet IDs */
+  individualTextures?: string[];
+}
+
 export interface SpriteSheetCreateBigAtlasOptions {
   maxAtlasWidth?: number;
   maxAtlasHeight?: number;
@@ -495,9 +506,30 @@ export interface SpriteSheetCreateBigAtlasOptions {
 }
 
 export interface BigAtlasCreateResult {
-  canvas: HTMLCanvasElement;
-  json: Record<string, unknown>;
+  canvas: HTMLCanvasElement | OffscreenCanvas;
+  json: {
+    frames: Record<string, unknown>;
+    animations: Record<string, unknown>;
+    meta: BigAtlasJsonMeta;
+  };
   proxySheets: Record<string, unknown>;
+  individualTextures?: string[];
+}
+
+export interface SceneBigAtlasAsset {
+  json: string;
+  png: string;
+}
+
+export interface SceneAssetsManifest {
+  bigAtlas?: SceneBigAtlasAsset;
+  textures?: Record<string, string>;
+  spritesheets?: Record<string, Record<string, unknown>>;
+  AdobeAnimateAnimations?: Record<string, Record<string, unknown>>;
+  tilemaps?: Record<string, { json: string; png: string }>;
+  flowfields?: Record<string, string>;
+  shaders?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 /** Single value or `{ min, max }` range (engine `randomRange`). */
@@ -840,7 +872,7 @@ export declare class QuerySystem {
 export declare class Scene {
   static WORKER_INDICES: Readonly<Record<string, number>>;
   static config: SceneConfig;
-  static assets: Record<string, string>;
+  static assets: SceneAssetsManifest;
   static audios: string[];
   static entities: SceneEntityDefinitionTuple[];
   static queries: SceneQueryTuple[];
@@ -849,7 +881,7 @@ export declare class Scene {
   log: SceneLogEntry[];
   loadedTextures: unknown;
   config: SceneConfig;
-  imageUrls: Record<string, string>;
+  imageUrls: SceneAssetsManifest;
   audioUrls: string[];
   loadedAudioNames: string[];
   seed: number;

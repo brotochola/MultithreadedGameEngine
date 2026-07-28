@@ -29,7 +29,7 @@ Engine-focused notes for the current `src/` architecture.
 Every scene defines:
 
 - `static config` (engine settings)
-- `static assets` (textures/spritesheets)
+- `static assets` (textures/spritesheets; optional prebaked `bigAtlas`)
 - `static audios` (optional)
 - `static entities = [[EntityClass, poolSize], ...]`
 - `static queries = [[ComponentClass, ...], ...]` (optional hot active query combinations)
@@ -50,6 +50,28 @@ class MyScene extends WEED.Scene {
   static queries = [[WEED.RigidBody, MyCustomComponent]];
 }
 ```
+
+### Prebaked bigAtlas
+
+At boot the engine packs `textures` + `spritesheets` into one `bigAtlas` (proxy sheets keep names like `civil1` + `"hurt"`). To skip runtime packing, bake once and point the scene at the output:
+
+```bash
+npm run bake:atlas -- --scene /demos/scenes/PredatorScene.js --export PredatorScene --out demos/img/baked/PredatorScene
+```
+
+```javascript
+static assets = {
+  bigAtlas: {
+    json: '/demos/img/baked/MyScene/bigAtlas.json',
+    png: '/demos/img/baked/MyScene/bigAtlas.png',
+  },
+  // Keep source textures/spritesheets for rebake; runtime ignores them when bigAtlas is set
+  textures: { ... },
+  spritesheets: { ... },
+};
+```
+
+`bigAtlas.json` `meta.proxySheets` (and `meta.individualTextures`) are written by `createBigAtlas` / the bake tool. Boot also overlaps atlas load with audio, tilemaps, flowfields, and shaders; unbaked scenes pack on the main thread at boot.
 
 ---
 
