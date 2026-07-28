@@ -38,6 +38,9 @@ export class RigidBody extends Component {
     minSpeed: Float32Array,
     friction: Float32Array,
 
+    /** 1 = lock Box2D angular DOF (motionLocks.angularZ); sprite stays upright */
+    fixedRotation: Uint8Array,
+
     // Computed values
     velocityAngle: Float32Array,
     speed: Float32Array,

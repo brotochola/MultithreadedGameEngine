@@ -46,7 +46,7 @@ export class MySoldier extends Person {
     // groupingForce and separationForce now use static class properties (MySoldier.groupingForce, MySoldier.separationForce)
 
     this.collider.visualRange = 250;
-    // this.setandular
+    this.rigidBody.fixedRotation = 1;
   }
 
   /**
@@ -58,8 +58,6 @@ export class MySoldier extends Person {
     if (PersonComponent.dead[this.index] === 1) return;
 
     this.soldierBehaviorFSM.tick(dtRatio, this);
-    this.rotation = 0
-    this.angularVelocity = 0
   }
 
   startFollowingDestination() {

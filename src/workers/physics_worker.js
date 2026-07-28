@@ -140,6 +140,7 @@ class PhysicsWorker extends AbstractWorker {
         friction: packView(RigidBody.friction),
         angularDrag: packView(RigidBody.angularDrag),
         sleeping: packView(RigidBody.sleeping),
+        fixedRotation: packView(RigidBody.fixedRotation),
         colActive: packView(Collider.active),
         shapeType: packView(Collider.shapeType),
         radius: packView(Collider.radius),

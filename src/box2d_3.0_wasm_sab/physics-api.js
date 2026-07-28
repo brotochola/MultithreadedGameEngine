@@ -38,6 +38,7 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
   ]);
   const createBodyCircle = wrap("create_body_circle", "number", [
     "number",
@@ -86,6 +87,7 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
   ]);
   const destroyBody = wrap("destroy_body", null, ["number"]);
   const bodySetTransform = wrap("body_set_transform", null, [
@@ -100,6 +102,10 @@ function createPhysicsApi(Module) {
     "number",
   ]);
   const bodySetAngularVelocity = wrap("body_set_angular_velocity", null, [
+    "number",
+    "number",
+  ]);
+  const bodySetFixedRotation = wrap("body_set_fixed_rotation", null, [
     "number",
     "number",
   ]);
@@ -442,6 +448,10 @@ function createPhysicsApi(Module) {
       bodySetAngularVelocity(this.slot, angularVelocity);
     }
 
+    setFixedRotation(locked = true) {
+      bodySetFixedRotation(this.slot, locked ? 1 : 0);
+    }
+
     applyForce(fx, fy, px, py, wake = true) {
       bodyApplyForce(this.slot, fx, fy, px, py, wake ? 1 : 0);
     }
@@ -553,6 +563,7 @@ function createPhysicsApi(Module) {
         o.categoryBits,
         o.maskBits,
         o.groupIndex ?? 0,
+        o.fixedRotation ? 1 : 0,
         o.entity ?? o.entityIndex ?? -1,
       );
       if (slot < 0) {
@@ -584,6 +595,7 @@ function createPhysicsApi(Module) {
         o.categoryBits,
         o.maskBits,
         o.groupIndex ?? 0,
+        o.fixedRotation ? 1 : 0,
         o.entity ?? o.entityIndex ?? -1,
       );
       if (slot < 0) {
@@ -624,6 +636,7 @@ function createPhysicsApi(Module) {
         o.categoryBits,
         o.maskBits,
         o.groupIndex ?? 0,
+        o.fixedRotation ? 1 : 0,
         o.entity ?? o.entityIndex ?? -1,
       );
       Module._free(ptr);

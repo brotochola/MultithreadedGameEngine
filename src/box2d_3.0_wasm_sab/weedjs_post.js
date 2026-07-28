@@ -28,6 +28,7 @@
   let cmdF32 = null;
   let views = null;
   let hasBody = null;
+  let appliedFixedRotation = null;
   let denseList = null;
   let denseCount = 0;
   let pxChan = null;
@@ -61,6 +62,9 @@
       friction: viewFromDesc(desc.friction, Float32Array),
       angularDrag: viewFromDesc(desc.angularDrag, Float32Array),
       sleeping: viewFromDesc(desc.sleeping, Uint8Array),
+      fixedRotation: desc.fixedRotation
+        ? viewFromDesc(desc.fixedRotation, Uint8Array)
+        : null,
       colActive: viewFromDesc(desc.colActive, Uint8Array),
       shapeType: viewFromDesc(desc.shapeType, Uint8Array),
       radius: viewFromDesc(desc.radius, Float32Array),
@@ -98,7 +102,9 @@
       pxChan[i] = views.x[i];
       pyChan[i] = views.y[i];
       rotChan[i] =
-        (views.shapeType[i] | 0) === WEED_SHAPE.BOX ? 0 : views.rotation[i];
+        (views.shapeType[i] | 0) === WEED_SHAPE.BOX || isFixedRotation(i)
+          ? 0
+          : views.rotation[i];
       vxChan[i] = views.vx[i];
       vyChan[i] = views.vy[i];
       angChan[i] = views.angularVelocity[i];
@@ -115,6 +121,10 @@
     if (sleepingU8) {
       views.sleeping = sleepingU8;
     }
+  }
+
+  function isFixedRotation(i) {
+    return !!(views.fixedRotation && views.fixedRotation[i]);
   }
 
   function categoryBitsFor(i) {
@@ -148,6 +158,7 @@
       categoryBits: categoryBitsFor(i),
       maskBits: views.collisionMask[i] >>> 0,
       groupIndex: views.collisionGroupIndex[i] | 0,
+      fixedRotation: isFixedRotation(i),
       entityIndex: i,
     };
 
@@ -182,13 +193,16 @@
 
   function syncBodies(entityCount) {
     denseCount = 0;
-    for (let i = 0; i < entityCount; i++) {
+    const bodyCap = hasBody ? hasBody.length : 0;
+    const n = Math.min(entityCount | 0, bodyCap);
+    for (let i = 0; i < n; i++) {
       const want =
         views.rbActive[i] !== 0 && views.colActive[i] !== 0 ? 1 : 0;
       const have = hasBody[i];
       if (want && !have) {
         if (createBodyForEntity(i)) {
           hasBody[i] = 1;
+          appliedFixedRotation[i] = isFixedRotation(i) ? 1 : 0;
         }
       } else if (!want && have) {
         try {
@@ -197,8 +211,14 @@
           /* slot may already be clear */
         }
         hasBody[i] = 0;
+        appliedFixedRotation[i] = 0;
       }
       if (hasBody[i]) {
+        const flag = isFixedRotation(i) ? 1 : 0;
+        if (flag !== appliedFixedRotation[i]) {
+          bodySetFixedRotationFn(i, flag);
+          appliedFixedRotation[i] = flag;
+        }
         denseList[denseCount++] = i;
       }
     }
@@ -210,6 +230,7 @@
   let bodySetTransformFn = null;
   let bodySetAngularVelocityFn = null;
   let bodySetAwakeFn = null;
+  let bodySetFixedRotationFn = null;
 
   function drainCommands() {
     if (!cmdI32 || !cmdF32) return;
@@ -262,7 +283,7 @@
         bodyApplyForceCenterFn(i, ax * mass, ay * mass, 1);
       }
       const aa = views.angularAccel[i];
-      if (aa !== 0) {
+      if (aa !== 0 && !isFixedRotation(i)) {
         bodyApplyTorqueFn(i, aa * mass, 1);
       }
       views.ax[i] = 0;
@@ -291,9 +312,11 @@
   }
 
   function afterStep() {
+    const rotLen = rotChan ? rotChan.length : 0;
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
-      if ((views.shapeType[i] | 0) === WEED_SHAPE.BOX) {
+      if (i >= rotLen) continue;
+      if ((views.shapeType[i] | 0) === WEED_SHAPE.BOX || isFixedRotation(i)) {
         rotChan[i] = 0;
       }
     }
@@ -386,6 +409,10 @@
       ['number', 'number'],
     );
     bodySetAwakeFn = Module.cwrap('body_set_awake', null, ['number', 'number']);
+    bodySetFixedRotationFn = Module.cwrap('body_set_fixed_rotation', null, [
+      'number',
+      'number',
+    ]);
 
     ctrlI32 = new Int32Array(data.controlSab);
     ctrlF32 = new Float32Array(data.controlSab, 16, 4);
@@ -400,6 +427,7 @@
     bindWeedViews(data.views);
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
+    appliedFixedRotation = new Uint8Array(entityCount);
     denseList = new Uint16Array(entityCount);
 
     const ready = world.getReadyPayload();

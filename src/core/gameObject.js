@@ -1785,6 +1785,7 @@ export class GameObject {
       RigidBody.vy[i] = 0;
       RigidBody.speed[i] = 0;
       RigidBody.velocityAngle[i] = 0;
+      RigidBody.fixedRotation[i] = 0;
       // Reset sleeping state (entity must start awake for physics to work)
       RigidBody.sleeping[i] = 0;
       RigidBody.stillnessTime[i] = 0;
