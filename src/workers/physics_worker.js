@@ -121,6 +121,7 @@ class PhysicsWorker extends AbstractWorker {
       maxBodies,
       entityCount,
       subSteps: s.subStepCount,
+      sleeping: this._sleepingEnabled !== false,
       controlSab: this._controlSab,
       commandSab: this._commandSab,
       stats: this.stats ? packView(this.stats) : null,
@@ -248,6 +249,7 @@ class PhysicsWorker extends AbstractWorker {
       this._box2dWorker.postMessage({
         type: 'WEEDJS_CONFIG',
         subSteps: this.settings.subStepCount,
+        sleeping: this._sleepingEnabled !== false,
       });
     }
   }

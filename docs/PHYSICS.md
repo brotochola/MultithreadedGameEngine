@@ -67,6 +67,9 @@ physics: {
 }
 ```
 
+Weed passes this into the nested Box2D worker (`WEEDJS_INIT` / `WEEDJS_CONFIG`). There is no WASM `world_enable_sleep` export yet, so `sleeping: false` wakes every dynamic body each step and clears `RigidBody.sleeping` flags (so sleep-cell debug matches the config).
+
+Also: `SET_VELOCITY` always wakes — Box2D ignores zero-velocity writes on sleeping bodies, which previously left idle characters stuck after sleep.
 ### Collision filtering (hot path)
 
 Pair filter runs in the dense collision loop with **no allocations**:

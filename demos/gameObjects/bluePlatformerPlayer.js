@@ -2,7 +2,7 @@ import WEED from '/src/index.js';
 import { Platform } from '/demos/gameObjects/platform.js';
 import { PlatformerCharacterComponent } from '../components/platformerCharacterComponent.js';
 
-const { LightEmitter, GameObject, AdobeAnimComponent, ParticleEmitter, AdobeAnimRegistry, RigidBody, Collider, Keyboard, CollisionListener } = WEED;
+const { LightEmitter, GameObject, AdobeAnimComponent, ParticleEmitter, AdobeAnimRegistry, RigidBody, Collider, Keyboard, CollisionListener, Transform } = WEED;
 
 export class BluePlatformerPlayer extends GameObject {
   static scriptUrl = import.meta.url;
@@ -29,16 +29,14 @@ export class BluePlatformerPlayer extends GameObject {
 
   }
   onCollisionEnter(other) {
-    console.log('onCollisionEnter', other);
-    if (Transform.entityType[other] != Platform.entityType) return
-    this.vx *= 0.5
+    if (Transform.entityType[other] != Platform.entityType) return;
+    this.vx *= 0.5;
 
     if (Transform.y[other] > this.y) {
-      this.platformerCharacterComponent.isItStandingOnPlatform = other
+      this.platformerCharacterComponent.isItStandingOnPlatform = other;
     }
 
-    this.emitPArticles()
-
+    this.emitPArticles();
   }
 
   emitPArticles() {
@@ -63,17 +61,17 @@ export class BluePlatformerPlayer extends GameObject {
   }
 
   onCollisionExit(other) {
-    console.log('onCollisionExit', other);
     if (other == this.platformerCharacterComponent.isItStandingOnPlatform) {
-      this.platformerCharacterComponent.isItStandingOnPlatform = -1
+      this.platformerCharacterComponent.isItStandingOnPlatform = -1;
     }
   }
 
   onCollisionStay(other) {
-    console.log('onCollisionStay', other);
-    if (Transform.entityType[other] != Platform.entityType) return
-    //friction on top of platforms
-    // this.vx *= 0.95
+    if (Transform.entityType[other] != Platform.entityType) return;
+    // Refresh ground contact — Exit can fire on sleep without a matching Enter later
+    if (Transform.y[other] > this.y) {
+      this.platformerCharacterComponent.isItStandingOnPlatform = other;
+    }
   }
 
   onSpawned(spawnConfig = {}) {

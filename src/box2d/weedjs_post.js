@@ -423,6 +423,8 @@
     }
   }
 
+  let sleepingEnabled = true;
+
   let bodyApplyForceCenterFn = null;
   let bodyApplyTorqueFn = null;
   let bodySetLinearVelocityFn = null;
@@ -441,7 +443,9 @@
     },
     setVelocity(entity, vx, vy) {
       if (!hasBody[entity]) return;
-      if (vx !== 0 || vy !== 0) bodySetAwakeFn(entity, 1);
+      // Always wake: Box2D SetLinearVelocity(0) is a no-op on sleeping bodies (no state).
+      // Games often write vx=0 while idle; without wake, later forces never stick.
+      bodySetAwakeFn(entity, 1);
       bodySetLinearVelocityFn(entity, vx, vy);
     },
     setAngle(entity, angle) {
@@ -454,7 +458,7 @@
     },
     setAngularVelocity(entity, w) {
       if (!hasBody[entity]) return;
-      if (w !== 0) bodySetAwakeFn(entity, 1);
+      bodySetAwakeFn(entity, 1);
       bodySetAngularVelocityFn(entity, w);
     },
     setFixedRotation(entity, flag) {
@@ -528,6 +532,24 @@
       }
     }
     clampMaxVel();
+    // WASM marks all dynamics sleeping=1 then clears only movers. With sleeping
+    // disabled, force awake + clear flags so cell-sleep / debug match config.
+    if (!sleepingEnabled) {
+      enforceAwakeDynamics();
+    }
+  }
+
+  /**
+   * Honor physics.sleeping === false (WASM has no world_enable_sleep export yet).
+   */
+  function enforceAwakeDynamics() {
+    if (!bodySetAwakeFn) return;
+    for (let n = 0; n < denseCount; n++) {
+      const i = denseList[n];
+      if (views.rbStatic[i]) continue;
+      bodySetAwakeFn(i, 1);
+      if (sleepingU8) sleepingU8[i] = 0;
+    }
   }
 
   function writePhysicsStats() {
@@ -564,6 +586,9 @@
     syncBodies(entityCount);
     syncJoints();
     drainCommands();
+    if (!sleepingEnabled) {
+      enforceAwakeDynamics();
+    }
     applyForcesAndTorque();
     world.step(dt, solverSteps);
     afterStep();
@@ -597,6 +622,7 @@
     const { PhysicsWorld } = createPhysicsApi(Module);
     const maxBodies = data.maxBodies | 0;
     verdletSubSteps = Math.max(1, data.subSteps | 0 || 4);
+    sleepingEnabled = data.sleeping !== false;
     world = new PhysicsWorld(data.gravityX || 0, data.gravityY || 0, {
       lengthUnitsPerMeter: data.lengthUnitsPerMeter,
       contactHertz: data.contactHertz,
@@ -718,6 +744,9 @@
       return;
     }
     if (data.type === 'WEEDJS_CONFIG') {
+      if (data.sleeping !== undefined) {
+        sleepingEnabled = data.sleeping !== false;
+      }
       if (ctrlI32) {
         if (data.subSteps != null) {
           Atomics.store(ctrlI32, CTRL.SUBSTEPS, data.subSteps | 0);
