@@ -17,7 +17,7 @@ export const DEBUG_FLAGS = Object.freeze({
   SHOW_SLEEPING_ENTITIES: 13,
   SHOW_SLEEPING_CELLS: 14,
   SHOW_COLLISION_CANDIDATES: 15,
-  SHOW_CONSTRAINTS: 16,
+  SHOW_JOINTS: 16,
   SHOW_ENTITY_ORIGINS: 17,
 });
 
@@ -166,10 +166,10 @@ export class DebugFlags {
   }
 
   /**
-   * Enable/disable distance constraints visualization
+   * Enable/disable joint visualization
    */
-  showConstraints(enabled = true) {
-    this.flags[DEBUG_FLAGS.SHOW_CONSTRAINTS] = enabled ? 1 : 0;
+  showJoints(enabled = true) {
+    this.flags[DEBUG_FLAGS.SHOW_JOINTS] = enabled ? 1 : 0;
     return this;
   }
 
@@ -229,7 +229,7 @@ export class DebugFlags {
     if (options.sleepingEntities !== undefined) this.showSleepingEntities(options.sleepingEntities);
     if (options.sleepingCells !== undefined) this.showSleepingCells(options.sleepingCells);
     if (options.collisionCandidates !== undefined) this.showCollisionCandidates(options.collisionCandidates);
-    if (options.constraints !== undefined) this.showConstraints(options.constraints);
+    if (options.joints !== undefined) this.showJoints(options.joints);
     if (options.entityOrigins !== undefined) this.showEntityOrigins(options.entityOrigins);
     return this;
   }
@@ -302,7 +302,7 @@ export class DebugFlags {
       sleepingEntities: this.isEnabled(DEBUG_FLAGS.SHOW_SLEEPING_ENTITIES),
       sleepingCells: this.isEnabled(DEBUG_FLAGS.SHOW_SLEEPING_CELLS),
       collisionCandidates: this.isEnabled(DEBUG_FLAGS.SHOW_COLLISION_CANDIDATES),
-      constraints: this.isEnabled(DEBUG_FLAGS.SHOW_CONSTRAINTS),
+      joints: this.isEnabled(DEBUG_FLAGS.SHOW_JOINTS),
       entityOrigins: this.isEnabled(DEBUG_FLAGS.SHOW_ENTITY_ORIGINS),
     };
   }

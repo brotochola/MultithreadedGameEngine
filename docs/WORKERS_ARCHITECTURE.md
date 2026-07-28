@@ -72,7 +72,7 @@ Integrates rigid bodies and resolves collisions. Reads neighbor data from spatia
 | Collider                           | Read           | Shapes, radii, `friction`, `collisionLayer` (Uint8 0-31), `collisionMask` (Uint32), `collisionGroupIndex` (Int32) |
 | `neighborData`                     | Read           | Visual-range neighbors (`totalCount` entries)                                        |
 | `collisionData`                    | **Write**      | `[pairCount, A0, B0, A1, B1, ...]`                                                   |
-| `constraintData`                   | Read/**Write** | Solve + free constraints                                                             |
+| `jointData`                   | Read/**Write** | Sync Weed joints → Box2D                                                             |
 | `constraintFreeList/Top`           | Read/**Write** | Return freed constraint slots                                                        |
 | `activeEntitiesData`               | Read           | Which entities are alive                                                             |
 | `physicsStats`                     | **Write**      | FPS, checks, pairs resolved                                                          |
@@ -117,7 +117,7 @@ Where your game code runs. Every entity's `tick()` executes here. Also handles c
 | `cameraData`             | Read/**Write**                       | Camera state SAB `[zoom,x,y,followX,followY,targetZoom]` (prefer single writer policy) |
 | `queryResultsSAB`        | Read, **published write** (logic 0)  | Triple-buffered pre-computed active query snapshots                                    |
 | `queryVersionSAB`        | Read/**Write** (logic 0 maintenance) | Shared invalidation counter for cached non-precomputed active queries                  |
-| `constraintData`         | **Write**                            | Create constraints via `Constraint.add`                                                |
+| `jointData`         | **Write**                            | Create joints via `Joint.addDistance` / `addRevolute` / `addWeld`                      |
 | `constraintFreeList/Top` | Read/**Write**                       | Pop free constraint slots                                                              |
 | `raycastDebugData`       | **Write**                            | Debug ray visualization                                                                |
 | `logicStats`             | **Write**                            | FPS, entities processed                                                                |

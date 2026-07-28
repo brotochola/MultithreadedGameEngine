@@ -80,7 +80,7 @@ export { BulletComponent } from './components/BulletComponent.js';
 // CONSTRAINTS
 // ============================================================================
 // Distance constraints for position-based dynamics (ropes, springs, rigid connections)
-export { Constraint } from './core/Constraint.js';
+export { Joint } from './core/Joint.js';
 export { SharedAtomicPool } from './core/SharedAtomicPool.js';
 
 // ============================================================================
@@ -179,7 +179,7 @@ import { FlashComponent } from './components/FlashComponent.js';
 import { Flash } from './core/Flash.js';
 import { CameraInOutListener } from './components/CameraInOutListener.js';
 import { CollisionListener } from './components/CollisionListener.js';
-import { Constraint } from './core/Constraint.js';
+import { Joint } from './core/Joint.js';
 import { AbstractWorker } from './workers/AbstractWorker.js';
 import {
   ShapeType,
@@ -257,8 +257,8 @@ const WEED = Object.freeze({
   BulletPool,
   BulletComponent,
 
-  // Constraints
-  Constraint,
+  // Joints (Box2D-mapped)
+  Joint,
 
   // Pool base class
   SharedAtomicPool,

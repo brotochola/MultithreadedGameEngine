@@ -17,7 +17,7 @@ export const DEBUG_FLAGS = Object.freeze({
   SHOW_SLEEPING_ENTITIES: 13,
   SHOW_SLEEPING_CELLS: 14,
   SHOW_COLLISION_CANDIDATES: 15,
-  SHOW_CONSTRAINTS: 16,
+  SHOW_JOINTS: 16,
   SHOW_ENTITY_ORIGINS: 17,
 });
 
@@ -43,7 +43,7 @@ export class DebugFlags {
   showSleepingEntities() { return this; }
   showSleepingCells() { return this; }
   showCollisionCandidates() { return this; }
-  showConstraints() { return this; }
+  showJoints() { return this; }
   showEntityOrigins() { return this; }
   setSelectedEntity() { return this; }
   getSelectedEntity() { return -1; }
@@ -69,7 +69,7 @@ export class DebugFlags {
       sleepingEntities: false,
       sleepingCells: false,
       collisionCandidates: false,
-      constraints: false,
+      joints: false,
       entityOrigins: false,
     };
   }

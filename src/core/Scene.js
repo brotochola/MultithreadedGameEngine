@@ -85,7 +85,7 @@ import {
   PRE_RENDER_STATS,
 } from '../workers/workers-utils.js';
 import { ParticleEmitter } from './ParticleEmitter.js';
-import { Constraint } from './Constraint.js';
+import { Joint } from './Joint.js';
 import { SoundManager } from './SoundManager.js';
 import { Decoration } from './Decoration.js';
 
@@ -918,6 +918,7 @@ class Scene {
     window.SoundManager = SoundManager;
     window.Layer = Layer;
     window.Decoration = Decoration;
+    window.Joint = Joint;
     GameObject.scene = this;
   }
 

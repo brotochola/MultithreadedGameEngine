@@ -10,7 +10,7 @@ import {
 } from '../components/constraintBoxComponent.js';
 import { BoxPart } from './boxPart.js';
 
-const { GameObject, SpriteRenderer, Transform, Constraint, RigidBody } = WEED;
+const { GameObject, SpriteRenderer, Transform, Joint, RigidBody } = WEED;
 
 // Part layout (row-major corners + center):
 // 0 -- 1
@@ -97,7 +97,14 @@ export class ConstraintBox extends GameObject {
                 Transform.x[parts[a].index] - Transform.x[parts[b].index],
                 Transform.y[parts[a].index] - Transform.y[parts[b].index]
             );
-            const idx = Constraint.add(parts[a].index, parts[b].index, dist, stiffness);
+            const idx = Joint.addDistance({
+                entityA: parts[a].index,
+                entityB: parts[b].index,
+                length: dist,
+                enableSpring: stiffness < 0.99,
+                hertz: stiffness * 20,
+                dampingRatio: 0.7,
+            });
             this.constraintBoxComponent[CONSTRAINT_KEYS[i]] = idx;
         }
         this.constraintBoxComponent.constraintCount = EDGE_PAIRS.length;
@@ -109,7 +116,7 @@ export class ConstraintBox extends GameObject {
 
         for (let i = 0; i < constraintCount; i++) {
             const idx = this.constraintBoxComponent[CONSTRAINT_KEYS[i]];
-            if (idx >= 0) Constraint.remove(idx);
+            if (idx >= 0) Joint.remove(idx);
             this.constraintBoxComponent[CONSTRAINT_KEYS[i]] = -1;
         }
 

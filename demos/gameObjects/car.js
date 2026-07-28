@@ -8,7 +8,7 @@ import WEED from '/src/index.js';
 import { CarComponent, CAR_DEFAULTS, PART_KEYS, CONSTRAINT_KEYS } from '../components/carComponent.js';
 import { CarPart } from './carPart.js';
 
-const { GameObject, RigidBody, SpriteRenderer, Transform, Constraint, SpriteSheetRegistry, ParticleEmitter } = WEED;
+const { GameObject, RigidBody, SpriteRenderer, Transform, Joint, SpriteSheetRegistry, ParticleEmitter } = WEED;
 
 const TWO_PI = Math.PI * 2;
 
@@ -107,7 +107,14 @@ export class Car extends GameObject {
                 Transform.x[parts[a].index] - Transform.x[parts[b].index],
                 Transform.y[parts[a].index] - Transform.y[parts[b].index]
             );
-            return Constraint.add(parts[a].index, parts[b].index, dist, this.carComponent.constraintStiffness);
+            return Joint.addDistance({
+                entityA: parts[a].index,
+                entityB: parts[b].index,
+                length: dist,
+                enableSpring: this.carComponent.constraintStiffness < 0.99,
+                hertz: this.carComponent.constraintStiffness * 20,
+                dampingRatio: 0.7,
+            });
         };
 
         let constraintIndex = 0;
@@ -140,7 +147,7 @@ export class Car extends GameObject {
 
         for (let i = 0; i < constraintCount; i++) {
             const idx = this.carComponent[CONSTRAINT_KEYS[i]];
-            if (idx >= 0) Constraint.remove(idx);
+            if (idx >= 0) Joint.remove(idx);
             this.carComponent[CONSTRAINT_KEYS[i]] = -1;
         }
 

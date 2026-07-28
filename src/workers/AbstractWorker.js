@@ -34,7 +34,7 @@ import { Grid } from '../core/Grid.js';
 import { NavGrid } from '../core/NavGrid.js';
 import { ParticleComponent } from '../components/ParticleComponent.js';
 import { DecorationComponent } from '../components/DecorationComponent.js';
-import { Constraint } from '../core/Constraint.js';
+import { Joint } from '../core/Joint.js';
 import { SoundManager } from '../core/SoundManager.js';
 import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
@@ -451,13 +451,12 @@ export class AbstractWorker {
       this.totalLogicWorkers = data.totalLogicWorkers ?? 1;
     }
 
-    // Initialize Constraint system (distance constraints for position-based dynamics)
-    // All workers can add/remove constraints atomically via the shared free list
-    if (data.constraints && data.constraints.enabled) {
-      Constraint.initializeArrays(data.constraints.data, data.constraints.maxConstraints);
-      Constraint.initialize(data.constraints.maxConstraints);
-      Constraint.initializeFreeList(data.constraints.freeList, data.constraints.freeListTop);
-      this.reportLog(`initialized Constraint system for ${data.constraints.maxConstraints} constraints`);
+    // Initialize Joint system (Box2D-mapped distance/revolute/weld)
+    if (data.joints && data.joints.enabled) {
+      Joint.initializeArrays(data.joints.data, data.joints.maxJoints);
+      Joint.initialize(data.joints.maxJoints);
+      Joint.initializeFreeList(data.joints.freeList, data.joints.freeListTop);
+      this.reportLog(`initialized Joint system for ${data.joints.maxJoints} joints`);
     }
 
     // Initialize particle compact lists (for optimized iteration)
@@ -724,7 +723,7 @@ export class AbstractWorker {
     self.SpriteSheetRegistry = SpriteSheetRegistry;
     self.AdobeAnimRegistry = AdobeAnimRegistry;
     self.SoundManager = SoundManager;
-    self.Constraint = Constraint;
+    self.Joint = Joint;
     self.Layer = Layer;
     self.SceneBridge = SceneBridge;
 

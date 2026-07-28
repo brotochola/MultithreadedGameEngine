@@ -167,7 +167,7 @@ export interface DebugFlagConstants {
   readonly SHOW_SLEEPING_ENTITIES: 13;
   readonly SHOW_SLEEPING_CELLS: 14;
   readonly SHOW_COLLISION_CANDIDATES: 15;
-  readonly SHOW_CONSTRAINTS: 16;
+  readonly SHOW_JOINTS: 16;
   readonly SHOW_ENTITY_ORIGINS: 17;
 }
 
@@ -195,7 +195,7 @@ export interface DebugFlagsEnableOptions {
   sleepingEntities?: boolean;
   sleepingCells?: boolean;
   collisionCandidates?: boolean;
-  constraints?: boolean;
+  joints?: boolean;
   entityOrigins?: boolean;
 }
 
@@ -599,17 +599,63 @@ export interface BulletSpawnConfig {
   trailWidth?: number;
 }
 
-export interface ConstraintUpdateProps {
-  distance?: number;
-  stiffness?: number;
-}
-
-export interface ConstraintActiveEntry {
-  idx: number;
+export interface JointDistanceOpts {
   entityA: number;
   entityB: number;
-  distance: number;
-  stiffness: number;
+  localAnchorAX?: number;
+  localAnchorAY?: number;
+  localAnchorBX?: number;
+  localAnchorBY?: number;
+  worldAnchorX?: number;
+  worldAnchorY?: number;
+  length?: number;
+  enableSpring?: boolean;
+  hertz?: number;
+  dampingRatio?: number;
+}
+
+export interface JointRevoluteOpts {
+  entityA: number;
+  entityB: number;
+  localAnchorAX?: number;
+  localAnchorAY?: number;
+  localAnchorBX?: number;
+  localAnchorBY?: number;
+  worldAnchorX?: number;
+  worldAnchorY?: number;
+  enableLimit?: boolean;
+  lowerAngle?: number;
+  upperAngle?: number;
+  enableMotor?: boolean;
+  motorSpeed?: number;
+  maxMotorTorque?: number;
+}
+
+export interface JointWeldOpts {
+  entityA: number;
+  entityB: number;
+  localAnchorAX?: number;
+  localAnchorAY?: number;
+  localAnchorBX?: number;
+  localAnchorBY?: number;
+  worldAnchorX?: number;
+  worldAnchorY?: number;
+  linearHertz?: number;
+  angularHertz?: number;
+  linearDampingRatio?: number;
+  angularDampingRatio?: number;
+}
+
+export interface JointActiveEntry {
+  idx: number;
+  type: number;
+  entityA: number;
+  entityB: number;
+  localAnchorAX: number;
+  localAnchorAY: number;
+  localAnchorBX: number;
+  localAnchorBY: number;
+  length: number;
 }
 
 // --- Core ---
@@ -970,7 +1016,7 @@ export declare class DebugFlags {
   showSleepingEntities(enabled?: boolean): this;
   showSleepingCells(enabled?: boolean): this;
   showCollisionCandidates(enabled?: boolean): this;
-  showConstraints(enabled?: boolean): this;
+  showJoints(enabled?: boolean): this;
   showEntityOrigins(enabled?: boolean): this;
   setSelectedEntity(entityIndex: number): this;
   getSelectedEntity(): number;
@@ -2434,28 +2480,48 @@ export declare class BulletPool extends SharedAtomicPool {
   static reset(): void;
 }
 
-export declare class Constraint extends SharedAtomicPool {
+export declare class Joint extends SharedAtomicPool {
   static readonly INVALID_INDEX: 0xffff;
   static poolName: string;
+  static TYPE: { readonly DISTANCE: number; readonly REVOLUTE: number; readonly WELD: number };
+  static type: Uint8Array | null;
   static pairs: Uint32Array | null;
-  static restLength: Float32Array | null;
-  static stiffness: Float32Array | null;
+  static localAnchorAX: Float32Array | null;
+  static localAnchorAY: Float32Array | null;
+  static localAnchorBX: Float32Array | null;
+  static localAnchorBY: Float32Array | null;
   static active: Uint8Array | null;
+  static length: Float32Array | null;
+  static enableSpring: Uint8Array | null;
+  static hertz: Float32Array | null;
+  static dampingRatio: Float32Array | null;
+  static enableLimit: Uint8Array | null;
+  static lowerAngle: Float32Array | null;
+  static upperAngle: Float32Array | null;
+  static enableMotor: Uint8Array | null;
+  static motorSpeed: Float32Array | null;
+  static maxMotorTorque: Float32Array | null;
+  static linearHertz: Float32Array | null;
+  static angularHertz: Float32Array | null;
+  static linearDampingRatio: Float32Array | null;
+  static angularDampingRatio: Float32Array | null;
   static activeIndices: Uint16Array | null;
   static activeIndexPositions: Uint16Array | null;
   static activeMeta: Int32Array | null;
   static activeCount: Int32Array | null;
   static activeListLock: Int32Array | null;
-  static getBufferSize(maxConstraints: number): number;
-  static initializeArrays(buffer: SharedArrayBuffer, maxConstraints: number): void;
-  static add(entityA: number, entityB: number, distance: number, stiff?: number): number;
+  static getBufferSize(maxJoints: number): number;
+  static initializeArrays(buffer: SharedArrayBuffer, maxJoints: number): void;
+  static addDistance(opts?: JointDistanceOpts): number;
+  static addRevolute(opts?: JointRevoluteOpts): number;
+  static addWeld(opts?: JointWeldOpts): number;
   static remove(idx: number): void;
   static getEntities(idx: number): { entityA: number; entityB: number };
-  static update(idx: number, props: ConstraintUpdateProps): void;
+  static update(idx: number, props: Record<string, number | boolean>): void;
   static isActive(idx: number): boolean;
   static removeAllForEntity(entityIdx: number): void;
   static getDenseActiveCount(): number;
-  static getAllActive(): ConstraintActiveEntry[];
+  static getAllActive(): JointActiveEntry[];
   static reset(): void;
 }
 
@@ -2586,7 +2652,7 @@ export interface WeedNamespace {
   DecorationComponent: typeof DecorationComponent;
   BulletPool: typeof BulletPool;
   BulletComponent: typeof BulletComponent;
-  Constraint: typeof Constraint;
+  Joint: typeof Joint;
   SharedAtomicPool: typeof SharedAtomicPool;
   Flash: typeof Flash;
   AbstractWorker: typeof AbstractWorker;

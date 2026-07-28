@@ -13,8 +13,19 @@ Nested classic worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Weed
 | `box2dCommandRing.impl.js` + `box2dCommandRing.js` | Pose / vel / fixedRotation commands |
 | `box2dHotFields.js` | Rebind Transform/RigidBody SoA onto WASM HEAP |
 
-## Rebuild
+## Rebuild (from sibling `box2d_3.0_wasm_sab`)
 
-Build in sibling `box2d_3.0_wasm_sab` repo, copy `box2d_wasm.js` + `.wasm` here, then ensure dispatcher always `importScripts('weedjs_post.js')` (strip any baked lab `--post-js`).
+```bat
+cd ..\box2d_3.0_wasm_sab
+build_for_weed.bat
+```
+
+That builds with `weed_post.js` (`importScripts('weedjs_post.js')`, not the lab `physics_post.js` / `game-constants.js`) and copies `box2d_wasm.js` + `.wasm` into this folder.
+
+- `build_for_weed.bat clean` — wipe `build_wasm_weed`
+- `build_for_weed.bat copy` — copy root artifacts only
+- Override dest: `set WEED_BOX2D_DIR=...\src\box2d`
+
+Lab demo stays on `build_wasm.bat` (physics_post.js). Do not copy a plain lab build into Weed — it will try to load missing `game-constants.js`.
 
 Units: px, px/s, px/s², rad, rad/s.

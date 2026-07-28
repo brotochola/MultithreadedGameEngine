@@ -19,7 +19,7 @@ function getDirection8(angleRadians) {
 }
 
 export class Bug extends GameObject {
-    static ANIMATION_SPEED_MULTIPLIER = 0.25
+    static ANIMATION_SPEED_MULTIPLIER = 0.007
     static MOVE_SPEED_THRESHOLD = 0.1;
     // Auto-detected by GameEngine
     static scriptUrl = import.meta.url;
@@ -40,7 +40,7 @@ export class Bug extends GameObject {
         this.spriteRenderer.anchorY = 0.5;
 
         this.rigidBody.maxLinearSpeed = 300;
-        this.rigidBody.linearDamping = 0.04;
+        this.rigidBody.linearDamping = 2;
 
         // Store current facing direction
         this._facingDirection = 's';
@@ -59,6 +59,7 @@ export class Bug extends GameObject {
         this.setSpritesheet('bicho');
         this.setAnimation('s');
         this._facingDirection = 's';
+        this.setFixedRotation(1);
     }
 
     tick(dtRatio) {
@@ -89,7 +90,7 @@ export class Bug extends GameObject {
             this.rigidBody.sleeping = 0
             const sqDistToMouse = distanceSq2D(this.x, this.y, Mouse.x, Mouse.y);
             if (sqDistToMouse > Bug.sqDistToFollow) {
-                this.accelerateTowards(Mouse.x, Mouse.y, 1);
+                this.accelerateTowards(Mouse.x, Mouse.y, 111);
             }
         }
     }

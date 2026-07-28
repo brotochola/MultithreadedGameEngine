@@ -19,7 +19,7 @@ function createValidationScene(overrides = {}) {
       particle: { maxParticles: 10 },
       decoration: { maxDecorations: 10 },
       bullet: { maxBullets: 10 },
-      physics: { maxConstraints: 10 },
+      physics: { maxJoints: 10 },
       spatial: {
         cellSize: 128,
         maxNeighbors: 32,

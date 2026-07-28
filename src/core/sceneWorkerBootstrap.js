@@ -263,13 +263,13 @@ function buildSceneWorkerInitData(scene, sharedBuffers, scriptsToLoad) {
         : null,
     queries: scene.querySystem.serialize(),
     staticFlowfields: NavGrid.serializeStaticFlowfields(),
-    constraints: scene.config.physics.maxConstraints > 0
+    joints: scene.config.physics.maxJoints > 0
       ? {
           enabled: true,
-          maxConstraints: scene.config.physics.maxConstraints,
-          data: scene.buffers.constraintData,
-          freeList: scene.buffers.constraintFreeList,
-          freeListTop: scene.buffers.constraintFreeListTop,
+          maxJoints: scene.config.physics.maxJoints,
+          data: scene.buffers.jointData,
+          freeList: scene.buffers.jointFreeList,
+          freeListTop: scene.buffers.jointFreeListTop,
         }
       : null,
     audio: {

@@ -9,7 +9,7 @@ self.postMessage({
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
-import { Constraint } from '../core/Constraint.js';
+import { Joint } from '../core/Joint.js';
 import { AbstractWorker } from './AbstractWorker.js';
 import { PHYSICS_DEFAULTS } from '../core/ConfigDefaults.js';
 import { PHYSICS_STATS, createStatsWriter } from './workers-utils.js';
@@ -46,8 +46,8 @@ class PhysicsWorker extends AbstractWorker {
     super(selfRef);
     this.needsGameScripts = false;
     this.settings = null;
-    this.constraintsEnabled = false;
-    this.maxConstraints = 0;
+    this.jointsEnabled = false;
+    this.maxJoints = 0;
 
     this._box2dWorker = null;
     this._box2dReady = false;
@@ -62,14 +62,14 @@ class PhysicsWorker extends AbstractWorker {
       this.stats = createStatsWriter(data.buffers.physicsStats, PHYSICS_STATS);
     }
 
-    if (data.constraints && data.constraints.enabled) {
-      this.constraintsEnabled = true;
-      this.maxConstraints = data.constraints.maxConstraints;
-      Constraint.initializeArrays(data.constraints.data, this.maxConstraints);
-      Constraint.initialize(this.maxConstraints);
-      Constraint.initializeFreeList(
-        data.constraints.freeList,
-        data.constraints.freeListTop,
+    if (data.joints && data.joints.enabled) {
+      this.jointsEnabled = true;
+      this.maxJoints = data.joints.maxJoints;
+      Joint.initializeArrays(data.joints.data, this.maxJoints);
+      Joint.initialize(this.maxJoints);
+      Joint.initializeFreeList(
+        data.joints.freeList,
+        data.joints.freeListTop,
       );
     }
 
@@ -156,6 +156,35 @@ class PhysicsWorker extends AbstractWorker {
         polyVertexY: packView(Collider.polyVertexY),
       },
     };
+
+    if (this.jointsEnabled && Joint.active) {
+      this._pendingModule.maxJoints = this.maxJoints;
+      this._pendingModule.jointViews = {
+        type: packView(Joint.type),
+        pairs: packView(Joint.pairs),
+        localAnchorAX: packView(Joint.localAnchorAX),
+        localAnchorAY: packView(Joint.localAnchorAY),
+        localAnchorBX: packView(Joint.localAnchorBX),
+        localAnchorBY: packView(Joint.localAnchorBY),
+        active: packView(Joint.active),
+        length: packView(Joint.length),
+        enableSpring: packView(Joint.enableSpring),
+        hertz: packView(Joint.hertz),
+        dampingRatio: packView(Joint.dampingRatio),
+        enableLimit: packView(Joint.enableLimit),
+        lowerAngle: packView(Joint.lowerAngle),
+        upperAngle: packView(Joint.upperAngle),
+        enableMotor: packView(Joint.enableMotor),
+        motorSpeed: packView(Joint.motorSpeed),
+        maxMotorTorque: packView(Joint.maxMotorTorque),
+        linearHertz: packView(Joint.linearHertz),
+        angularHertz: packView(Joint.angularHertz),
+        linearDampingRatio: packView(Joint.linearDampingRatio),
+        angularDampingRatio: packView(Joint.angularDampingRatio),
+        activeIndices: packView(Joint.activeIndices),
+        activeCount: packView(Joint.activeCount),
+      };
+    }
   }
 
   _onBox2dMessage(data) {

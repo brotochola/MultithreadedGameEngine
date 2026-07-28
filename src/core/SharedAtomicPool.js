@@ -45,7 +45,7 @@ export class SharedAtomicPool {
     static acquireSpinLock(lockView) {
         if (!lockView) return;
         while (Atomics.compareExchange(lockView, 0, 0, 1) !== 0) {
-            // Constraint add/remove is rare, so a short spin lock is acceptable here.
+            // Joint add/remove is rare, so a short spin lock is acceptable here.
         }
     }
 

@@ -36,7 +36,7 @@ export class ConstraintBoxScene extends WEED.Scene {
             subStepCount: 5,
             noLimitFPS: true,
             maxCollisionPairs: 100000,
-            maxConstraints: 10000,
+            maxJoints: 4096,
             sleeping: false,
             gravity: { x: 0, y: 1800 },
         },
@@ -57,8 +57,8 @@ export class ConstraintBoxScene extends WEED.Scene {
     };
 
     static entities = [
-        [BoxPart, 10000],
-        [ConstraintBox, 50000],
+        [BoxPart, 3000], // 500 boxes × 5 parts
+        [ConstraintBox, 600],
         [Floor, 16],
     ];
 

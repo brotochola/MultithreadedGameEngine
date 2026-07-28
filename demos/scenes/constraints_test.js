@@ -5,7 +5,7 @@ import { Ball } from '/demos/gameObjects/ball.js';
 import { Floor } from '/demos/gameObjects/floor.js';
 
 import WEED from '/src/index.js';
-const { Scene, Camera, Mouse, Constraint, RigidBody, Transform, Grid, Collider, distanceSq2D, ShapeType } = WEED;
+const { Scene, Camera, Mouse, Joint, RigidBody, Transform, Grid, Collider, distanceSq2D, ShapeType } = WEED;
 
 export class ConstraintsTestScene extends Scene {
     // ========================================
@@ -43,7 +43,7 @@ export class ConstraintsTestScene extends Scene {
             subStepCount: 3, // Higher substeps for stable constraints
             noLimitFPS: true,
             maxCollisionPairs: 100000,
-            maxConstraints: 50000, // Enable constraint system
+            maxJoints: 4096, // Enable constraint system
             verletDamping: 0.999,
             boundaryElasticity: 0,
             collisionResponseStrength: 0.66,
@@ -99,7 +99,7 @@ export class ConstraintsTestScene extends Scene {
         // Click-to-connect constraint mode
         this.constraintMode = false;
         this.selectedEntityForConstraint = -1; // First selected entity index
-        this.constraintStiffness = 1; // Default stiffness for new constraints
+        this.constraintStiffness = 111; // Default stiffness for new constraints
 
         // Builder mode - click to spawn ball and connect to neighbors
         this.builderMode = false;
@@ -131,7 +131,7 @@ export class ConstraintsTestScene extends Scene {
         // this.createRopeBridge(2800, 800, 3200, 800, 20, 0.6);
 
         // Create a soft body (circular arrangement)
-        this.createSoftBody(3000, 500, 40, 120, 0.1);
+        this.createSoftBody(3000, 500, 40, 120, 10);
         // this.createSoftBody(1800, 1500, 12, 120, 0.4);
         // this.createSoftBody(2600, 1500, 6, 80, 0.6);
 
@@ -185,7 +185,7 @@ export class ConstraintsTestScene extends Scene {
                 // Connect to previous ball (use balls.length - 1, not i - 1)
                 if (balls.length > 0) {
                     const prevBall = balls[balls.length - 1];
-                    Constraint.add(prevBall.index, ball.index, spacing, stiffness);
+                    Joint.addDistance({ entityA: prevBall.index, entityB: ball.index, length: spacing, enableSpring: (stiffness) < 0.99, hertz: (stiffness) * 20, dampingRatio: 0.7 });
                 }
 
                 balls.push(ball);
@@ -224,7 +224,7 @@ export class ConstraintsTestScene extends Scene {
 
                 // Connect to previous ball
                 if (i > 0 && balls[i - 1]) {
-                    Constraint.add(balls[i - 1].index, ball.index, spacing, stiffness);
+                    Joint.addDistance({ entityA: balls[i - 1].index, entityB: ball.index, length: spacing, enableSpring: (stiffness) < 0.99, hertz: (stiffness) * 20, dampingRatio: 0.7 });
                 }
             }
         }
@@ -268,7 +268,7 @@ export class ConstraintsTestScene extends Scene {
         const perimeterSpacing = 2 * radius * Math.sin(actualAngleStep / 2);
         for (let i = 0; i < actualBallCount; i++) {
             const next = (i + 1) % actualBallCount;
-            Constraint.add(balls[i].index, balls[next].index, perimeterSpacing, stiffness);
+            Joint.addDistance({ entityA: balls[i].index, entityB: balls[next].index, length: perimeterSpacing, enableSpring: (stiffness) < 0.99, hertz: (stiffness) * 20, dampingRatio: 0.7 });
         }
 
         // Connect opposite balls (cross-bracing for shape retention)
@@ -276,7 +276,7 @@ export class ConstraintsTestScene extends Scene {
             const crossSpacing = radius * 2;
             for (let i = 0; i < Math.floor(actualBallCount / 2); i++) {
                 const opposite = (i + Math.floor(actualBallCount / 2)) % actualBallCount;
-                Constraint.add(balls[i].index, balls[opposite].index, crossSpacing, stiffness * 0.8);
+                Joint.addDistance({ entityA: balls[i].index, entityB: balls[opposite].index, length: crossSpacing, enableSpring: (stiffness * 0.8) < 0.99, hertz: (stiffness * 0.8) * 20, dampingRatio: 0.7 });
             }
         }
 
@@ -291,7 +291,7 @@ export class ConstraintsTestScene extends Scene {
         if (centerBall) {
             // Connect center to all perimeter balls (use actualBallCount, not numBalls)
             for (let i = 0; i < actualBallCount; i++) {
-                Constraint.add(centerBall.index, balls[i].index, radius, stiffness * 0.6);
+                Joint.addDistance({ entityA: centerBall.index, entityB: balls[i].index, length: radius, enableSpring: (stiffness * 0.6) < 0.99, hertz: (stiffness * 0.6) * 20, dampingRatio: 0.7 });
             }
             balls.push(centerBall); // Add center ball after creating constraints
         }
@@ -339,24 +339,24 @@ export class ConstraintsTestScene extends Scene {
 
                 // Connect to right neighbor
                 if (col < width - 1 && grid[row][col + 1]) {
-                    Constraint.add(ball.index, grid[row][col + 1].index, spacing, stiffness);
+                    Joint.addDistance({ entityA: ball.index, entityB: grid[row][col + 1].index, length: spacing, enableSpring: (stiffness) < 0.99, hertz: (stiffness) * 20, dampingRatio: 0.7 });
                 }
 
                 // Connect to bottom neighbor
                 if (row < height - 1 && grid[row + 1][col]) {
-                    Constraint.add(ball.index, grid[row + 1][col].index, spacing, stiffness);
+                    Joint.addDistance({ entityA: ball.index, entityB: grid[row + 1][col].index, length: spacing, enableSpring: (stiffness) < 0.99, hertz: (stiffness) * 20, dampingRatio: 0.7 });
                 }
 
                 // Diagonal connections for shear resistance (optional, improves stability)
                 if (col < width - 1 && row < height - 1 && grid[row + 1][col + 1]) {
                     const diagSpacing = spacing * Math.SQRT2;
-                    Constraint.add(ball.index, grid[row + 1][col + 1].index, diagSpacing, stiffness * 0.5);
+                    Joint.addDistance({ entityA: ball.index, entityB: grid[row + 1][col + 1].index, length: diagSpacing, enableSpring: (stiffness * 0.5) < 0.99, hertz: (stiffness * 0.5) * 20, dampingRatio: 0.7 });
                 }
 
                 // Diagonal connections in the other direction (top-right to bottom-left)
                 if (col > 0 && row < height - 1 && grid[row + 1][col - 1]) {
                     const diagSpacing = spacing * Math.SQRT2;
-                    Constraint.add(ball.index, grid[row + 1][col - 1].index, diagSpacing, stiffness * 0.5);
+                    Joint.addDistance({ entityA: ball.index, entityB: grid[row + 1][col - 1].index, length: diagSpacing, enableSpring: (stiffness * 0.5) < 0.99, hertz: (stiffness * 0.5) * 20, dampingRatio: 0.7 });
                 }
             }
         }
@@ -389,7 +389,7 @@ export class ConstraintsTestScene extends Scene {
         // Press C to create a new chain at mouse position
         if (kb.c && !this._cPressed) {
             this._cPressed = true;
-            this.createHangingChain(Mouse.x, Mouse.y, 10, 35, 0.8);
+            this.createHangingChain(Mouse.x, Mouse.y, 10, 35, 111);
             console.log(`Created new chain at (${Mouse.x.toFixed(0)}, ${Mouse.y.toFixed(0)})`);
         }
         if (!kb.c) this._cPressed = false;
@@ -455,7 +455,7 @@ export class ConstraintsTestScene extends Scene {
         // Log FPS periodically
         if (frameNumber % (60 * 5) === 0) {
             this.printFPS();
-            // console.log(`Active constraints: ${Constraint.getActiveCount()}`);
+            // console.log(`Active constraints: ${Joint.getActiveCount()}`);
         }
     }
 
@@ -491,7 +491,7 @@ export class ConstraintsTestScene extends Scene {
                 const distance = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
 
                 // Create constraint
-                const idx = Constraint.add(this.selectedEntityForConstraint, nearestIdx, distance, this.constraintStiffness);
+                const idx = Joint.addDistance({ entityA: this.selectedEntityForConstraint, entityB: nearestIdx, length: distance, enableSpring: (this.constraintStiffness) < 0.99, hertz: (this.constraintStiffness) * 20, dampingRatio: 0.7 });
                 if (idx >= 0) {
                     console.log(`Created constraint ${idx} between ${this.selectedEntityForConstraint} and ${nearestIdx} (dist: ${distance.toFixed(1)})`);
                 } else {
@@ -563,7 +563,7 @@ export class ConstraintsTestScene extends Scene {
                 if (Transform.active[neighbor] && Transform.entityType[neighbor] === Ball.entityType) {
                     const distSq = distanceSq2D(Transform.x[newBall.index], Transform.y[newBall.index], Transform.x[neighbor], Transform.y[neighbor]);
                     console.log("creating constraint between", newBall.index, neighbor, Math.sqrt(distSq));
-                    Constraint.add(newBall.index, neighbor, Math.sqrt(distSq), this.builderConstraintStiffness);
+                    Joint.addDistance({ entityA: newBall.index, entityB: neighbor, length: Math.sqrt(distSq), enableSpring: (this.builderConstraintStiffness) < 0.99, hertz: (this.builderConstraintStiffness) * 20, dampingRatio: 0.7 });
 
                 }
             }
@@ -576,9 +576,9 @@ export class ConstraintsTestScene extends Scene {
      * Remove any constraint between two entities
      */
     _removeConstraintBetween(entityA, entityB) {
-        const pairs = Constraint.pairs;
-        const constraintActive = Constraint.active;
-        const maxConstraints = Constraint.maxCount;
+        const pairs = Joint.pairs;
+        const constraintActive = Joint.active;
+        const maxConstraints = Joint.maxCount;
 
         for (let i = 0; i < maxConstraints; i++) {
             if (!constraintActive[i]) continue;
@@ -588,7 +588,7 @@ export class ConstraintsTestScene extends Scene {
             const b = packed & 0xFFFF;
 
             if ((a === entityA && b === entityB) || (a === entityB && b === entityA)) {
-                Constraint.remove(i);
+                Joint.remove(i);
                 console.log(`Removed constraint ${i} between ${entityA} and ${entityB}`);
                 return;
             }

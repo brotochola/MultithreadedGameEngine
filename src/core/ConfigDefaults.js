@@ -156,7 +156,7 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   contactDampingRatio: 0.7,
   minSpeedForRotation: 6,
   maxCollisionPairs: 10000,
-  maxConstraints: 0,
+  maxJoints: 0,
   /** Gravity (px/s²). */
   gravity: Object.freeze({ x: 0, y: 0 }),
   /** Pixels treated as 1 meter for Box2D scale-dependent thresholds. */

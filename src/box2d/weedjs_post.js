@@ -33,6 +33,12 @@
   let hasBody = null;
   let denseList = null;
   let denseCount = 0;
+  let jointViews = null;
+  let jointHandle = null; // Int32Array, -1 = none
+  let jointFp = null; // Float32Array fingerprint per joint
+  let jointLive = null; // Uint8Array scratch
+  let maxJoints = 0;
+  let jointCapacityWarn = false;
   let pxChan = null;
   let pyChan = null;
   let rotChan = null;
@@ -81,6 +87,47 @@
       polyVertexX: viewFromDesc(desc.polyVertexX, Float32Array),
       polyVertexY: viewFromDesc(desc.polyVertexY, Float32Array),
     };
+  }
+
+  function bindJointViews(desc, maxJ) {
+    if (!desc || !(maxJ > 0)) {
+      jointViews = null;
+      jointHandle = null;
+      jointFp = null;
+      maxJoints = 0;
+      return;
+    }
+    maxJoints = maxJ | 0;
+    jointViews = {
+      type: viewFromDesc(desc.type, Uint8Array),
+      pairs: viewFromDesc(desc.pairs, Uint32Array),
+      localAnchorAX: viewFromDesc(desc.localAnchorAX, Float32Array),
+      localAnchorAY: viewFromDesc(desc.localAnchorAY, Float32Array),
+      localAnchorBX: viewFromDesc(desc.localAnchorBX, Float32Array),
+      localAnchorBY: viewFromDesc(desc.localAnchorBY, Float32Array),
+      active: viewFromDesc(desc.active, Uint8Array),
+      length: viewFromDesc(desc.length, Float32Array),
+      enableSpring: viewFromDesc(desc.enableSpring, Uint8Array),
+      hertz: viewFromDesc(desc.hertz, Float32Array),
+      dampingRatio: viewFromDesc(desc.dampingRatio, Float32Array),
+      enableLimit: viewFromDesc(desc.enableLimit, Uint8Array),
+      lowerAngle: viewFromDesc(desc.lowerAngle, Float32Array),
+      upperAngle: viewFromDesc(desc.upperAngle, Float32Array),
+      enableMotor: viewFromDesc(desc.enableMotor, Uint8Array),
+      motorSpeed: viewFromDesc(desc.motorSpeed, Float32Array),
+      maxMotorTorque: viewFromDesc(desc.maxMotorTorque, Float32Array),
+      linearHertz: viewFromDesc(desc.linearHertz, Float32Array),
+      angularHertz: viewFromDesc(desc.angularHertz, Float32Array),
+      linearDampingRatio: viewFromDesc(desc.linearDampingRatio, Float32Array),
+      angularDampingRatio: viewFromDesc(desc.angularDampingRatio, Float32Array),
+      activeIndices: viewFromDesc(desc.activeIndices, Uint16Array),
+      activeCount: viewFromDesc(desc.activeCount, Int32Array),
+    };
+    jointHandle = new Int32Array(maxJoints);
+    jointHandle.fill(-1);
+    jointFp = new Float32Array(maxJoints);
+    jointFp.fill(NaN);
+    jointLive = new Uint8Array(maxJoints);
   }
 
   function bindStateChannels(ready, entityCount) {
@@ -216,6 +263,154 @@
     }
   }
 
+  function jointFingerprint(idx) {
+    const jv = jointViews;
+    const t = jv.type[idx] | 0;
+    // Cheap fingerprint: type + anchors + type-specific floats
+    let fp =
+      t * 1e6 +
+      jv.localAnchorAX[idx] +
+      jv.localAnchorAY[idx] * 1.1 +
+      jv.localAnchorBX[idx] * 1.2 +
+      jv.localAnchorBY[idx] * 1.3;
+    if (t === JOINT_TYPE.DISTANCE) {
+      fp +=
+        jv.length[idx] * 2 +
+        (jv.enableSpring[idx] ? 100 : 0) +
+        jv.hertz[idx] * 3 +
+        jv.dampingRatio[idx] * 4;
+    } else if (t === JOINT_TYPE.REVOLUTE) {
+      fp +=
+        (jv.enableLimit[idx] ? 10 : 0) +
+        jv.lowerAngle[idx] +
+        jv.upperAngle[idx] * 1.5 +
+        (jv.enableMotor[idx] ? 20 : 0) +
+        jv.motorSpeed[idx] * 2 +
+        jv.maxMotorTorque[idx] * 3;
+    } else if (t === JOINT_TYPE.WELD) {
+      fp +=
+        jv.linearHertz[idx] +
+        jv.angularHertz[idx] * 1.1 +
+        jv.linearDampingRatio[idx] * 1.2 +
+        jv.angularDampingRatio[idx] * 1.3;
+    }
+    return fp;
+  }
+
+  function destroyJointAt(idx) {
+    const h = jointHandle[idx];
+    if (h < 0) return;
+    try {
+      world.destroyJoint(h);
+    } catch (_) {
+      /* already gone with body */
+    }
+    jointHandle[idx] = -1;
+    jointFp[idx] = NaN;
+  }
+
+  function createJointAt(idx) {
+    const jv = jointViews;
+    const packed = jv.pairs[idx];
+    const a = packed >>> 16;
+    const b = packed & 0xffff;
+    if (a === b || !hasBody[a] || !hasBody[b]) return false;
+    // -2 = permanent fail this session (avoid per-frame retry / leak storm)
+    if (jointHandle[idx] === -2) return false;
+
+    const bodyA = { slot: a };
+    const bodyB = { slot: b };
+    const opts = {
+      bodyA,
+      bodyB,
+      localAnchorAX: jv.localAnchorAX[idx],
+      localAnchorAY: jv.localAnchorAY[idx],
+      localAnchorBX: jv.localAnchorBX[idx],
+      localAnchorBY: jv.localAnchorBY[idx],
+    };
+
+    let handleObj = null;
+    try {
+      const t = jv.type[idx] | 0;
+      if (t === JOINT_TYPE.DISTANCE) {
+        handleObj = world.createDistanceJointLocal({
+          ...opts,
+          length: jv.length[idx],
+          enableSpring: jv.enableSpring[idx] !== 0,
+          hertz: jv.hertz[idx],
+          dampingRatio: jv.dampingRatio[idx],
+        });
+      } else if (t === JOINT_TYPE.REVOLUTE) {
+        handleObj = world.createRevoluteJointLocal({
+          ...opts,
+          enableLimit: jv.enableLimit[idx] !== 0,
+          lowerAngle: jv.lowerAngle[idx],
+          upperAngle: jv.upperAngle[idx],
+          enableMotor: jv.enableMotor[idx] !== 0,
+          motorSpeed: jv.motorSpeed[idx],
+          maxMotorTorque: jv.maxMotorTorque[idx],
+        });
+      } else if (t === JOINT_TYPE.WELD) {
+        handleObj = world.createWeldJointLocal({
+          ...opts,
+          linearHertz: jv.linearHertz[idx],
+          angularHertz: jv.angularHertz[idx],
+          linearDampingRatio: jv.linearDampingRatio[idx],
+          angularDampingRatio: jv.angularDampingRatio[idx],
+        });
+      } else {
+        return false;
+      }
+    } catch (err) {
+      jointHandle[idx] = -2;
+      if (!jointCapacityWarn) {
+        jointCapacityWarn = true;
+        console.warn(
+          '[weedjs-box2d] joint create failed (OOM/cap/reject) — stop retry',
+          err?.message ?? err,
+        );
+      }
+      return false;
+    }
+
+    jointHandle[idx] = handleObj.handle;
+    jointFp[idx] = jointFingerprint(idx);
+    return true;
+  }
+
+  function syncJoints() {
+    if (!jointViews || !jointHandle || !world) return;
+    const jv = jointViews;
+    const activeCount = Atomics.load(jv.activeCount, 0) | 0;
+    jointLive.fill(0);
+
+    for (let slot = 0; slot < activeCount; slot++) {
+      const idx = jv.activeIndices[slot];
+      if (idx === 0xffff || !jv.active[idx]) continue;
+      jointLive[idx] = 1;
+      const packed = jv.pairs[idx];
+      const a = packed >>> 16;
+      const b = packed & 0xffff;
+      const want = hasBody[a] && hasBody[b] ? 1 : 0;
+      const have = jointHandle[idx] >= 0 ? 1 : 0;
+      const fp = jointFingerprint(idx);
+      if (want && have && jointFp[idx] !== fp) {
+        destroyJointAt(idx);
+        createJointAt(idx);
+      } else if (want && !have) {
+        createJointAt(idx);
+      } else if (!want && have) {
+        destroyJointAt(idx);
+      }
+    }
+
+    for (let i = 0; i < maxJoints; i++) {
+      if (!jointLive[i] && jointHandle[i] >= 0) {
+        destroyJointAt(i);
+      }
+    }
+  }
+
   let bodyApplyForceCenterFn = null;
   let bodyApplyTorqueFn = null;
   let bodySetLinearVelocityFn = null;
@@ -329,6 +524,7 @@
       return;
     }
     syncBodies(entityCount);
+    syncJoints();
     drainCommands();
     applyForcesAndTorque();
     world.step(dt, solverSteps);
@@ -422,6 +618,7 @@
     Atomics.store(ctrlI32, CTRL.STATE, 0);
 
     bindWeedViews(data.views);
+    bindJointViews(data.jointViews, data.maxJoints | 0);
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
     denseList = new Uint16Array(entityCount);

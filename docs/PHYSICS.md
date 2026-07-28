@@ -2,7 +2,7 @@
 
 This document describes how the **physics worker** integrates motion, collisions, and distance constraints, with emphasis on **performance choices** (dense iteration, shared memory, minimal allocations) and **data invariants** the engine assumes.
 
-Implementation: `src/workers/physics_worker.js`, `src/components/RigidBody.js`, `src/core/gameObject.js`, `src/core/Constraint.js`.
+Implementation: `src/workers/physics_worker.js`, `src/components/RigidBody.js`, `src/core/gameObject.js`, `src/core/Joint.js`.
 
 Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architecture](./WORKERS_ARCHITECTURE.md).
 
@@ -11,9 +11,9 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 ## Responsibilities (per frame)
 
 1. **Box2D step** — nested WASM worker advances bodies; Weed hot fields (`Transform` / `RigidBody` pose & vel) live on HEAP. Post-step clamp uses `RigidBody.maxLinearSpeed`. Body damping: `linearDamping` / `angularDamping`.
-2. **Contacts** — Box2D owns narrowphase; fixture μ from `Collider.friction` (pair uses engine convention `min(μi, μj)` where applicable).
-3. **Distance constraints** (optional Weed SAB) — not Box2D joints; demos may still author `Constraint.add` (solver path TBD if disabled).
-4. **Stats** — write counters and timing into `physicsStats` (see [Worker stats](#worker-stats)).
+2. **Contacts** — Box2D owns narrowphase; fixture μ from `Collider.friction`.
+3. **Joints** — Weed `Joint` SAB (`addDistance` / `addRevolute` / `addWeld` with body-local anchors) syncs to Box2D joints each step (`weedjs_post.syncJoints`). Cap: WASM `MAX_JOINTS` (4096).
+4. **Stats** — write counters and timing into `physicsStats`.
 
 The worker does **not** build the spatial grid or neighbor lists; it **reads** `Grid.neighborData` produced by spatial workers.
 
@@ -114,31 +114,21 @@ RigidBody.syncMassFromCollider(entityIndex);
 
 ---
 
-## Distance constraints
+## Joints (Box2D-mapped)
 
-Constraints live in a **SharedArrayBuffer** pool (`Constraint`), shared with the main thread and workers. Packed pair: `(entityA << 16) | entityB`.
+Joints live in a **SharedArrayBuffer** pool (`Joint`), shared with main + workers. Packed pair: `(entityA << 16) | entityB`. Types: distance / revolute / weld. Attachment: `localAnchorA/B` (body local; default COM). Authored via `Joint.addDistance` / `addRevolute` / `addWeld`.
 
 ### Dense active list
 
-**Problem:** Solving constraints by scanning `0 .. maxConstraints` every substep scales with pool size, not live constraint count.
+Physics sync iterates the dense active list (`activeIndices` / `activeCount`), not `0 .. maxJoints`.
 
-**Approach:** A **dense index list** mirrors active constraints:
+**Thread safety:** atomic free list + short spin lock on add/remove.
 
-- `activeIndices[slot]` — constraint pool index at dense slot `slot`.
-- `activeIndexPositions[idx]` — reverse map for O(1) removal.
-- `activeCount` — number of active entries (Atomics + spin lock on add/remove).
+**Capacity:** Weed `maxJoints` should stay ≤ WASM `MAX_JOINTS` (4096).
 
-The physics solver iterates `denseIdx = 0 .. activeCount-1` and skips entries if `active[idx]` was cleared.
+### Sync
 
-**Thread safety:** Pool allocation uses the existing atomic free list; maintaining the dense list uses a **short spin lock** (`SharedAtomicPool.acquireSpinLock` / `releaseSpinLock`) on add/remove. Add/remove is expected to be **rare** compared to solving.
-
-**Memory:** Extra SAB bytes scale with `maxConstraints` (two `Uint16` tables plus small meta). See `Constraint.getBufferSize`.
-
-### Solver notes
-
-- Squared distance is compared to a small epsilon before `sqrt` to avoid useless work and division by zero.
-- Normal uses `1 / currentDist` once instead of dividing each component.
-- Static / missing rigidbody handling skips pairs with zero total inverse mass.
+`weedjs_post.syncJoints` after `syncBodies`: create/destroy/recreate Box2D joints via `create*_joint_local`.
 
 ---
 
@@ -146,7 +136,7 @@ The physics solver iterates `denseIdx = 0 .. activeCount-1` and skips entries if
 
 - **Reused** `collisionResult` object for collision tests (no per-contact object allocation in the hot path).
 - **Reused** `_denseColliders` buffer; allocation only on growth.
-- Constraint solving uses typed arrays only; no per-constraint heap objects in the solve loop.
+- Joint sync uses typed arrays only; no per-joint heap objects in the hot path.
 
 ---
 

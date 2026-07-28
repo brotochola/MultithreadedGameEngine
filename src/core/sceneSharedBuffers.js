@@ -46,7 +46,7 @@ import {
   PRE_RENDER_STATS,
 } from '../workers/workers-utils.js';
 import { ParticleEmitter } from './ParticleEmitter.js';
-import { Constraint } from './Constraint.js';
+import { Joint } from './Joint.js';
 import { SoundManager } from './SoundManager.js';
 import { MAX_COMPONENTS, MAX_ENTITIES, MAX_ENTITY_TYPES } from './QuerySystem.js';
 
@@ -78,7 +78,7 @@ function validateSceneSharedBufferConfig(scene) {
   assertIntegerInRange('particle.maxParticles', config.particle.maxParticles, 0, MAX_ENTITIES);
   assertIntegerInRange('decoration.maxDecorations', config.decoration.maxDecorations, 0, MAX_ENTITIES);
   assertIntegerInRange('bullet.maxBullets', config.bullet.maxBullets, 0, MAX_ENTITIES);
-  assertIntegerInRange('physics.maxConstraints', config.physics.maxConstraints || 0, 0, MAX_ENTITIES);
+  assertIntegerInRange('physics.maxJoints', config.physics.maxJoints || 0, 0, MAX_ENTITIES);
   assertIntegerInRange('spatial.maxNeighbors', config.spatial.maxNeighbors, 0, MAX_ENTITIES);
   assertIntegerInRange('spatial.maxEntitiesPerCell', config.spatial.maxEntitiesPerCell, 1, 255);
 
@@ -425,23 +425,23 @@ function initializeCollisionConstraintSunAndTrackingBuffers(scene) {
   views.collision = new Int32Array(buffers.collisionData);
   views.collision[0] = 0;
 
-  Constraint.reset();
-  const maxConstraints = config.physics.maxConstraints || 0;
-  if (maxConstraints > 0) {
-    const constraintBufferSize = Constraint.getBufferSize(maxConstraints);
-    buffers.constraintData = new SharedArrayBuffer(constraintBufferSize);
-    Constraint.initializeArrays(buffers.constraintData, maxConstraints);
+  Joint.reset();
+  const maxJoints = config.physics.maxJoints || 0;
+  if (maxJoints > 0) {
+    const jointBufferSize = Joint.getBufferSize(maxJoints);
+    buffers.jointData = new SharedArrayBuffer(jointBufferSize);
+    Joint.initializeArrays(buffers.jointData, maxJoints);
 
     const { freeList, freeListTop } = createUint16FreeListBuffers(
       buffers,
-      'constraintFreeList',
-      'constraintFreeListTop',
-      maxConstraints
+      'jointFreeList',
+      'jointFreeListTop',
+      maxJoints
     );
-    resetFreeList(freeListTop, freeList, maxConstraints, 1);
+    resetFreeList(freeListTop, freeList, maxJoints, 1);
 
-    Constraint.initialize(maxConstraints);
-    Constraint.initializeFreeList(buffers.constraintFreeList, buffers.constraintFreeListTop);
+    Joint.initialize(maxJoints);
+    Joint.initializeFreeList(buffers.jointFreeList, buffers.jointFreeListTop);
   }
 
   const sunConfig = { ...SUN_DEFAULTS, ...config.lighting?.sun };
@@ -692,7 +692,7 @@ export function teardownSceneSharedState(scene) {
   Ray.debugBuffer = null;
   NavGrid.reset();
   Grid.reset();
-  Constraint.reset();
+  Joint.reset();
   TileMap.reset();
   ParticleEmitter.reset();
   DecorationPool.reset();

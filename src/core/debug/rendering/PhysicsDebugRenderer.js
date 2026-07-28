@@ -7,7 +7,7 @@ import { Collider } from '../../../components/Collider.js';
 import { SpriteRenderer } from '../../../components/SpriteRenderer.js';
 import { Mouse } from '../../Mouse.js';
 import { Grid } from '../../Grid.js';
-import { Constraint } from '../../Constraint.js';
+import { Joint } from '../../Joint.js';
 import { DebugDraw } from '../DebugDraw.js';
 import { distanceSq2D } from '../../utils.js';
 import { ShapeType } from '../../ConfigDefaults.js';
@@ -584,26 +584,25 @@ export class PhysicsDebugRenderer {
     }
   }
 
-  // ------- constraints -------
+  // ------- joints -------
 
-  drawConstraints(ctx, canvas, camera, zoom) {
-    if (!Constraint.initialized || !Constraint.pairs || !Constraint.active) return;
+  drawJoints(ctx, canvas, camera, zoom) {
+    if (!Joint.initialized || !Joint.pairs || !Joint.active) return;
 
-    const pairs = Constraint.pairs;
-    const restLength = Constraint.restLength;
-    const stiffness = Constraint.stiffness;
-    const constraintActive = Constraint.active;
-    const activeIndices = Constraint.activeIndices;
-    const activeConstraintCount = Constraint.getDenseActiveCount();
+    const pairs = Joint.pairs;
+    const restLength = Joint.length;
+    const jointActive = Joint.active;
+    const activeIndices = Joint.activeIndices;
+    const activeJointCount = Joint.getDenseActiveCount();
     const x = Transform.x;
     const y = Transform.y;
     const entityActive = Transform.active;
 
     ctx.lineWidth = 2;
 
-    for (let slot = 0; slot < activeConstraintCount; slot++) {
+    for (let slot = 0; slot < activeJointCount; slot++) {
       const i = activeIndices[slot];
-      if (!constraintActive[i]) continue;
+      if (!jointActive[i]) continue;
       const packed = pairs[i];
       const entityA = packed >>> 16;
       const entityB = packed & 0xFFFF;
@@ -620,7 +619,7 @@ export class PhysicsDebugRenderer {
       const dx = x[entityB] - x[entityA];
       const dy = y[entityB] - y[entityA];
       const currentDist = Math.sqrt(dx * dx + dy * dy);
-      const targetDist = restLength[i];
+      const targetDist = restLength[i] > 0 ? restLength[i] : currentDist || 1;
       const stretchRatio = currentDist / targetDist;
 
       let r, g, b;
@@ -633,7 +632,7 @@ export class PhysicsDebugRenderer {
         r = 255; g = Math.max(0, Math.floor(255 * (2 - stretchRatio))); b = 0;
       }
 
-      const alpha = 0.4 + stiffness[i] * 0.5;
+      const alpha = Joint.enableSpring[i] ? 0.55 : 0.9;
       ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
       ctx.beginPath(); ctx.moveTo(sax, say); ctx.lineTo(sbx, sby); ctx.stroke();
 

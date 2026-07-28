@@ -284,7 +284,7 @@ export class DebugUI {
         this.panels.visual.toggleVisualAid(map[digit]);
       } else if (key === 'k') {
         e.preventDefault();
-        this.panels.visual.toggleVisualAid('constraints');
+        this.panels.visual.toggleVisualAid('joints');
       } else if (key === 'o') {
         e.preventDefault();
         this.panels.visual.toggleVisualAid('entityOrigins');

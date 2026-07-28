@@ -120,7 +120,7 @@ export class DebugCanvas {
       flags.isEnabled(DEBUG_FLAGS.SHOW_SLEEPING_ENTITIES) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_SLEEPING_CELLS) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_SELECTED_ENTITY) ||
-      flags.isEnabled(DEBUG_FLAGS.SHOW_CONSTRAINTS) ||
+      flags.isEnabled(DEBUG_FLAGS.SHOW_JOINTS) ||
       flags.isEnabled(DEBUG_FLAGS.SHOW_ENTITY_ORIGINS)
     );
   }
@@ -206,9 +206,9 @@ export class DebugCanvas {
     if (flags?.isEnabled(DEBUG_FLAGS.SHOW_SLEEPING_ENTITIES))
       this.physics.drawSleepingEntities(ctx, canvas, camera, zoom);
 
-    // 12. Constraints
-    if (flags?.isEnabled(DEBUG_FLAGS.SHOW_CONSTRAINTS))
-      this.physics.drawConstraints(ctx, canvas, camera, zoom);
+    // 12. Joints
+    if (flags?.isEnabled(DEBUG_FLAGS.SHOW_JOINTS))
+      this.physics.drawJoints(ctx, canvas, camera, zoom);
 
     // 13. Selected entity (always on top)
     if (flags?.isEnabled(DEBUG_FLAGS.SHOW_SELECTED_ENTITY))

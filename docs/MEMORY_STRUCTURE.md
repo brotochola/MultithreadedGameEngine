@@ -149,20 +149,20 @@ All lists share the same layout: `[count: Uint16, idx0: Uint16, idx1: Uint16, ..
 
 ---
 
-## 5. Constraint Buffers
+## 5. Joint Buffers
 
-### `constraintData`
+### `jointData`
 
-| Property   | Value                                                                                                                                                |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Size**   | `maxConstraints * 4` (pairs) + `maxConstraints * 4` (restLength) + `maxConstraints * 4` (stiffness) + `ceil(maxConstraints/4) * 4` (active, aligned) |
-| **Layout** | `pairs: Uint32[]`, `restLength: Float32[]`, `stiffness: Float32[]`, `active: Uint8[]`                                                                |
+| Property   | Value |
+| ---------- | ----- |
+| **Size**   | `Joint.getBufferSize(maxJoints)` — type, pairs, localAnchors A/B, active, distance/revolute/weld fields, dense active list |
+| **Layout** | See `src/core/Joint.js` `initializeArrays` |
 
-### `constraintFreeList` / `constraintFreeListTop`
+### `jointFreeList` / `jointFreeListTop`
 
 | Property        | Value                                                                              |
 | --------------- | ----------------------------------------------------------------------------------- |
-| **Free list**   | `maxConstraints * 2` bytes (`Uint16Array`) -- per-slot next links (Treiber stack)  |
+| **Free list**   | `maxJoints * 2` bytes (`Uint16Array`) -- per-slot next links (Treiber stack)  |
 | **Top pointer** | 8 bytes (`Int32Array[2]`) -- `[0]` packed head (tag + index), `[1]` free count     |
 
 | Writer                                           | Reader         |
@@ -444,7 +444,7 @@ Pops and pushes retry a `compareExchange` on the packed head; the 16-bit tag is 
 | **Particles**           | Logic workers (spawn), particle worker (despawn)        | Logic, particle  |
 | **Decorations**         | Logic workers (spawn), particle worker                  | Logic, particle  |
 | **Bullets**             | Logic workers (spawn), particle worker (impact despawn) | Logic, particle  |
-| **Constraints**         | Logic workers (create), physics worker (free)           | Logic, physics   |
+| **Joints**         | Logic workers (create), physics worker (sync)           | Logic, physics   |
 
 ---
 
@@ -590,7 +590,7 @@ The big picture. Who writes what, who reads what.
 | Active/visible bullet lists                   | Logic (active), particle (visible)                                                           | Pre_render                                   |
 | Collision pairs (`collisionData`)             | Physics worker                                                                               | Logic workers                                |
 | Impact buffer                                 | Particle worker                                                                              | Logic workers                                |
-| Constraint data                               | Logic workers (create), physics (resolve)                                                    | Logic, physics                               |
+| Joint data                               | Logic workers (create), physics (sync)                                                    | Logic, physics                               |
 | Render queues (main + shadow)                 | Pre_render worker                                                                            | Pixi worker                                  |
 | Custom layer render queues                    | Pre_render worker                                                                            | Pixi worker                                  |
 | Render queue sync                             | Pre_render + pixi (Atomics)                                                                  | Both                                         |

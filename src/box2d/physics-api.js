@@ -282,6 +282,47 @@ function createPhysicsApi(Module) {
     "number",
     "number",
   ]);
+  const createDistanceJointLocal = wrap("create_distance_joint_local", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const createRevoluteJointLocal = wrap("create_revolute_joint_local", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const createWeldJointLocal = wrap("create_weld_joint_local", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
   const destroyJoint = wrap("destroy_joint", null, ["number"]);
   const getJointCount = wrap("get_joint_count", "number", []);
   const stepWorld = wrap("step_world", null, ["number", "number", "number"]);
@@ -853,6 +894,92 @@ function createPhysicsApi(Module) {
       );
       if (handle < 0) {
         throw new Error("createWeldJoint failed");
+      }
+      return new JointHandle(this, handle);
+    }
+
+    createDistanceJointLocal(options = {}) {
+      const slotA = options.bodyA?.slot;
+      const slotB = options.bodyB?.slot;
+      if (slotA === undefined || slotB === undefined) {
+        throw new Error("createDistanceJointLocal requires bodyA and bodyB");
+      }
+
+      let length = options.length ?? 1;
+      if (!(length > 0) || length !== length) length = 1;
+      const handle = createDistanceJointLocal(
+        this.worldId,
+        slotA,
+        slotB,
+        options.localAnchorAX ?? 0,
+        options.localAnchorAY ?? 0,
+        options.localAnchorBX ?? 0,
+        options.localAnchorBY ?? 0,
+        length,
+        options.enableSpring ? 1 : 0,
+        options.hertz ?? 1,
+        options.dampingRatio ?? 0.7,
+      );
+      if (handle < 0) {
+        throw new Error(
+          handle === -2
+            ? "createDistanceJointLocal failed (WASM joint table full)"
+            : "createDistanceJointLocal failed (null body or Box2D reject)",
+        );
+      }
+      return new JointHandle(this, handle);
+    }
+
+    createRevoluteJointLocal(options = {}) {
+      const slotA = options.bodyA?.slot;
+      const slotB = options.bodyB?.slot;
+      if (slotA === undefined || slotB === undefined) {
+        throw new Error("createRevoluteJointLocal requires bodyA and bodyB");
+      }
+
+      const handle = createRevoluteJointLocal(
+        this.worldId,
+        slotA,
+        slotB,
+        options.localAnchorAX ?? 0,
+        options.localAnchorAY ?? 0,
+        options.localAnchorBX ?? 0,
+        options.localAnchorBY ?? 0,
+        options.enableLimit ? 1 : 0,
+        options.lowerAngle ?? 0,
+        options.upperAngle ?? 0,
+        options.enableMotor ? 1 : 0,
+        options.motorSpeed ?? 0,
+        options.maxMotorTorque ?? 0,
+      );
+      if (handle < 0) {
+        throw new Error("createRevoluteJointLocal failed");
+      }
+      return new JointHandle(this, handle);
+    }
+
+    createWeldJointLocal(options = {}) {
+      const slotA = options.bodyA?.slot;
+      const slotB = options.bodyB?.slot;
+      if (slotA === undefined || slotB === undefined) {
+        throw new Error("createWeldJointLocal requires bodyA and bodyB");
+      }
+
+      const handle = createWeldJointLocal(
+        this.worldId,
+        slotA,
+        slotB,
+        options.localAnchorAX ?? 0,
+        options.localAnchorAY ?? 0,
+        options.localAnchorBX ?? 0,
+        options.localAnchorBY ?? 0,
+        options.linearHertz ?? 0,
+        options.angularHertz ?? 0,
+        options.linearDampingRatio ?? 1,
+        options.angularDampingRatio ?? 1,
+      );
+      if (handle < 0) {
+        throw new Error("createWeldJointLocal failed");
       }
       return new JointHandle(this, handle);
     }

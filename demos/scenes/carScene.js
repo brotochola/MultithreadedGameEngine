@@ -76,7 +76,7 @@ export class CarScene extends WEED.Scene {
             subStepCount: 6, // Higher substeps for stable constraints
             noLimitFPS: true,
             maxCollisionPairs: 50000,
-            maxConstraints: 50000, // Enable constraint system for car physics
+            maxJoints: 4096, // Box2D WASM joint cap
             boundaryElasticity: 0.3,
             collisionResponseStrength: 0.8,
             verletDamping: 0.999, // Very low damping - car maintains momentum

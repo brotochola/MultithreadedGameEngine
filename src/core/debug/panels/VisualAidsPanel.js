@@ -26,7 +26,7 @@ export class VisualAidsPanel {
       { key: 'debugDraws', label: 'Draws', shortcut: '7' },
       { key: 'sleepingEntities', label: 'Sleeping', shortcut: '8' },
       { key: 'sleepingCells', label: 'Sleep Cells', shortcut: 'S' },
-      { key: 'constraints', label: 'Constraints', shortcut: 'K' },
+      { key: 'joints', label: 'Joints', shortcut: 'K' },
       { key: 'entityOrigins', label: 'Origins', shortcut: 'O' },
     ];
 
@@ -108,7 +108,7 @@ export class VisualAidsPanel {
       debugDraws: 'showDebugDraws',
       sleepingEntities: 'showSleepingEntities',
       sleepingCells: 'showSleepingCells',
-      constraints: 'showConstraints',
+      joints: 'showJoints',
       entityOrigins: 'showEntityOrigins',
     };
 
@@ -119,7 +119,7 @@ export class VisualAidsPanel {
     if (key === 'debugDraws') flagName = 'SHOW_DEBUG_DRAWS';
     else if (key === 'sleepingEntities') flagName = 'SHOW_SLEEPING_ENTITIES';
     else if (key === 'sleepingCells') flagName = 'SHOW_SLEEPING_CELLS';
-    else if (key === 'constraints') flagName = 'SHOW_CONSTRAINTS';
+    else if (key === 'joints') flagName = 'SHOW_JOINTS';
     else if (key === 'entityOrigins') flagName = 'SHOW_ENTITY_ORIGINS';
 
     flags[method](!flags.isEnabled(DEBUG_FLAGS[flagName]));
