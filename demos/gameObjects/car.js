@@ -1,5 +1,5 @@
-// Car.js - Single ShapeType.Box chassis with Phaser-style top-down forces
-// Lateral cancel via dot projection (capped skid), drive-to-speed, torque steer.
+// Car.js - Single ShapeType.Box chassis, Box2D-first drive
+// Constant accel while W/S held, linearDamping top speed, soft lateral, torque on A/D only.
 
 import WEED from '/src/index.js';
 import { CarComponent, CAR_DEFAULTS } from '../components/carComponent.js';
@@ -20,6 +20,9 @@ const { ShapeType } = enums;
 
 const TWO_PI = Math.PI * 2;
 
+// Reused by applyForces / friction (zero alloc)
+const _heading = { angle: 0, frontX: 0, frontY: 0, rightX: 0, rightY: 0 };
+
 export class Car extends GameObject {
     static scriptUrl = import.meta.url;
 
@@ -35,13 +38,9 @@ export class Car extends GameObject {
         const y = spawnConfig.y || 0;
         const sprite = spawnConfig.sprite || 'car';
 
-        this.carComponent.maxForwardSpeed = spawnConfig.maxForwardSpeed ?? CAR_DEFAULTS.maxForwardSpeed;
-        this.carComponent.maxBackwardSpeed = spawnConfig.maxBackwardSpeed ?? CAR_DEFAULTS.maxBackwardSpeed;
-        this.carComponent.maxDriveForce = spawnConfig.maxDriveForce ?? CAR_DEFAULTS.maxDriveForce;
-        this.carComponent.maxLateralImpulse = spawnConfig.maxLateralImpulse ?? CAR_DEFAULTS.maxLateralImpulse;
+        this.carComponent.driveForce = spawnConfig.driveForce ?? CAR_DEFAULTS.driveForce;
+        this.carComponent.lateralFriction = spawnConfig.lateralFriction ?? CAR_DEFAULTS.lateralFriction;
         this.carComponent.turnTorque = spawnConfig.turnTorque ?? CAR_DEFAULTS.turnTorque;
-        this.carComponent.angularFriction = spawnConfig.angularFriction ?? CAR_DEFAULTS.angularFriction;
-        this.carComponent.forwardDrag = spawnConfig.forwardDrag ?? CAR_DEFAULTS.forwardDrag;
         this.carComponent.minSteerSpeed = spawnConfig.minSteerSpeed ?? CAR_DEFAULTS.minSteerSpeed;
         this.carComponent.minSteerFactor = spawnConfig.minSteerFactor ?? CAR_DEFAULTS.minSteerFactor;
         this.carComponent.maxSteerSpeed = spawnConfig.maxSteerSpeed ?? CAR_DEFAULTS.maxSteerSpeed;
@@ -64,10 +63,10 @@ export class Car extends GameObject {
         this.collider.visualRange = Math.hypot(carLength, carHeight) * 0.5 + 200;
 
         this.rigidBody.static = 0;
-        this.rigidBody.linearDamping = 0.05;
-        this.rigidBody.angularDamping = 0.5;
+        // Box2D sets terminal speed with driveForce; yaw settle without per-frame torque damp
+        this.rigidBody.linearDamping = 1.0;
+        this.rigidBody.angularDamping = 3;
         this.rigidBody.sleeping = 0;
-        // Box follows Transform.rotation; sprite uses pre-baked frames (draw rot = 0)
         this.setFixedRotation(0);
         this.spriteRenderer.inheritTransformRotation = 0;
         this.spriteRenderer.spriteRotation = 0;
@@ -91,73 +90,41 @@ export class Car extends GameObject {
         this.carComponent.angle = 0;
     }
 
-    _getHeadingAxes() {
-        // Heading in carComponent.angle; synced to Transform.rotation for the box
-        const angle = this.carComponent.angle;
-        const frontX = Math.cos(angle);
-        const frontY = Math.sin(angle);
-        const rightX = frontY;
-        const rightY = -frontX;
-        return { angle, frontX, frontY, rightX, rightY };
-    }
-
-    /**
-     * Phaser updateFriction: capped lateral cancel + forward drag.
-     * Lateral cancel as impulse J=-m*v_lat → ax = Δv/dt (WEED force channel).
-     */
-    _updateFriction(dtRatio) {
+    /** Host applies torque = angularAccel * mass; map desired alpha → angularAccel via I/m. */
+    _alphaToAngularAccel(alpha) {
         const i = this.index;
-        const dt = Math.max(dtRatio / 60, 1e-6);
-        const vx = RigidBody.vx[i];
-        const vy = RigidBody.vy[i];
-        const { frontX, frontY, rightX, rightY } = this._getHeadingAxes();
+        const mass = RigidBody.mass[i];
+        const inertia = RigidBody.inertia[i];
+        if (!(mass > 0) || !(inertia > 0)) return alpha;
+        return (alpha * inertia) / mass;
+    }
 
-        const latSpeed = dot2(vx, vy, rightX, rightY);
-        let dVx = -rightX * latSpeed;
-        let dVy = -rightY * latSpeed;
-        const dLen = Math.hypot(dVx, dVy);
-        const maxDv = this.carComponent.maxLateralImpulse;
-        if (dLen > maxDv && dLen > 1e-6) {
-            const s = maxDv / dLen;
-            dVx *= s;
-            dVy *= s;
-        }
-        RigidBody.ax[i] += dVx / dt;
-        RigidBody.ay[i] += dVy / dt;
-
-        const fwdSpeed = dot2(vx, vy, frontX, frontY);
-        if (Math.abs(fwdSpeed) > 1e-3) {
-            const drag = -this.carComponent.forwardDrag * Math.abs(fwdSpeed);
-            const inv = 1 / Math.abs(fwdSpeed);
-            RigidBody.ax[i] += frontX * fwdSpeed * inv * drag;
-            RigidBody.ay[i] += frontY * fwdSpeed * inv * drag;
-        }
+    /** Soft lateral tire friction only — forward coast/top-speed is linearDamping. */
+    _updateFriction() {
+        const i = this.index;
+        GameObject.getHeadingAxes(i, _heading);
+        const latSpeed = dot2(RigidBody.vx[i], RigidBody.vy[i], _heading.rightX, _heading.rightY);
+        const k = this.carComponent.lateralFriction;
+        RigidBody.ax[i] -= _heading.rightX * latSpeed * k;
+        RigidBody.ay[i] -= _heading.rightY * latSpeed * k;
     }
 
     /**
-     * Phaser updateDrive + updateTurn.
-     * Turn integrates carComponent.angle; tick syncs Transform.rotation for the box.
-     * @param {number} desiredSpeed - target forward speed px/s (0 = coast)
+     * @param {number} forwardInput - -1|0|1 (or scaled); constant accel while held
      * @param {number} turnInput - steer in [-1, 1]
      */
-    applyForces(desiredSpeed, turnInput = 0, dtRatio = 1) {
+    applyForces(forwardInput = 0, turnInput = 0) {
         const i = this.index;
         if (!Transform.active[i]) return;
 
-        const vx = RigidBody.vx[i];
-        const vy = RigidBody.vy[i];
-        const { frontX, frontY } = this._getHeadingAxes();
-        const currentSpeed = dot2(vx, vy, frontX, frontY);
+        GameObject.getHeadingAxes(i, _heading);
+        const { frontX, frontY } = _heading;
+        const currentSpeed = dot2(RigidBody.vx[i], RigidBody.vy[i], frontX, frontY);
 
-        if (desiredSpeed !== 0) {
-            const maxForce = this.carComponent.maxDriveForce;
-            let force = 0;
-            if (desiredSpeed > currentSpeed) force = maxForce;
-            else if (desiredSpeed < currentSpeed) force = -maxForce;
-            if (force !== 0) {
-                RigidBody.ax[i] += frontX * force;
-                RigidBody.ay[i] += frontY * force;
-            }
+        if (forwardInput !== 0) {
+            const force = this.carComponent.driveForce * forwardInput;
+            RigidBody.ax[i] += frontX * force;
+            RigidBody.ay[i] += frontY * force;
         }
 
         if (turnInput !== 0) {
@@ -169,35 +136,30 @@ export class Car extends GameObject {
                 const speedFactor = Math.min(absFwd / maxSteer, 1);
                 const steerFactor = minFactor + (1 - minFactor) * speedFactor;
                 const steerDirection = currentSpeed >= 0 ? 1 : -1;
-                const dt = Math.max(dtRatio / 60, 1e-6);
-                this.carComponent.angle +=
-                    turnInput * this.carComponent.turnTorque * steerFactor * steerDirection * dt;
+                const alpha =
+                    turnInput * this.carComponent.turnTorque * steerFactor * steerDirection;
+                RigidBody.angularAccel[i] += this._alphaToAngularAccel(alpha);
             }
         }
 
-        if (desiredSpeed !== 0 || turnInput !== 0) {
+        if (forwardInput !== 0 || turnInput !== 0) {
             RigidBody.sleeping[i] = 0;
         }
     }
 
-    tick(dtRatio) {
+    tick(_dtRatio) {
         const i = this.index;
         if (!Transform.active[i]) return;
 
         this.carComponent.vx = RigidBody.vx[i];
         this.carComponent.vy = RigidBody.vy[i];
-        // Drive Box2D body angle via command ring (raw Transform.rotation poke gets
-        // overwritten by physics step → collider flicker). Kill ω so collisions
-        // don't spin the box away from arcade heading.
-        this.rotation = this.carComponent.angle;
-        this.angularVelocity = 0;
+        this.carComponent.angle = Transform.rotation[i];
 
-        this._updateFriction(dtRatio);
+        this._updateFriction();
         this._emitDust();
         this._updateSpriteFrame();
     }
 
-    /** Pick pre-baked angle animation from carComponent.angle (old jointed-car visual). */
     _updateSpriteFrame() {
         const spritesheetId = this.spriteRenderer.spritesheetId;
         if (!spritesheetId) return;

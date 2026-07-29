@@ -69,6 +69,12 @@
   let sleepingU8 = null;
   let statsF32 = null;
 
+  // Published pose double-buffer (render-queue style): visuals read post-step snapshot
+  let poseSync = null; // Int32Array [readyFrame, consumedFrame]
+  let poseBuffers = [null, null]; // { x, y, rotation } Float32Array views
+  let poseCapacity = 0;
+  let poseFrame = 0;
+
   // Mirrors PHYSICS_STATS in src/workers/workers-utils.js (nested classic worker — no ESM import).
   const PS = {
     BODY_COUNT: 3,
@@ -114,6 +120,11 @@
       vy: viewFromDesc(desc.vy, Float32Array),
       ax: viewFromDesc(desc.ax, Float32Array),
       ay: viewFromDesc(desc.ay, Float32Array),
+      px: desc.px ? viewFromDesc(desc.px, Float32Array) : null,
+      py: desc.py ? viewFromDesc(desc.py, Float32Array) : null,
+      pRotation: desc.pRotation
+        ? viewFromDesc(desc.pRotation, Float32Array)
+        : null,
       angularVelocity: viewFromDesc(desc.angularVelocity, Float32Array),
       angularAccel: viewFromDesc(desc.angularAccel, Float32Array),
       mass: viewFromDesc(desc.mass, Float32Array),
@@ -236,6 +247,86 @@
     if (sleepingU8) {
       views.sleeping = sleepingU8;
     }
+
+    // Seed px/py/pRotation from Transform
+    seedPrevPose(count);
+  }
+
+  function bindPosePublish(pose) {
+    poseSync = null;
+    poseBuffers = [null, null];
+    poseCapacity = 0;
+    poseFrame = 0;
+    if (!pose || !pose.sync || !pose.dataA || !pose.dataB) return;
+    const n = pose.capacity | 0;
+    if (!(n > 0)) return;
+    poseCapacity = n;
+    poseSync = new Int32Array(pose.sync);
+    const bytesPerBuf = n * 3 * 4;
+    for (let i = 0; i < 2; i++) {
+      const sab = i === 0 ? pose.dataA : pose.dataB;
+      poseBuffers[i] = {
+        x: new Float32Array(sab, 0, n),
+        y: new Float32Array(sab, n * 4, n),
+        rotation: new Float32Array(sab, n * 8, n),
+      };
+      if (sab.byteLength < bytesPerBuf) {
+        console.warn('[weedjs-box2d] pose buffer too small', sab.byteLength, bytesPerBuf);
+      }
+    }
+  }
+
+  function seedPrevPose(count) {
+    if (!views.px) return;
+    const n = count | 0;
+    for (let i = 0; i < n; i++) {
+      const x = views.x[i];
+      const y = views.y[i];
+      const rot = views.rotation[i];
+      views.px[i] = x;
+      views.py[i] = y;
+      views.pRotation[i] = rot;
+    }
+  }
+
+  /** Snapshot prev pose before world.step. */
+  function snapshotPrevPose(entityCount) {
+    if (!views.px) return;
+    const n = entityCount | 0;
+    const rb = views.rbActive;
+    for (let i = 0; i < n; i++) {
+      if (rb && !rb[i]) continue;
+      views.px[i] = views.x[i];
+      views.py[i] = views.y[i];
+      views.pRotation[i] = views.rotation[i];
+    }
+  }
+
+  /**
+   * Publish post-step Transform into double-buffered pose SAB (Atomics seq).
+   * Same idiom as renderQueueSync: write buffer frame%2, then store readyFrame.
+   */
+  function publishPose(entityCount) {
+    if (!poseSync || !poseBuffers[0]) return;
+    const writeIdx = poseFrame % 2;
+    const buf = poseBuffers[writeIdx];
+    const n = Math.min(entityCount | 0, poseCapacity);
+    const rb = views.rbActive;
+    const x = views.x;
+    const y = views.y;
+    const rot = views.rotation;
+    const outX = buf.x;
+    const outY = buf.y;
+    const outR = buf.rotation;
+    for (let i = 0; i < n; i++) {
+      if (rb && !rb[i]) continue;
+      outX[i] = x[i];
+      outY[i] = y[i];
+      outR[i] = rot[i];
+    }
+    poseFrame++;
+    Atomics.store(poseSync, 0, poseFrame);
+    Atomics.notify(poseSync, 0, 1);
   }
 
   function isFixedRotation(i) {
@@ -449,6 +540,14 @@
         addDenseBody(i);
         created = true;
         changes++;
+        if (views.px) {
+          const x = views.x[i];
+          const y = views.y[i];
+          const rot = views.rotation[i];
+          views.px[i] = x;
+          views.py[i] = y;
+          views.pRotation[i] = rot;
+        }
       } else if (!createFailed[i]) {
         createFailed[i] = 1;
         console.warn('[weedjs-box2d] createBody failed; wait for next dirty', i);
@@ -817,10 +916,12 @@
     const t2 = performance.now();
     const commandCount = drainCommands();
     const t3 = performance.now();
+    snapshotPrevPose(entityCount);
     applyForcesAndTorque();
     const t4 = performance.now();
     world.step(dt, solverSteps);
     const t5 = performance.now();
+    publishPose(entityCount);
     afterStep();
     const t6 = performance.now();
     writePhysicsStats(
@@ -951,6 +1052,7 @@
     }
 
     bindWeedViews(data.views);
+    bindPosePublish(data.posePublish);
     bindBodySyncViews(data.bodySync);
     if (!bodyDirtyFlags || !bodyDirtyWords) {
       throw new Error('[weedjs-box2d] WEEDJS_INIT missing bodySync dirty buffers');

@@ -966,14 +966,10 @@ class PixiRenderer extends AbstractWorker {
    * Setup PIXI ticker to call gameLoop (custom scheduler implementation)
    */
   onCustomSchedulerStart() {
-    if (this.noLimitFPS) {
-      // When noLimitFPS is true, bypass PIXI ticker and use standard loop
-      // This allows unlimited FPS like other workers
-      // console.log(
-      //   "PIXI WORKER: Using unlimited FPS mode (bypassing PIXI ticker)"
-      // );
-      this.usesCustomScheduler = false; // Switch to standard scheduler
-      this.scheduleNextFrame(); // Start the standard loop
+    if (this.fixedFps > 0 || this.noLimitFPS) {
+      // Bypass PIXI ticker — use AbstractWorker scheduleNextFrame (interval / uncapped / RAF)
+      this.usesCustomScheduler = false;
+      this.scheduleNextFrame();
     } else {
       // Standard mode: PIXI ticker will call gameLoop on every tick (60fps)
       this.pixiApp.ticker.add(() => this.gameLoop());
@@ -2557,10 +2553,13 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     // Read renderer-specific configuration
     const rendererConfig = this.config.renderer || {};
 
-    // Configure noLimitFPS (AbstractWorker checks for workerType, but we use 'renderer' key)
-    if (rendererConfig.noLimitFPS === true) {
+    // Configure scheduling (AbstractWorker may miss 'renderer' key before aliases)
+    const fixedFps = Number(rendererConfig.fixedFps);
+    if (fixedFps > 0) {
+      this.fixedFps = fixedFps;
+      this.noLimitFPS = false;
+    } else if (rendererConfig.noLimitFPS === true) {
       this.noLimitFPS = true;
-      // console.log(`PIXI WORKER: Running in unlimited FPS mode (noLimitFPS)`);
     }
 
     // Configure Y-sorting (default: true)

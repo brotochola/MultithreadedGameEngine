@@ -19,6 +19,12 @@ export class DebugCanvas {
     this._resizeHandler = null;
     this._hotRebindLogged = false;
 
+    // Scratch camera — mutated each frame; matches pixi renderQueueCamera when ready
+    this._cam = { x: 0, y: 0, zoom: 1 };
+    this._rqSync = null;
+    this._rqCamA = null;
+    this._rqCamB = null;
+
     this.nav = new NavDebugRenderer();
     this.physics = new PhysicsDebugRenderer();
   }
@@ -58,11 +64,52 @@ export class DebugCanvas {
   attach(scene) {
     this.nav.attach(scene);
     this.physics.attach(scene);
+    this._bindRenderQueueCamera(scene);
   }
 
   detach() {
     this.stopLoop();
     this.clear();
+    this._rqSync = null;
+    this._rqCamA = null;
+    this._rqCamB = null;
+  }
+
+  /** Cache SAB views once (no per-frame alloc). */
+  _bindRenderQueueCamera(scene) {
+    const buffers = scene?.buffers;
+    if (!buffers?.renderQueueSync || !buffers.renderQueueCameraA || !buffers.renderQueueCameraB) {
+      this._rqSync = null;
+      this._rqCamA = null;
+      this._rqCamB = null;
+      return;
+    }
+    this._rqSync = new Int32Array(buffers.renderQueueSync);
+    this._rqCamA = new Float32Array(buffers.renderQueueCameraA, 0, 3);
+    this._rqCamB = new Float32Array(buffers.renderQueueCameraB, 0, 3);
+  }
+
+  /**
+   * Latch camera to the same render-queue snapshot pixi uses.
+   * Read-only: do not store consumedFrame (pixi owns that).
+   */
+  _latchRenderCamera(scene) {
+    const cam = this._cam;
+    if (this._rqSync && this._rqCamA && this._rqCamB) {
+      const ready = Atomics.load(this._rqSync, 0);
+      if (ready > 0) {
+        const view = ((ready - 1) % 2) === 0 ? this._rqCamA : this._rqCamB;
+        cam.zoom = view[0];
+        cam.x = view[1];
+        cam.y = view[2];
+        return cam;
+      }
+    }
+    const sc = scene?.camera;
+    cam.zoom = sc?.zoom || 1;
+    cam.x = sc?.x || 0;
+    cam.y = sc?.y || 0;
+    return cam;
   }
 
   // ------- RAF loop -------
@@ -145,8 +192,9 @@ export class DebugCanvas {
     const scene = this.debugUI.scene;
     const flags = this.debugUI.debugFlags;
     this._ensureBox2dHotFields(scene);
-    const camera = scene?.camera || { x: 0, y: 0 };
-    const zoom = scene?.camera?.zoom || 1;
+    if (!this._rqSync && scene) this._bindRenderQueueCamera(scene);
+    const camera = this._latchRenderCamera(scene);
+    const zoom = camera.zoom;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -242,5 +290,8 @@ export class DebugCanvas {
     }
     this._canvas = null;
     this._ctx = null;
+    this._rqSync = null;
+    this._rqCamA = null;
+    this._rqCamB = null;
   }
 }

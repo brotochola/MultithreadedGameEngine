@@ -355,6 +355,14 @@ class ParticleWorker extends AbstractWorker {
     this.sleepingEnabled = true;
     this._queryRigidBody = null;
 
+    // Physics pose publish (read-only latch; pre_render owns consume)
+    this.poseSync = null;
+    this.poseBuffers = [null, null];
+    this.poseCapacity = 0;
+    this._poseX = null;
+    this._poseY = null;
+    this._poseRot = null;
+
     // Active particle tracking
     this.activeParticleIndices = null;
 
@@ -398,6 +406,21 @@ class ParticleWorker extends AbstractWorker {
     this.maxDecorations = data.maxDecorations || 0;
     this.maxBullets = data.maxBullets || 0;
     this.globalEntityCount = data.globalEntityCount || 0;
+
+    if (data.posePublish?.sync && data.posePublish.dataA && data.posePublish.dataB) {
+      const n = data.posePublish.capacity | 0;
+      this.poseCapacity = n;
+      this.poseSync = new Int32Array(data.posePublish.sync);
+      const sabs = [data.posePublish.dataA, data.posePublish.dataB];
+      for (let i = 0; i < 2; i++) {
+        const sab = sabs[i];
+        this.poseBuffers[i] = {
+          x: new Float32Array(sab, 0, n),
+          y: new Float32Array(sab, n * 4, n),
+          rotation: new Float32Array(sab, n * 8, n),
+        };
+      }
+    }
 
     if (data.impactBuffer && this.maxBullets > 0) {
       // Sizes derive from config (buffer is allocated as 8 + maxImpactsPerFrame * 24)
@@ -838,6 +861,22 @@ class ParticleWorker extends AbstractWorker {
   }
 
   /**
+   * Latch latest published pose for parent-follow (no consume — pre_render owns consumedFrame).
+   */
+  _latchPose() {
+    this._poseX = null;
+    this._poseY = null;
+    this._poseRot = null;
+    if (!this.poseSync || !this.poseBuffers[0]) return;
+    const ready = Atomics.load(this.poseSync, 0);
+    if (!(ready > 0)) return;
+    const buf = this.poseBuffers[(ready - 1) % 2];
+    this._poseX = buf.x;
+    this._poseY = buf.y;
+    this._poseRot = buf.rotation;
+  }
+
+  /**
    * Resolve world position/rotation for decorations parented to entities.
    * Runs every frame before culling. Orphan parent → despawn.
    */
@@ -847,6 +886,8 @@ class ParticleWorker extends AbstractWorker {
     const activeData = this._activeDecorationSnapshot;
     const activeCount = this._activeDecorationSnapshotCount;
     if (activeCount === 0) return;
+
+    this._latchPose();
 
     const active = DecorationComponent.active;
     const parentEntityIndex = DecorationComponent.parentEntityIndex;
@@ -864,6 +905,10 @@ class ParticleWorker extends AbstractWorker {
     const ty = Transform.y;
     const tActive = Transform.active;
     const tRot = Transform.rotation;
+    const rbActive = RigidBody.active;
+    const poseX = this._poseX;
+    const poseY = this._poseY;
+    const poseRot = this._poseRot;
 
     const swayBaseAngle = this.accumulatedTime * 0.002;
 
@@ -878,9 +923,10 @@ class ParticleWorker extends AbstractWorker {
         continue;
       }
 
-      const px = tx[p];
-      const py = ty[p];
-      const pr = tRot[p];
+      const usePose = poseX && rbActive?.[p];
+      const px = usePose ? poseX[p] : tx[p];
+      const py = usePose ? poseY[p] : ty[p];
+      const pr = usePose ? poseRot[p] : tRot[p];
       const lx = localX[i];
       const ly = localY[i];
 

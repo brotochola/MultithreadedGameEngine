@@ -48,11 +48,11 @@ export class CarScene extends WEED.Scene {
             maxNeighbors: 512,
             maxEntitiesPerCell: 128,
             numberOfSpatialWorkers: 1,
-            noLimitFPS: true,
+            noLimitFPS: false,
         },
 
         particle: {
-            noLimitFPS: true,
+            noLimitFPS: false,
             maxParticles: 10000,
             decals: true,
             decalsTileSize: 256,
@@ -65,7 +65,7 @@ export class CarScene extends WEED.Scene {
 
         // Logic configuration
         logic: {
-            noLimitFPS: true,
+            noLimitFPS: false,
             numberOfLogicWorkers: 1,
             staggeredUpdates: true,
         },
@@ -73,24 +73,29 @@ export class CarScene extends WEED.Scene {
         // Physics configuration
         physics: {
             subStepCount: 4,
-            noLimitFPS: true,
+            noLimitFPS: false,
             maxJoints: 0,
             boundaryElasticity: 0.3,
             collisionResponseStrength: 0.8,
             gravity: { x: 0, y: 0 },
-            sleeping: false,
+            sleeping: true,
+            // fixedFps: 60,
+            // interpolation: true,
         },
 
         renderer: {
-            noLimitFPS: true,
+            noLimitFPS: false,
             ySorting: true,
-            interpolation: true,
+            interpolation: false,
             cullingRatio: 0.5,
             maxVisibleRenderables: 50000, // Must fit: cars + rocks + particles + decorations (500 cars + 1000 particles = 1500+)
+            // fixedFps: 60,
         },
 
         preRender: {
-            noLimitFPS: true,
+            noLimitFPS: false,
+            // fixedFps: 120,
+            // backpressure: false
         },
 
         lighting: {

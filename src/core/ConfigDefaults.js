@@ -170,6 +170,8 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   contactRingCapacity: 65536,
   /** Master switch: maps to b2World_EnableSleeping. When false, Box2D never sleeps dynamics. */
   sleeping: true,
+  noLimitFPS: false,
+  fixedFps: 0,
 });
 
 // ============================================================================
@@ -185,6 +187,7 @@ export const SPATIAL_DEFAULTS = Object.freeze({
   numberOfSpatialWorkers: 1,
   rowsPerBlock: 2,
   noLimitFPS: false,
+  fixedFps: 0,
 });
 
 // ============================================================================
@@ -194,6 +197,7 @@ export const SPATIAL_DEFAULTS = Object.freeze({
 export const PARTICLE_DEFAULTS = Object.freeze({
   maxParticles: 0,
   noLimitFPS: false,
+  fixedFps: 0,
   decals: false,
   decalsTileSize: 256,
   decalsResolution: 0.5,
@@ -248,6 +252,7 @@ export const LOGIC_DEFAULTS = Object.freeze({
   numberOfLogicWorkers: 1,
   staggeredUpdates: false,
   noLimitFPS: false,
+  fixedFps: 0,
 });
 
 // ============================================================================
@@ -256,6 +261,7 @@ export const LOGIC_DEFAULTS = Object.freeze({
 
 export const RENDERER_DEFAULTS = Object.freeze({
   noLimitFPS: false,
+  fixedFps: 0,
   ySorting: false,
   interpolation: true,
   cullingRatio: 0.1,
@@ -330,6 +336,9 @@ export const LAYER_DEFAULTS = Object.freeze({
 
 export const PRE_RENDER_DEFAULTS = Object.freeze({
   noLimitFPS: true,
+  fixedFps: 0,
+  /** When true, skip packing if >1 frame ahead of pixi (Atomics sync). */
+  backpressure: true,
 });
 
 // ============================================================================
@@ -344,6 +353,7 @@ export const NAVIGATION_DEFAULTS = Object.freeze({
   maxPathLength: 128,
   maxProcessingMsPerFrame: 2,
   noLimitFPS: true,
+  fixedFps: 0,
 });
 
 // ============================================================================

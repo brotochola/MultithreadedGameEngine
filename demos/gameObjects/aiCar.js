@@ -51,17 +51,17 @@ export class AICar extends Car {
         const forwardSpeed = dot2(
             this.carComponent.vx,
             this.carComponent.vy,
-            Math.cos(currentAngle),
-            Math.sin(currentAngle)
+            this.forwardX,
+            this.forwardY
         );
 
-        let desiredSpeed = 0;
+        let forwardInput = 0;
         if (alignment > this.constructor.aiForwardAlignmentThreshold) {
-            desiredSpeed = this.carComponent.maxForwardSpeed * this.constructor.aiForwardStrength;
+            forwardInput = this.constructor.aiForwardStrength;
         } else if (forwardSpeed > this.constructor.aiBrakeForwardSpeedThreshold) {
-            desiredSpeed = 0; // coast / let friction kill speed while turning
+            forwardInput = 0; // coast while turning; linearDamping bleeds speed
         }
 
-        this.applyForces(desiredSpeed, turnInput, dtRatio);
+        this.applyForces(forwardInput, turnInput);
     }
 }

@@ -1,5 +1,5 @@
-// PlayerCar.js - Player-controlled car extending the base Car class
-// WASD/Arrows → desired speed + turn input (Phaser drive-to-speed)
+// PlayerCar.js - Player-controlled car
+// WASD/Arrows → forwardInput (-1|0|1) + turn [-1, 1]
 
 import WEED from '/src/index.js';
 import { Car } from './car.js';
@@ -27,7 +27,7 @@ export class PlayerCar extends Car {
             shadow.baseRotation = this.carComponent.angle;
         }
         this._updateCamera(dtRatio);
-        this._handleInput(dtRatio);
+        this._handleInput();
     }
 
     _updateCamera(dtRatio) {
@@ -55,37 +55,25 @@ export class PlayerCar extends Car {
         Camera.setZoom(ZOOM_AT_MIN_SPEED + speedT * (ZOOM_AT_MAX_SPEED - ZOOM_AT_MIN_SPEED));
     }
 
-    /**
-     * W/S → desired forward/back speed; A/D → turn [-1, 1]
-     */
-    _handleInput(dtRatio) {
+    /** W/S → forwardInput; A/D → turn */
+    _handleInput() {
         const forward = Keyboard.w || Keyboard.arrowup;
         const reverse = Keyboard.s || Keyboard.arrowdown;
 
-        let desiredSpeed = 0;
-        if (forward && !reverse) {
-            desiredSpeed = this.carComponent.maxForwardSpeed;
-        } else if (reverse && !forward) {
-            // Phaser: reverse desired speed also brakes while moving forward
-            desiredSpeed = this.carComponent.maxBackwardSpeed;
-        }
+        let forwardInput = 0;
+        if (forward && !reverse) forwardInput = 1;
+        else if (reverse && !forward) forwardInput = -1;
 
         let turnInput = 0;
         if (Keyboard.d || Keyboard.arrowright) turnInput += 1;
         if (Keyboard.a || Keyboard.arrowleft) turnInput -= 1;
 
-        if (desiredSpeed !== 0 || turnInput !== 0) {
-            this.applyForces(desiredSpeed, turnInput, dtRatio);
+        if (forwardInput !== 0 || turnInput !== 0) {
+            this.applyForces(forwardInput, turnInput);
         }
     }
 
     _getForwardSpeed() {
-        const angle = this.carComponent.angle;
-        return dot2(
-            RigidBody.vx[this.index],
-            RigidBody.vy[this.index],
-            Math.cos(angle),
-            Math.sin(angle)
-        );
+        return dot2(RigidBody.vx[this.index], RigidBody.vy[this.index], this.forwardX, this.forwardY);
     }
 }

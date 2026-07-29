@@ -228,6 +228,12 @@ function buildSceneWorkerInitData(scene, sharedBuffers, scriptsToLoad) {
       maxItems: scene.maxVisibleRenderables,
       itemSize: 48,
     },
+    posePublish: {
+      dataA: scene.buffers.poseDataA,
+      dataB: scene.buffers.poseDataB,
+      sync: scene.buffers.poseSync,
+      capacity: scene.poseCapacity || scene.totalEntityCount,
+    },
     textureMetadata: scene.textureMetadata,
     decals: scene.config.particle.decals
       ? {

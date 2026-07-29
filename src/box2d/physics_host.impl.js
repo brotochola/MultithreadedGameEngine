@@ -55,6 +55,9 @@
     vy: Float32Array,
     ax: Float32Array,
     ay: Float32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pRotation: Float32Array,
     angularVelocity: Float32Array,
     angularAccel: Float32Array,
     mass: Float32Array,
@@ -272,6 +275,9 @@
     currentFPS: 0,
     messageTimeThisFrame: 0,
     noLimitFPS: false,
+    fixedFps: 0,
+    intervalId: 0,
+    posePublish: null,
     workerPorts: new Map(),
     timeoutId: 0,
   };
@@ -361,6 +367,14 @@
       commandSab: state.commandSab,
       contactSab: state.contactSab,
       stats: state.stats ? packView(state.stats) : null,
+      posePublish: state.posePublish
+        ? {
+            dataA: state.posePublish.dataA,
+            dataB: state.posePublish.dataB,
+            sync: state.posePublish.sync,
+            capacity: state.posePublish.capacity | 0,
+          }
+        : null,
       bodySync: state.bodySyncViews
         ? {
             dirtyFlags: packView(state.bodySyncViews.dirtyFlags),
@@ -379,6 +393,9 @@
         vy: packView(R.vy),
         ax: packView(R.ax),
         ay: packView(R.ay),
+        px: packView(R.px),
+        py: packView(R.py),
+        pRotation: packView(R.pRotation),
         angularVelocity: packView(R.angularVelocity),
         angularAccel: packView(R.angularAccel),
         mass: packView(R.mass),
@@ -486,6 +503,7 @@
   function initializeFromWeedInit(data) {
     state.config = data.config || {};
     state.globalEntityCount = data.globalEntityCount | 0;
+    state.posePublish = data.posePublish || null;
 
     if (data.buffers && data.buffers.physicsStats) {
       state.stats = new Float32Array(data.buffers.physicsStats);
@@ -501,7 +519,11 @@
     }
 
     var physCfg = state.config.physics || {};
-    if (physCfg.noLimitFPS === true) {
+    var fixedFps = Number(physCfg.fixedFps);
+    if (fixedFps > 0) {
+      state.fixedFps = fixedFps;
+      state.noLimitFPS = false;
+    } else if (physCfg.noLimitFPS === true) {
       state.noLimitFPS = true;
     }
 
@@ -584,16 +606,32 @@
     writeFPS();
     state.messageTimeThisFrame = 0;
 
-    if (state.noLimitFPS) {
+    if (state.fixedFps > 0) {
+      if (!state.intervalId) {
+        state.intervalId = setInterval(gameLoop, 1000 / state.fixedFps);
+      }
+    } else if (state.noLimitFPS) {
       state.timeoutId = setTimeout(gameLoop, 2);
     } else {
       requestAnimationFrame(gameLoop);
     }
   }
 
+  function clearSchedulers() {
+    if (state.timeoutId) {
+      clearTimeout(state.timeoutId);
+      state.timeoutId = 0;
+    }
+    if (state.intervalId) {
+      clearInterval(state.intervalId);
+      state.intervalId = 0;
+    }
+  }
+
   function startGameLoop() {
     state.isPaused = false;
     state.lastFrameTime = performance.now();
+    clearSchedulers();
     gameLoop();
   }
 
@@ -609,6 +647,7 @@
         startGameLoop();
       } else if (data.msg === 'pause') {
         state.isPaused = true;
+        clearSchedulers();
       } else if (data.msg === 'resume') {
         startGameLoop();
       } else if (data.msg === 'updatePhysicsConfig') {

@@ -6,6 +6,7 @@ import { ParticleComponent } from '../components/ParticleComponent.js';
 import { DecorationComponent } from '../components/DecorationComponent.js';
 import { BulletComponent } from '../components/BulletComponent.js';
 import { Transform } from '../components/Transform.js';
+import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { LightEmitter } from '../components/LightEmitter.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
@@ -115,6 +116,18 @@ class PreRenderWorker extends AbstractWorker {
         // Animation frame tracking
         this.entityFrameIndex = null;
         this.entityFrameAccumulator = null;
+
+        // Scratch for published physics pose / Transform (no per-call alloc)
+        this._displayPoseOut = { x: 0, y: 0, rotation: 0 };
+        this.backpressure = true;
+
+        // Physics pose publish latch (mirror renderQueueSync)
+        this.poseSync = null;
+        this.poseBuffers = [null, null];
+        this.poseCapacity = 0;
+        this._poseX = null;
+        this._poseY = null;
+        this._poseRot = null;
 
         // Texture metadata
         this.animationFrameStart = null;
@@ -242,13 +255,17 @@ class PreRenderWorker extends AbstractWorker {
             console.log('[PRE_RENDER WORKER] Stats buffer initialized');
         }
 
-        // Configure noLimitFPS from preRender config
-        // (AbstractWorker uses lowercase class name, but config uses camelCase 'preRender')
+        // Configure scheduling from preRender config (camelCase key)
         const preRenderConfig = this.config.preRender || {};
-        if (preRenderConfig.noLimitFPS === true) {
+        const fixedFps = Number(preRenderConfig.fixedFps);
+        if (fixedFps > 0) {
+            this.fixedFps = fixedFps;
+            this.noLimitFPS = false;
+        } else if (preRenderConfig.noLimitFPS === true) {
             this.noLimitFPS = true;
             console.log('[PRE_RENDER WORKER] Running in unlimited FPS mode');
         }
+        this.backpressure = preRenderConfig.backpressure !== false;
 
         // Store counts
         this.globalEntityCount = data.globalEntityCount || 0;
@@ -275,6 +292,24 @@ class PreRenderWorker extends AbstractWorker {
         this._decorationZoomAlpha = 1;
 
         console.log(`[PRE_RENDER WORKER] Entities: ${this.globalEntityCount}, Particles: ${this.maxParticles}, Decorations: ${this.maxDecorations}`);
+
+        // ========================================
+        // PHYSICS POSE PUBLISH — latch post-step snapshots
+        // ========================================
+        if (data.posePublish?.sync && data.posePublish.dataA && data.posePublish.dataB) {
+            const n = data.posePublish.capacity | 0;
+            this.poseCapacity = n;
+            this.poseSync = new Int32Array(data.posePublish.sync);
+            const sabs = [data.posePublish.dataA, data.posePublish.dataB];
+            for (let i = 0; i < 2; i++) {
+                const sab = sabs[i];
+                this.poseBuffers[i] = {
+                    x: new Float32Array(sab, 0, n),
+                    y: new Float32Array(sab, n * 4, n),
+                    rotation: new Float32Array(sab, n * 8, n),
+                };
+            }
+        }
 
         // ========================================
         // RENDER QUEUE - Initialize (DOUBLE BUFFERED)
@@ -606,10 +641,7 @@ class PreRenderWorker extends AbstractWorker {
         // ========================================
         // DOUBLE BUFFER BACKPRESSURE: skip instead of waiting
         // ========================================
-        // If pre-render is more than one frame ahead of pixi, do not block this
-        // worker. Skip producing this tick; pixi keeps rendering the latest
-        // complete queue until it catches up.
-        if (this.renderQueueSync && this.renderQueueFrame > 0) {
+        if (this.backpressure && this.renderQueueSync && this.renderQueueFrame > 0) {
             const consumedFrame = Atomics.load(this.renderQueueSync, 1);
             if (this.renderQueueFrame > consumedFrame + 1) {
                 this.skippedFramesThisFrame = 1;
@@ -634,6 +666,9 @@ class PreRenderWorker extends AbstractWorker {
                 this._vpWriteBuffer = this._vpBuffers[writeBufferIdx];
             }
         }
+
+        // Latch published physics pose once per frame (Atomics seq, same as pixi render queue).
+        this._latchPose();
 
         // Latch camera once per pre-render frame to keep all culling and queue writes coherent.
         if (this.cameraData) {
@@ -936,8 +971,10 @@ class PreRenderWorker extends AbstractWorker {
                 if (shadowCasterActive[i] && transformActive[i]) {
                     const heightMult = shadowHeightMultiplier[i];
                     if (heightMult > 0 && (maxShadowsPerEntity <= 0 || (entityShadowCounts[i] ?? 0) < maxShadowsPerEntity)) {
-                        const casterX = worldX[i];
-                        const casterY = worldY[i];
+                        const pose = this._displayPoseOut;
+                        this._displayPose(i, pose);
+                        const casterX = pose.x;
+                        const casterY = pose.y;
                         const textureId = this.entityLastTextureId ? this.entityLastTextureId[i] : INVALID_TEXTURE_ID;
                         if (textureId === INVALID_TEXTURE_ID) continue;
                         const entityScaleY = Math.abs(spriteScaleY[i]) || 1;
@@ -1239,6 +1276,68 @@ class PreRenderWorker extends AbstractWorker {
         return r;
     }
 
+    /**
+     * Latch latest published physics pose buffer. Consume like pixi (store consumedFrame).
+     */
+    _latchPose() {
+        this._poseX = null;
+        this._poseY = null;
+        this._poseRot = null;
+        if (!this.poseSync || !this.poseBuffers[0]) return;
+        const ready = Atomics.load(this.poseSync, 0);
+        if (!(ready > 0)) return;
+        const buf = this.poseBuffers[(ready - 1) % 2];
+        this._poseX = buf.x;
+        this._poseY = buf.y;
+        this._poseRot = buf.rotation;
+        Atomics.store(this.poseSync, 1, ready);
+    }
+
+    /**
+     * Display pose: published post-step snapshot when latched, else Transform (boot).
+     * Writes into caller-provided `out` (no alloc).
+     * @param {number} idx
+     * @param {{ x: number, y: number, rotation: number }} out
+     */
+    _displayPose(idx, out) {
+        if (this._poseX && RigidBody.active?.[idx]) {
+            out.x = this._poseX[idx];
+            out.y = this._poseY[idx];
+            out.rotation = this._poseRot[idx];
+            return;
+        }
+        out.x = Transform.x[idx];
+        out.y = Transform.y[idx];
+        out.rotation = Transform.rotation[idx] || 0;
+    }
+
+    /**
+     * World xy for a decoration slot. Parented: compose from parent published pose + local.
+     * Writes x/y into out; rotation left to DecorationComponent.rotation by caller.
+     */
+    _decorationWorldXY(decoIdx, out) {
+        const p = DecorationComponent.parentEntityIndex[decoIdx];
+        const ox = DecorationComponent.offsetX[decoIdx];
+        const oy = DecorationComponent.offsetY[decoIdx];
+        if (p !== DECORATION_NO_PARENT && Transform.active?.[p]) {
+            this._displayPose(p, out);
+            const lx = DecorationComponent.localX[decoIdx];
+            const ly = DecorationComponent.localY[decoIdx];
+            if (DecorationComponent.inheritParentRotation[decoIdx]) {
+                const c = Math.cos(out.rotation);
+                const s = Math.sin(out.rotation);
+                out.x += c * lx - s * ly + ox;
+                out.y += s * lx + c * ly + oy;
+            } else {
+                out.x += lx + ox;
+                out.y += ly + oy;
+            }
+            return;
+        }
+        out.x = DecorationComponent.x[decoIdx] + ox;
+        out.y = DecorationComponent.y[decoIdx] + oy;
+    }
+
     _emitAdobePieces(ref, writeIndex, entityIndex) {
         const resolved = this._resolveAdobeFrameIndex(entityIndex);
         const asset = resolved.asset;
@@ -1266,9 +1365,11 @@ class PreRenderWorker extends AbstractWorker {
         const assetBoundsMaxX = asset.assetBoundsMaxX;
         const assetBoundsMaxY = asset.assetBoundsMaxY;
 
-        const rootX = Transform.x[entityIndex];
-        const rootY = Transform.y[entityIndex];
-        const rootRotation = Transform.rotation[entityIndex] + AdobeAnimComponent.rotation[entityIndex];
+        const pose = this._displayPoseOut;
+        this._displayPose(entityIndex, pose);
+        const rootX = pose.x;
+        const rootY = pose.y;
+        const rootRotation = pose.rotation + AdobeAnimComponent.rotation[entityIndex];
         const rootScaleX = AdobeAnimComponent.scaleX[entityIndex];
         const rootScaleY = AdobeAnimComponent.scaleY[entityIndex];
         const rootAnchorX = AdobeAnimComponent.anchorX[entityIndex];
@@ -1440,7 +1541,6 @@ class PreRenderWorker extends AbstractWorker {
         // Cache component arrays
         const entityX = Transform.x;
         const entityY = Transform.y;
-        const entityRotation = Transform.rotation;
 
         const srScaleX = SpriteRenderer.scaleX;
         const srScaleY = SpriteRenderer.scaleY;
@@ -1532,15 +1632,17 @@ class PreRenderWorker extends AbstractWorker {
 
             if (type === 0) {
                 // === ENTITY ===
-                const currX = entityX[idx];
-                const currY = entityY[idx];
+                const pose = this._displayPoseOut;
+                this._displayPose(idx, pose);
+                const currX = pose.x;
+                const currY = pose.y;
 
                 rqX[out] = currX;
                 rqY[out] = currY;
                 rqScaleX[out] = srScaleX[idx];
                 rqScaleY[out] = srScaleY[idx];
                 rqRotation[out] = srInheritTransformRotation[idx]
-                    ? entityRotation[idx]
+                    ? pose.rotation
                     : srSpriteRotation[idx];
                 rqAlpha[out] = srAlpha[idx];
                 rqTint[out] = srTint[idx];
@@ -1630,8 +1732,10 @@ class PreRenderWorker extends AbstractWorker {
                 rqEntityIndex[out] = -1;
             } else if (type === 2) {
                 // === DECORATION ===
-                rqX[out] = decoX[idx] + decoOffsetX[idx];
-                rqY[out] = decoY[idx] + decoOffsetY[idx];
+                const pose = this._displayPoseOut;
+                this._decorationWorldXY(idx, pose);
+                rqX[out] = pose.x;
+                rqY[out] = pose.y;
                 rqScaleX[out] = decoScaleX[idx];
                 rqScaleY[out] = decoScaleY[idx];
                 rqRotation[out] = decoRotation[idx];
@@ -1762,7 +1866,6 @@ class PreRenderWorker extends AbstractWorker {
         // Entity arrays
         const entityX = Transform.x;
         const entityY = Transform.y;
-        const entityRotation = Transform.rotation;
         const srScaleX = SpriteRenderer.scaleX;
         const srScaleY = SpriteRenderer.scaleY;
         const srAlpha = SpriteRenderer.alpha;
@@ -1910,12 +2013,14 @@ class PreRenderWorker extends AbstractWorker {
 
                 if (type === 0) {
                     // === ENTITY ===
-                    rqX[out] = entityX[idx];
-                    rqY[out] = entityY[idx];
+                    const pose = this._displayPoseOut;
+                    this._displayPose(idx, pose);
+                    rqX[out] = pose.x;
+                    rqY[out] = pose.y;
                     rqScaleX[out] = srScaleX[idx];
                     rqScaleY[out] = srScaleY[idx];
                     rqRotation[out] = srInheritTransformRotation[idx]
-                        ? entityRotation[idx]
+                        ? pose.rotation
                         : srSpriteRotation[idx];
                     rqAlpha[out] = srAlpha[idx];
                     rqTint[out] = srTint[idx];
@@ -2005,8 +2110,10 @@ class PreRenderWorker extends AbstractWorker {
 
                 } else if (type === 2) {
                     // === DECORATION ===
-                    rqX[out] = decoX[idx] + decoOffsetX[idx];
-                    rqY[out] = decoY[idx] + decoOffsetY[idx];
+                    const pose = this._displayPoseOut;
+                    this._decorationWorldXY(idx, pose);
+                    rqX[out] = pose.x;
+                    rqY[out] = pose.y;
                     rqScaleX[out] = decoScaleX[idx];
                     rqScaleY[out] = decoScaleY[idx];
                     rqRotation[out] = decoRotation[idx];
@@ -2356,7 +2463,7 @@ class PreRenderWorker extends AbstractWorker {
                 const offset = lightIdx * stride;
                 candidateCount = neighborData[offset];
                 candidateSource = neighborData;
-                    candidateOffset = offset + 1;
+                candidateOffset = offset + 1;
             }
 
             // ── Process candidates into shadow sprites ────────────────
@@ -2399,8 +2506,10 @@ class PreRenderWorker extends AbstractWorker {
 
                 if (maxShadowsPerEntity > 0 && entityShadowCounts[neighborIdx] >= maxShadowsPerEntity) continue;
 
-                const neighborX = worldX[neighborIdx] + (colliderOffsetX[neighborIdx] || 0);
-                const neighborY = worldY[neighborIdx] + (colliderOffsetY[neighborIdx] || 0);
+                const pose = this._displayPoseOut;
+                this._displayPose(neighborIdx, pose);
+                const neighborX = pose.x + (colliderOffsetX[neighborIdx] || 0);
+                const neighborY = pose.y + (colliderOffsetY[neighborIdx] || 0);
                 const dx = neighborX - lightXWithOffset;
                 const dy = neighborY - lightYWithOffset;
                 const distSq = dx * dx + dy * dy;
@@ -2408,8 +2517,8 @@ class PreRenderWorker extends AbstractWorker {
                 if (distSq < 1) continue;
                 if (maxShadowDistSq > 0 && distSq > maxShadowDistSq) continue;
 
-                const casterX = worldX[neighborIdx];
-                const casterY = worldY[neighborIdx];
+                const casterX = pose.x;
+                const casterY = pose.y;
                 const textureId = entityLastTextureId ? entityLastTextureId[neighborIdx] : INVALID_TEXTURE_ID;
                 if (textureId === INVALID_TEXTURE_ID) continue;
 

@@ -95,7 +95,9 @@ export class AbstractWorker {
     // Scheduling
     this.usesCustomScheduler = false; // Override in subclass if using custom scheduler
     this.noLimitFPS = false; // Set to true to run as fast as possible (no RAF limiting)
+    this.fixedFps = 0; // >0 → setInterval at that rate; overrides noLimitFPS/RAF
     this.timeoutId = null; // Store timeout ID for clearing
+    this.intervalId = null; // Store interval ID for fixedFps
 
     // Script loading (ALL workers now load scripts and initialize components)
     // This flag now indicates if worker needs to CREATE GameObject instances (logic workers only)
@@ -265,17 +267,31 @@ export class AbstractWorker {
 
   /**
    * Schedule the next frame (can be overridden for custom scheduling)
-   * Uses setTimeout(0ms) if noLimitFPS is true to yield to event loop but run ASAP
-   * Otherwise uses requestAnimationFrame for standard 60fps
+   * fixedFps > 0 → setInterval; noLimitFPS → setTimeout(2); else requestAnimationFrame
    */
   scheduleNextFrame() {
+    if (this.fixedFps > 0) {
+      if (this.intervalId !== null) return;
+      const ms = 1000 / this.fixedFps;
+      this.intervalId = setInterval(this.gameLoop, ms);
+      return;
+    }
     if (this.noLimitFPS) {
       // Run as fast as possible while still yielding to event loop
-      // setTimeout(0) runs after current event loop but doesn't wait for next frame
       this.timeoutId = setTimeout(this.gameLoop, 2);
     } else {
-      // Standard 60fps using requestAnimationFrame
       requestAnimationFrame(this.gameLoop);
+    }
+  }
+
+  _clearFrameSchedulers() {
+    if (this.timeoutId !== null) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
     }
   }
 
@@ -318,17 +334,19 @@ export class AbstractWorker {
     // Store config for worker access
     this.config = data.config || {};
 
-    // Check if this worker should run with unlimited FPS (no RAF limiting)
-    // Each worker type can have its own noLimitFPS setting in its nested config
+    // Check nested config for fixedFps / noLimitFPS (class name → config key)
     const workerType = this.constructor.name.replace('Worker', '').toLowerCase();
-
-    // Check nested config first, then fall back to root level
-    const workerConfig = this.config[workerType] || {};
-    if (workerConfig.noLimitFPS === true) {
+    const configKeyAliases = {
+      prerender: 'preRender',
+      pixi: 'renderer',
+    };
+    const configKey = configKeyAliases[workerType] || workerType;
+    const workerConfig = this.config[configKey] || this.config[workerType] || {};
+    const fixedFps = Number(workerConfig.fixedFps);
+    if (fixedFps > 0) {
+      this.fixedFps = fixedFps;
+    } else if (workerConfig.noLimitFPS === true) {
       this.noLimitFPS = true;
-      // console.log(
-      //   `${this.constructor.name}: Running in unlimited FPS mode (noLimitFPS)`
-      // );
     }
 
     // Register core engine classes globally BEFORE loading scripts
@@ -997,11 +1015,7 @@ export class AbstractWorker {
    */
   pause() {
     this.isPaused = true;
-    // Clear timeout if we're using noLimitFPS mode
-    if (this.timeoutId !== null) {
-      clearTimeout(this.timeoutId);
-      this.timeoutId = null;
-    }
+    this._clearFrameSchedulers();
   }
 
   /**

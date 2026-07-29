@@ -590,6 +590,47 @@ export class GameObject {
     return RigidBody.velocityAngle[this.index];
   }
 
+  /**
+   * Body heading unit X (from Transform.rotation / Box2D angle).
+   * Weed does not publish Box2D b2Rot cos/sin on HEAP — derive from angle.
+   */
+  get forwardX() {
+    return Math.cos(Transform.rotation[this.index]);
+  }
+
+  /** Body heading unit Y */
+  get forwardY() {
+    return Math.sin(Transform.rotation[this.index]);
+  }
+
+  /** Right unit X (rotate forward by -90°) */
+  get rightX() {
+    return this.forwardY;
+  }
+
+  /** Right unit Y */
+  get rightY() {
+    return -this.forwardX;
+  }
+
+  /**
+   * Fill out with heading axes for entity index (zero alloc if out reused).
+   * @param {number} index
+   * @param {{ angle?: number, frontX?: number, frontY?: number, rightX?: number, rightY?: number }} out
+   * @returns {typeof out}
+   */
+  static getHeadingAxes(index, out) {
+    const a = Transform.rotation[index];
+    const frontX = Math.cos(a);
+    const frontY = Math.sin(a);
+    out.angle = a;
+    out.frontX = frontX;
+    out.frontY = frontY;
+    out.rightX = frontY;
+    out.rightY = -frontX;
+    return out;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // SPRITERENDERER PROPERTIES
   // Setters mark dirty for re-rendering. Both setter and method provided.

@@ -326,6 +326,16 @@ function initializeLightingAndRenderBuffers(scene) {
   new Int32Array(buffers.renderQueueSync)[1] = 0;
   scene.maxVisibleRenderables = maxVisibleRenderables;
 
+  // Physics pose publish (post-step snapshot for visuals) — SoA x,y,rotation × 2 buffers
+  const poseN = scene.totalEntityCount;
+  const poseBufBytes = poseN * 3 * 4;
+  buffers.poseDataA = new SharedArrayBuffer(Math.max(poseBufBytes, 12));
+  buffers.poseDataB = new SharedArrayBuffer(Math.max(poseBufBytes, 12));
+  buffers.poseSync = new SharedArrayBuffer(8);
+  new Int32Array(buffers.poseSync)[0] = 0;
+  new Int32Array(buffers.poseSync)[1] = 0;
+  scene.poseCapacity = poseN;
+
   const builtInLayers = {};
   const defaultYSorting = config.renderer?.ySorting !== undefined
     ? !!config.renderer.ySorting

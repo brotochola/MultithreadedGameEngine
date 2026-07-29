@@ -21,6 +21,11 @@ export class RigidBody extends Component {
     ax: Float32Array,
     ay: Float32Array,
 
+    // Previous pose (physics writes each step before world.step)
+    px: Float32Array,
+    py: Float32Array,
+    pRotation: Float32Array,
+
     // Angular motion
     angularVelocity: Float32Array,
     angularAccel: Float32Array,
