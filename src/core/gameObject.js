@@ -1313,7 +1313,6 @@ export class GameObject {
    *
    * Example:
    *   setup() {
-   *     this.rigidBody.maxLinearSpeed = 10;
    *     this.collider.radius = 15;
    *     this.flocking.centeringFactor = 0.001;
    *   }
@@ -1862,7 +1861,6 @@ export class GameObject {
       RigidBody.invInertia[i] = 0;
       RigidBody.linearDamping[i] = 0;
       RigidBody.angularDamping[i] = 0;
-      RigidBody.maxLinearSpeed[i] = 0;
       RigidBody.speed[i] = 0;
       RigidBody.velocityAngle[i] = 0;
       RigidBody.fixedRotation[i] = 0;

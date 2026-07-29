@@ -152,7 +152,6 @@ class PhysicsWorker extends AbstractWorker {
         angularVelocity: packView(RigidBody.angularVelocity),
         angularAccel: packView(RigidBody.angularAccel),
         mass: packView(RigidBody.mass),
-        maxLinearSpeed: packView(RigidBody.maxLinearSpeed),
         linearDamping: packView(RigidBody.linearDamping),
         angularDamping: packView(RigidBody.angularDamping),
         sleeping: packView(RigidBody.sleeping),

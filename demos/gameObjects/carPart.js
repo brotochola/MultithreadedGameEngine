@@ -25,7 +25,6 @@ export class CarPart extends GameObject {
         this.collider.visualRange = radius * 3;
 
         // Cap in px/s — soft-body constraints not on Box2D yet; without cap parts fly apart
-        this.rigidBody.maxLinearSpeed = 600; // was 400 frame → 24000; keep arcade ceiling
         this.rigidBody.linearDamping = 0.05;  // a bit more coast drag until joints land
 
         // Ensure physics are active and awake

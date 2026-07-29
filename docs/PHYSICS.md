@@ -12,7 +12,7 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 
 ## Responsibilities (per frame)
 
-1. **Box2D step** — nested WASM worker advances bodies; Weed hot fields (`Transform` / `RigidBody` pose & vel) live on HEAP. Post-step clamp uses `RigidBody.maxLinearSpeed`. Body damping: `linearDamping` / `angularDamping`.
+1. **Box2D step** — nested WASM worker advances bodies; Weed hot fields (`Transform` / `RigidBody` pose & vel) live on HEAP. World `maximumLinearSpeed` clamps in the solver. Body damping: `linearDamping` / `angularDamping`.
 2. **Contacts** — Box2D owns narrowphase; fixture μ from `Collider.friction`.
 3. **Joints** — Weed `Joint` SAB (`addDistance` / `addRevolute` / `addWeld` with body-local anchors) syncs to Box2D joints each step (`weedjs_post.syncJoints`). Cap: WASM `MAX_JOINTS` (4096).
 4. **Stats** — write counters and timing into `physicsStats`.
@@ -62,7 +62,7 @@ Legacy Weed knobs (`sleepThreshold`, `sleepDuration`, `wakeUpThreshold`, `stilln
 
 Velocity commands trust Box2D: nonzero `SetLinearVelocity` / `SetAngularVelocity` wake; zero on a sleeper is a no-op.
 
-World `maximumLinearSpeed` (scene `physics.maximumLinearSpeed`) clamps in the solver. Per-entity `RigidBody.maxLinearSpeed` is unused.
+World `maximumLinearSpeed` (scene `physics.maximumLinearSpeed`) clamps in the solver.
 
 ### Collision filtering
 

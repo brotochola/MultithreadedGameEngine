@@ -29,7 +29,6 @@ class Boid extends GameObject {
     this._neighborContext = {};
 
     // Initialize RigidBody constraints
-    this.rigidBody.maxLinearSpeed = 600;
     this.rigidBody.linearDamping = 0.01;
 
     // Initialize Collider

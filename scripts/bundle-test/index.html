@@ -38,7 +38,6 @@ export class Ball extends GameObject {
   setup() {}
 
   onSpawned(spawnConfig = {}) {
-    this.rigidBody.maxLinearSpeed = 6000;
     this.rigidBody.linearDamping = 0.2;
 
     this.rotation = 0;

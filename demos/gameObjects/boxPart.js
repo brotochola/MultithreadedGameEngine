@@ -40,7 +40,6 @@ export class BoxPart extends GameObject {
             this.collider.collisionGroupIndex = spawnConfig.collisionGroupIndex;
         }
 
-        this.rigidBody.maxLinearSpeed = 6000;
         this.rigidBody.linearDamping = 0.001;
 
         this.rigidBody.sleeping = 0;

@@ -36,6 +36,7 @@ const WORKER_NAMES = [
 
 const BOX2D_SIBLING_NAMES = [
     'weedjs_post.js',
+    'physics_host.impl.js',
     'physics-api.js',
     'box2dConstants.impl.js',
     'box2dCommandRing.impl.js',
@@ -91,6 +92,9 @@ function buildBox2dWorkerSource() {
     );
 
     const box2dGluePatched = box2dGlue.replace(
+        /importScripts\(\s*["']weedjs_post\.js["']\s*\)\s*;?\s*importScripts\(\s*["']physics_host\.impl\.js["']\s*\)/,
+        '/* weedjs_post + physics_host preloaded for bundle embed */',
+    ).replace(
         /importScripts\(\s*["']weedjs_post\.js["']\s*\)/,
         '/* weedjs_post preloaded for bundle embed */',
     );
@@ -143,10 +147,10 @@ function buildBox2dWorkerSource() {
         `  };\n` +
         `  if (global.name !== "em-pthread") {\n` +
         `    global.importScripts("weedjs_post.js");\n` +
+        `    global.importScripts("physics_host.impl.js");\n` +
         `    var __weedReady = Module["onRuntimeInitialized"];\n` +
         `    Module["onRuntimeInitialized"] = function () {\n` +
         `      if (typeof __weedReady === "function") __weedReady();\n` +
-        `      else postMessage({ type: "WEEDJS_MODULE_READY" });\n` +
         `    };\n` +
         `  }\n` +
         `})(typeof self !== "undefined" ? self : this);\n` +
@@ -186,7 +190,7 @@ function writeBundleEntry({ workers, workerCommon, box2dWorkerSource, audioWorkl
 
     return `/**
  * WeedJS Single-File Bundle Entry Point
- * Workers + Box2D nested worker are embedded as strings in WEED.*
+ * Workers + Box2D classic physics host are embedded as strings in WEED.*
  * AUTO-GENERATED - DO NOT EDIT
  */
 

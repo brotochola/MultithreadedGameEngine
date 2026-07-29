@@ -15,7 +15,6 @@ class MyEntity extends GameObject {
 
   setup() {
     // Runs once per pooled instance
-    this.rigidBody.maxLinearSpeed = 5;
     this.rigidBody.linearDamping = 0.02;
     this.collider.radius = 12;
     this.collider.visualRange = 140;

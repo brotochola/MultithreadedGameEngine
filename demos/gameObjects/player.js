@@ -41,7 +41,6 @@ export class Player extends GameObject {
    */
   setup() {
     // Initialize physics properties
-    this.rigidBody.maxLinearSpeed = 300; // Maximum velocity
     this.rigidBody.linearDamping = 0.03; // Linear damping for smooth stopping
 
     if (this.lightEmitter) {

@@ -44,7 +44,6 @@ class FleeingCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) {
     // Will set run animation in onUpdate based on direction
     RigidBody.sleeping[i] = 0;
-    RigidBody.stillnessTime[i] = 0;
   }
 
   static onUpdate(owner, i, dt) {
@@ -100,14 +99,10 @@ class FleeingCivilianBehaviorState extends FSMState {
 const PANIC_DURATION_MS = 20_000;
 // Match MySoldier.chaseStrength (literal — Civilian↔MySoldier import cycle)
 const PANIC_FLEE_FACTOR = 8000;
-const PANIC_MAX_VEL = 220; // px/s — walk is Person 180
-const NORMAL_MAX_VEL = 180;
 
 class PanicCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) {
     RigidBody.sleeping[i] = 0;
-    RigidBody.stillnessTime[i] = 0;
-    owner.rigidBody.maxLinearSpeed = PANIC_MAX_VEL;
   }
 
   static onUpdate(owner, i, dt, totalTime) {
@@ -135,7 +130,6 @@ class PanicCivilianBehaviorState extends FSMState {
   }
 
   static onExit(owner, i, toState) {
-    owner.rigidBody.maxLinearSpeed = NORMAL_MAX_VEL;
   }
 }
 

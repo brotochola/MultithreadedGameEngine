@@ -15,7 +15,6 @@ export class ZenithalCar extends GameObject {
     this.collider.radius = 22;
     this.collider.visualRange = 100;
 
-    this.rigidBody.maxLinearSpeed = 180;
     this.rigidBody.linearDamping = 0.9;
     this.setAnchor(0.5, 0.5)
 

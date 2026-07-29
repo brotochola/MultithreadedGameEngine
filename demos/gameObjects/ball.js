@@ -30,7 +30,6 @@ class Ball extends GameObject {
 
     // this.collider.radius = spawnConfig.radius; // Mass auto-computed from area (π * r²)
     // Configure RigidBody physics properties (same for all balls)
-    this.rigidBody.maxLinearSpeed = 6000; // px/s
     this.rigidBody.linearDamping = 0.2; // Low damping - let balls settle naturally
     // Set the texture for this static sprite
 

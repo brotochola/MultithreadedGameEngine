@@ -4,6 +4,8 @@ const { GameObject, Mouse, RigidBody, Collider, CollisionListener, SpriteRendere
 
 const BASE_WATER_TINT = 0x0033ff;
 const SPLASH_TINT = 0xbbeeff;
+/** Tint scale only — world `physics.maximumLinearSpeed` clamps velocity. */
+const WATER_SPEED_REF = 7200;
 
 class WaterBall extends GameObject {
   static scriptUrl = import.meta.url;
@@ -13,7 +15,6 @@ class WaterBall extends GameObject {
   setup() { }
 
   onSpawned(spawnConfig = {}) {
-    this.rigidBody.maxLinearSpeed = 7200;
     this.rigidBody.linearDamping = 0.02
 
     this.spriteRenderer.anchorX = 0.5;
@@ -40,7 +41,7 @@ class WaterBall extends GameObject {
   }
 
   tick(dtRatio) {
-    const speedFactor = Math.min(1, (this.rigidBody.speed) / (this.rigidBody.maxLinearSpeed));
+    const speedFactor = Math.min(1, (this.rigidBody.speed) / WATER_SPEED_REF);
     const tint = mixTint(BASE_WATER_TINT, SPLASH_TINT, speedFactor * 0.25);
 
     // this.setTint(tint);

@@ -29,7 +29,6 @@ export class OrientedBox extends GameObject {
         this.collider.visualRange = Math.hypot(width, height) * 0.5 + 200;
 
         this.rigidBody.static = 0;
-        this.rigidBody.maxLinearSpeed = 150000;
         this.rigidBody.linearDamping = 0.001;
         this.rigidBody.angularDamping = 0.01;
         this.rigidBody.angularVelocity = 0;

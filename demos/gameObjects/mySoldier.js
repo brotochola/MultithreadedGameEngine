@@ -47,7 +47,7 @@ export class MySoldier extends Person {
 
     this.collider.visualRange = 250;
     this.setFixedRotation(1);
-    this.rigidBody.linearDamping = 2;
+    this.rigidBody.linearDamping = 10;
   }
 
   /**

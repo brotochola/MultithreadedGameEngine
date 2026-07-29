@@ -84,7 +84,6 @@ export class Person extends Lootable {
 
   setup() {
     // Physics properties
-    this.rigidBody.maxLinearSpeed = 180;
     this.rigidBody.linearDamping = Person.defaultFriction;
 
     // Collision/perception

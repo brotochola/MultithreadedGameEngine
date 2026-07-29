@@ -20,7 +20,6 @@ class Box extends GameObject {
    */
   setup() {
     // Configure RigidBody physics properties (same for all boxes)
-    this.rigidBody.maxLinearSpeed = 9000; // Max velocity
     this.rigidBody.linearDamping = 0.001; // Low damping - let boxes settle naturally
 
     this.onSpawned();

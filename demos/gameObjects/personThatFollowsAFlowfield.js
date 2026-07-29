@@ -53,7 +53,6 @@ export class PersonThatFollowsAFlowfield extends GameObject {
 
     super.onSpawned(spawnConfig);
 
-    this.rigidBody.maxLinearSpeed = 180;
     this.rigidBody.linearDamping = PersonThatFollowsAFlowfield.defaultFriction;
     this.setFixedRotation(1);
 

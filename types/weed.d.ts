@@ -2003,7 +2003,6 @@ export declare class RigidBody extends Component {
     invInertia: typeof Float32Array;
     linearDamping: typeof Float32Array;
     angularDamping: typeof Float32Array;
-    maxLinearSpeed: typeof Float32Array;
     fixedRotation: typeof Uint8Array;
     velocityAngle: typeof Float32Array;
     speed: typeof Float32Array;
@@ -2024,7 +2023,6 @@ export declare class RigidBody extends Component {
   static invInertia: Float32Array;
   static linearDamping: Float32Array;
   static angularDamping: Float32Array;
-  static maxLinearSpeed: Float32Array;
   static fixedRotation: Uint8Array;
   static velocityAngle: Float32Array;
   static speed: Float32Array;

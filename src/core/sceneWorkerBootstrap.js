@@ -21,22 +21,18 @@ function createSceneWorkerFactory(useInlineWorkers, cacheBust) {
   };
 }
 
-/** Bundle mode: blob URL of embedded Box2D classic worker. Dev: undefined (physics uses /src/box2d/). */
-function resolveBox2dWorkerUrl() {
-  if (
-    typeof window === 'undefined' ||
-    !window.WEED?.BUNDLE_MODE ||
-    !window.WEED.Box2dWorkerSource
-  ) {
-    return undefined;
+/** Classic Box2D worker (pthread entry). Bundle blob or /src/box2d/box2d_wasm.js — no type:module. */
+function createPhysicsWorker(useInlineWorkers, cacheBust) {
+  if (useInlineWorkers) {
+    if (typeof window.WEED.getBox2dWorkerUrl !== 'function') {
+      throw new Error('BUNDLE_MODE physics requires WEED.getBox2dWorkerUrl()');
+    }
+    return new Worker(window.WEED.getBox2dWorkerUrl());
   }
-  if (typeof window.WEED.getBox2dWorkerUrl === 'function') {
-    return window.WEED.getBox2dWorkerUrl();
-  }
-  return undefined;
+  return new Worker(`/src/box2d/box2d_wasm.js${cacheBust}`);
 }
 
-function createSceneWorkerInstances(scene, makeWorker) {
+function createSceneWorkerInstances(scene, makeWorker, useInlineWorkers, cacheBust) {
   const numberOfSpatialWorkers = scene.config.spatial.numberOfSpatialWorkers;
   for (let i = 0; i < numberOfSpatialWorkers; i++) {
     const spatialWorker = makeWorker('spatial_worker');
@@ -50,7 +46,7 @@ function createSceneWorkerInstances(scene, makeWorker) {
     scene.workers.logicWorkers.push(logicWorker);
   }
 
-  scene.workers.physics = makeWorker('physics_worker');
+  scene.workers.physics = createPhysicsWorker(useInlineWorkers, cacheBust);
   scene.workers.renderer = makeWorker('pixi_worker');
   scene.workers.particle = makeWorker('particle_worker');
   scene.workers.preRender = makeWorker('pre_render_worker');
@@ -339,10 +335,6 @@ function initializeSceneWorkers(scene, initData, sharedBuffers, workerPorts) {
     workerPorts: workerPorts.physics,
     frameRateIndex: physicsIndex,
   };
-  const box2dWorkerUrl = resolveBox2dWorkerUrl();
-  if (box2dWorkerUrl) {
-    physicsExtra.box2dWorkerUrl = box2dWorkerUrl;
-  }
   postWorkerInitMessage(
     scene.workers.physics,
     initData,
@@ -447,7 +439,7 @@ export async function createSceneWorkers(scene) {
   }
 
   const makeWorker = createSceneWorkerFactory(useInlineWorkers, cacheBust);
-  createSceneWorkerInstances(scene, makeWorker);
+  createSceneWorkerInstances(scene, makeWorker, useInlineWorkers, cacheBust);
   attachEarlyWorkerErrorHandlers(scene);
 
   const spritesheetConfigs = scene.imageUrls.spritesheets || {};
