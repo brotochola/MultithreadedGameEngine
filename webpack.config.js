@@ -10,7 +10,6 @@ const __dirname = path.dirname(__filename);
 // Worker files that need to be bundled separately
 const workerEntries = {
     'workers/logic_worker': './src/workers/logic_worker.js',
-    'workers/physics_worker': './src/workers/physics_worker.js',
     'workers/pixi_worker': './src/workers/pixi_worker.js',
     'workers/spatial_worker': './src/workers/spatial_worker.js',
     'workers/particle_worker': './src/workers/particle_worker.js',

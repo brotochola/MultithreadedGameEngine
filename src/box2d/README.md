@@ -1,13 +1,14 @@
 # Weed Box2D runtime (`src/box2d`)
 
-Nested classic worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Weed’s ESM [`physics_worker.js`](../workers/physics_worker.js) cannot host Module/pthreads; it nests `box2d_wasm.js`, which loads [`weedjs_post.js`](weedjs_post.js).
+Classic physics worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Scene’s `workers.physics` **is** [`box2d_wasm.js`](box2d_wasm.js), which loads [`weedjs_post.js`](weedjs_post.js) then [`physics_host.impl.js`](physics_host.impl.js). Host speaks Weed `init`/`start` and calls `weedjsDoStep` in-process.
 
 ## Layout
 
 | File | Role |
 |------|------|
 | `box2d_wasm.js` / `.wasm` | Emscripten glue + binary |
-| `weedjs_post.js` | Weed bridge (Atomics step, create/destroy, command ring drain) |
+| `physics_host.impl.js` | Weed protocol + frame loop + `weedjsDoStep` |
+| `weedjs_post.js` | World create/destroy, sync, command ring drain, step |
 | `physics-api.js` | `PhysicsWorld` / `BodyHandle` over `cwrap` |
 | `box2dConstants.impl.js` + `box2dConstants.js` | Dual-load enums / state channels |
 | `box2dCommandRing.impl.js` + `box2dCommandRing.js` | Pose / vel / fixedRotation commands |
@@ -18,46 +19,19 @@ Nested classic worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Weed
 
 `npm run make_bundle` emits **both** debug and prod single-file artifacts into `dist/`:
 
-| File | Contents |
-|------|----------|
+| Artifact | Notes |
+|----------|--------|
 | `weed.bundle.min.js` / `.esm.min.js` | Debug UI kept |
-| `weed.prod.bundle.min.js` / `.esm.min.js` | Debug* stubbed out |
+| `weed.prod.bundle.min.js` / `.esm.min.js` | Debug stubs |
 
-Embed pipeline:
+At runtime `getBox2dWorkerUrl()` creates one blob URL; that blob **is** the physics worker. Pthreads re-fetch the same worker URL via `_scriptName`.
 
-1. Workers share one `worker_common` chunk (AbstractWorker graph) so that code is not copied six times.
-2. Glue + siblings + **gzip-compressed** `.wasm` (base64) go into `WEED.Box2dWorkerSource`.
-3. At runtime `getBox2dWorkerUrl()` creates one blob URL; `instantiateWasm` gunzips via `DecompressionStream` then instantiates. Pthreads re-fetch the same worker URL via `_scriptName`.
+## Rebuild from sibling Box2D tree
 
-Do **not** ship a separate `dist/box2d/` folder or blob-inline only the glue.
-
-Unbundled demos still load `/src/box2d/box2d_wasm.js` from the repo server.
-
-## Rebuild (from sibling `box2d_3.0_wasm_sab`)
+From `box2d_3.0_wasm_sab`:
 
 ```bat
-cd ..\box2d_3.0_wasm_sab
 build_for_weed.bat
 ```
 
-That builds with `weed_post.js` (`importScripts('weedjs_post.js')`, not the lab `physics_post.js` / `game-constants.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.
-
-- `build_for_weed.bat clean` — wipe `build_wasm_weed`
-- `build_for_weed.bat copy` — copy root artifacts only
-- Override dest: `set WEED_BOX2D_DIR=...\src\box2d`
-
-Lab demo stays on `build_wasm.bat` (physics_post.js). Do not copy a plain lab build into Weed — it will try to load missing `game-constants.js`.
-
-Units: px, px/s, px/s², rad, rad/s.
-
-## HEAP sizing
-
-Weed builds use fixed `INITIAL_MEMORY=256MB` (`ALLOW_MEMORY_GROWTH=0`) so the HEAP `SharedArrayBuffer` stays stable for hot field rebind.
-
-Live allocator occupancy is exported as `_weedjs_heap_bytes_used` (`mallinfo().uordblks`) and published each physics step into `PHYSICS_STATS.HEAP_USED_KB` / `HEAP_HIGH_WATER_KB`. MemoryPanel shows **used / reserved** plus high-water.
-
-Measured:
-- BallsScene integrated bench (~9k bodies): high-water ≈ **39–45 MB**
-- PredatorScene integrated bench (~14k bodies): high-water ≈ **23 MB**
-
-256 MB reserved leaves large headroom for typical demos. Extrapolating toward `MAX_ENTITIES` (65k) can still approach hundreds of MB depending on contacts/joints — raise `INITIAL_MEMORY` again if MemoryPanel high-water climbs near the reserved size.
+That builds with `weed_post.js` (`importScripts('weedjs_post.js')` then `physics_host.impl.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.

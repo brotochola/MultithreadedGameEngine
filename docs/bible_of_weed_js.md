@@ -196,7 +196,7 @@ Add it to `static components` and use `query([MyTag])` to find entities. No regi
 | Worker | Count | Main Responsibility |
 |---|---:|---|
 | `spatial_worker` | 1..N | Grid rebuild + neighbor lists |
-| `physics_worker` | 1 | Box2D 3.0 WASM step + contact/joint sync |
+| `physics` (classic) | 1 | Box2D 3.0 WASM host + contact/joint sync |
 | `logic_worker` | 1..N | Entity tick + callbacks + lifecycle |
 | `particle_worker` | 1 | Particles, decals, nav, visibility buffers |
 | `pre_render_worker` | 1 | Animation + render/shadow queue build |

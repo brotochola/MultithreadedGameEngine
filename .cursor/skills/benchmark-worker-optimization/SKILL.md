@@ -3,7 +3,7 @@ name: benchmark-worker-optimization
 description: >-
   Measures physics, spatial, and other worker FPS via the integrated worker
   benchmark (Playwright + BallsScene), compares JSON reports before/after code
-  changes, and iterates safely. Use when optimizing physics_worker, spatial
+  changes, and iterates safely. Use when optimizing physics host / weedjs_post, spatial
   hashing, spatial_worker, QuerySystem, Grid, collision broadphase, or when the
   user asks to benchmark workers, compare FPS after a change, or run
   test:bench / integrated-worker-benchmark.
@@ -78,7 +78,7 @@ Each worker in the benchmark JSON may include `statsEnd` and `statsSamplesAverag
 
 ## Key code touchpoints
 
-- `src/workers/physics_worker.js`, `src/workers/spatial_worker.js`, `src/workers/AbstractWorker.js`
+- `src/box2d/physics_host.impl.js`, `src/box2d/weedjs_post.js`, `src/workers/spatial_worker.js`, `src/workers/AbstractWorker.js`
 - `src/core/QuerySystem.js`, `src/core/Grid.js`, `demos/scenes/BallsScene.js`
 
 Keep changes scoped to the task.

@@ -157,7 +157,10 @@ async function main() {
     }
 
     const realConsoleErrors = consoleErrors.filter(
-      (t) => !t.includes('Failed to load resource') // demo assets that 404 in the bare harness
+      (t) =>
+        !t.includes('Failed to load resource') && // demo assets that 404 in the bare harness
+        !t.includes('wasm streaming compile failed') && // static server MIME; emscripten falls back
+        !t.includes('falling back to ArrayBuffer instantiation')
     );
     if (realConsoleErrors.length > 0) {
       failed = true;

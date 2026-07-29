@@ -28,7 +28,6 @@ const shouldObfuscate = process.env.OBFUSCATE === 'true';
 const WORKER_NAMES = [
     'spatial_worker',
     'logic_worker',
-    'physics_worker',
     'pixi_worker',
     'particle_worker',
     'pre_render_worker',
@@ -245,7 +244,7 @@ const WEED = Object.freeze({
     const blob = new Blob([code], { type: 'application/javascript' });
     return new Worker(URL.createObjectURL(blob));
   },
-  /** Absolute blob: URL for nested Box2D classic worker (pthreads re-fetch same URL). */
+  /** Absolute blob: URL for classic Box2D physics host (pthreads re-fetch same URL). */
   getBox2dWorkerUrl() {
     if (!box2dWorkerBlobUrl) {
       box2dWorkerBlobUrl = URL.createObjectURL(

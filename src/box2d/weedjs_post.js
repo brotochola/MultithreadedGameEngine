@@ -1,6 +1,5 @@
 // WeedJS bridge — loaded by box2d_wasm.js (always).
-// Owns Module; nest: Atomics handshake from ESM physics_worker.
-// Host mode: physics_host.impl.js calls weedjsDoStep in-process (no CTRL.STATE).
+// Owns Module; physics_host.impl.js calls weedjsDoStep in-process.
 // Skip on em-pthread pool workers.
 
 (function () {
@@ -18,12 +17,6 @@
   const publishBox2dContactEvent = Box2dContactRing.publishContactEvent;
   const CONTACT_KIND = Box2dContactRing.BOX2D_CONTACT_KIND;
 
-  const CTRL = {
-    STATE: 0, // 0 idle, 1 step, 2 done, 3 fatal
-    SUBSTEPS: 1,
-    ENTITY_COUNT: 2,
-  };
-
   const MAX_POLY_VERTS = 8;
   const BODY_DIRTY = {
     LIFECYCLE: 1,
@@ -38,15 +31,13 @@
 
   let world = null;
   let verdletSubSteps = 4;
-  /** Host mode: Scene's physics worker IS this classic worker (no nest Atomics). */
+  /** Set by physics_host before init (weedjsEnableHostMode). */
   let hostMode = false;
   let hostEntityCount = 0;
   let hostSubSteps = 4;
   let hostDt = 0;
   let moduleReady = false;
   const moduleReadyWaiters = [];
-  let ctrlI32 = null;
-  let ctrlF32 = null;
   let cmdI32 = null;
   let cmdF32 = null;
   let contactRingI32 = null;
@@ -76,7 +67,6 @@
   let vyChan = null;
   let angChan = null;
   let sleepingU8 = null;
-  let running = false;
   let statsF32 = null;
 
   // Mirrors PHYSICS_STATS in src/workers/workers-utils.js (nested classic worker — no ESM import).
@@ -813,14 +803,10 @@
   }
 
   function doStep() {
-    const entityCount = hostMode
-      ? hostEntityCount | 0
-      : Atomics.load(ctrlI32, CTRL.ENTITY_COUNT) | 0;
+    const entityCount = hostEntityCount | 0;
     // Honor scene physics.subStepCount (BallsScene = 4) — do not inflate
-    const solverSteps = hostMode
-      ? Math.max(1, hostSubSteps | 0)
-      : Math.max(1, Atomics.load(ctrlI32, CTRL.SUBSTEPS) | 0);
-    const dt = hostMode ? hostDt : ctrlF32[0];
+    const solverSteps = Math.max(1, hostSubSteps | 0);
+    const dt = hostDt;
     if (!(dt > 0) || !world) {
       return;
     }
@@ -848,29 +834,6 @@
       jointSyncChanges,
       commandCount,
     );
-  }
-
-  function controlLoop() {
-    running = true;
-    while (running) {
-      const wait = Atomics.wait(ctrlI32, CTRL.STATE, 0);
-      if (Atomics.load(ctrlI32, CTRL.STATE) !== 1) {
-        continue;
-      }
-      try {
-        doStep();
-        Atomics.store(ctrlI32, CTRL.STATE, 2);
-        Atomics.notify(ctrlI32, CTRL.STATE, 1);
-      } catch (err) {
-        console.error('[weedjs-box2d] step failed', err);
-        Atomics.store(ctrlI32, CTRL.STATE, 3);
-        Atomics.notify(ctrlI32, CTRL.STATE, 1);
-        postMessage({
-          type: 'WEEDJS_ERROR',
-          message: err?.message ?? String(err),
-        });
-      }
-    }
   }
 
   function handleInit(data) {
@@ -976,18 +939,6 @@
     heapHighWaterKb = 0;
     hostEntityCount = data.entityCount | 0;
     hostSubSteps = Math.max(1, data.subSteps | 0 || 4);
-    if (data.controlSab) {
-      ctrlI32 = new Int32Array(data.controlSab);
-      ctrlF32 = new Float32Array(data.controlSab, 16, 4);
-      Atomics.store(ctrlI32, CTRL.ENTITY_COUNT, hostEntityCount);
-      Atomics.store(ctrlI32, CTRL.SUBSTEPS, hostSubSteps);
-      Atomics.store(ctrlI32, CTRL.STATE, 0);
-    } else if (!hostMode) {
-      throw new Error('[weedjs-box2d] WEEDJS_INIT missing controlSab');
-    } else {
-      ctrlI32 = null;
-      ctrlF32 = null;
-    }
     if (data.commandSab) {
       cmdI32 = new Int32Array(data.commandSab);
       cmdF32 = new Float32Array(data.commandSab);
@@ -1037,30 +988,23 @@
       contactPairIntStride: ready.contactPairIntStride,
       eventHeaderIntCount: ready.eventHeaderIntCount,
     };
-    if (hostMode) {
-      if (typeof globalThis.weedjsOnReady === 'function') {
-        globalThis.weedjsOnReady(readyMsg);
-      }
+    if (typeof globalThis.weedjsOnReady === 'function') {
+      globalThis.weedjsOnReady(readyMsg);
     } else {
       postMessage(readyMsg);
-      // Nest: control loop blocks pthread main — OK, Box2D tasks use pool
-      setTimeout(controlLoop, 0);
     }
   }
 
   function notifyModuleReady() {
     if (moduleReady) return;
     moduleReady = true;
-    if (!hostMode) {
-      postMessage({ type: 'WEEDJS_MODULE_READY' });
-    }
     while (moduleReadyWaiters.length) {
       moduleReadyWaiters.shift()();
     }
   }
 
   /**
-   * In-process step for classic physics host (no CTRL.STATE wait).
+   * In-process step for classic physics host.
    * @param {number} dtSec
    * @param {number} [subSteps]
    */
@@ -1096,14 +1040,6 @@
     }
     if (data.entityCount != null) {
       hostEntityCount = data.entityCount | 0;
-    }
-    if (ctrlI32) {
-      if (data.subSteps != null) {
-        Atomics.store(ctrlI32, CTRL.SUBSTEPS, hostSubSteps);
-      }
-      if (data.entityCount != null) {
-        Atomics.store(ctrlI32, CTRL.ENTITY_COUNT, hostEntityCount);
-      }
     }
   }
 

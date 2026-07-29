@@ -12,7 +12,7 @@ Each worker owns its data region so hot paths can avoid broad locking and per-fr
 | Worker                | Count | Scalable | Runs Entity Scripts | Primary Job                                              |
 | --------------------- | ----: | -------- | ------------------- | -------------------------------------------------------- |
 | `spatial_worker`      |  1..N | Yes      | No                  | Spatial hash grid + neighbor lists                       |
-| `physics_worker`      |     1 | No       | No                  | Box2D 3.0 WASM step (nested worker), contacts, joints    |
+| `physics` (classic)   |     1 | No       | No                  | Box2D 3.0 WASM host (`box2d_wasm` + `physics_host`), contacts, joints |
 | `logic_worker`        |  1..N | Yes      | **Yes**             | Entity `tick()`, callbacks, lifecycle                    |
 | `particle_worker`     |     1 | No       | No                  | Particles, bullets, decals, navigation, visibility lists |
 | `pre_render_worker`   |     1 | No       | No                  | Animation, Y-sort, render + shadow queue assembly        |
@@ -56,11 +56,11 @@ Details: [SPATIAL_HASHING.md](./SPATIAL_HASHING.md)
 
 ### Physics Worker (1)
 
-Owns the Box2D tick. The ESM `physics_worker` can’t host Emscripten pthreads, so it spins a nested classic worker (`box2d_wasm.js` + `weedjs_post.js`) and talks to it over Atomics + rings.
+Owns the Box2D tick. Scene’s `workers.physics` **is** the classic `box2d_wasm.js` worker (`physics_host.impl.js` + `weedjs_post.js`); steps via in-process `weedjsDoStep` (no nested ESM / Atomics handshake).
 
 **What it does each frame:**
 
-1. Hand the step to nested Box2D (WASM HEAP holds pose/vel; Weed SoA views rebound onto those channels)
+1. Call `weedjsDoStep` (WASM HEAP holds pose/vel; Weed SoA views rebound onto those channels)
 2. Drain the command ring (set pose/vel, fixedRotation, etc.)
 3. After the step, contact begin/end (+ sensors) land in the sequenced contact ring for logic workers
 4. Sync Weed `Joint` slots into Box2D joints

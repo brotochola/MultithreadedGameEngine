@@ -116,11 +116,11 @@ export {
   CAMERA_TYPES,
 } from './core/ConfigDefaults.js';
 
-// Worker files (logic_worker, physics_worker, pixi_worker, spatial_worker, …)
+// Worker files (logic_worker, pixi_worker, spatial_worker, …)
+// Physics = classic src/box2d/box2d_wasm.js + physics_host.impl.js (not ESM).
 // are designed to be loaded as Web Workers and don't have default exports,
 // but you can import them as modules if needed for bundling:
 // import './workers/logic_worker.js';
-// import './workers/physics_worker.js';
 // import './workers/pixi_worker.js';
 // import './workers/spatial_worker.js';
 

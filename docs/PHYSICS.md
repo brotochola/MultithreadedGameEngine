@@ -1,10 +1,10 @@
 # Physics pipeline
 
-Weed runs **Box2D 3.0** (the real C library, WASM + SIMD + pthreads) behind the physics worker. Emscripten pthreads need a classic worker script, so ESM `physics_worker.js` nests `src/box2d/box2d_wasm.js`, which loads `weedjs_post.js`. After `box2dReady`, Transform/RigidBody hot fields rebind onto WASM HEAP — no per-frame pose copies.
+Weed runs **Box2D 3.0** (the real C library, WASM + SIMD + pthreads) as Scene’s physics worker: classic `src/box2d/box2d_wasm.js` + [`physics_host.impl.js`](../src/box2d/physics_host.impl.js) + [`weedjs_post.js`](../src/box2d/weedjs_post.js). After `box2dReady`, Transform/RigidBody hot fields rebind onto WASM HEAP — no per-frame pose copies.
 
 Bundle builds (`npm run make_bundle`) shove glue + `.wasm` + the `importScripts` siblings into `WEED.Box2dWorkerSource` so npm consumers don’t fetch a separate `dist/box2d/`. Rebuild notes: [src/box2d/README.md](../src/box2d/README.md).
 
-This doc is about the **pipeline** (step, contacts, joints, invariants). Implementation: `src/workers/physics_worker.js`, `src/components/RigidBody.js`, `src/core/gameObject.js`, `src/core/Joint.js`.
+This doc is about the **pipeline** (step, contacts, joints, invariants). Implementation: `src/box2d/physics_host.impl.js`, `src/box2d/weedjs_post.js`, `src/components/RigidBody.js`, `src/core/gameObject.js`, `src/core/Joint.js`.
 
 Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architecture](./WORKERS_ARCHITECTURE.md).
 
@@ -12,7 +12,7 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 
 ## Responsibilities (per frame)
 
-1. **Box2D step** — nested WASM worker advances bodies; Weed hot fields (`Transform` / `RigidBody` pose & vel) live on HEAP. World `maximumLinearSpeed` clamps in the solver. Body damping: `linearDamping` / `angularDamping`.
+1. **Box2D step** — classic WASM host advances bodies in-process (`weedjsDoStep`); Weed hot fields (`Transform` / `RigidBody` pose & vel) live on HEAP. World `maximumLinearSpeed` clamps in the solver. Body damping: `linearDamping` / `angularDamping`.
 2. **Contacts** — Box2D owns narrowphase; fixture μ from `Collider.friction`.
 3. **Joints** — Weed `Joint` SAB (`addDistance` / `addRevolute` / `addWeld` with body-local anchors) syncs to Box2D joints each step (`weedjs_post.syncJoints`). Cap: WASM `MAX_JOINTS` (4096).
 4. **Stats** — write counters and timing into `physicsStats`.
