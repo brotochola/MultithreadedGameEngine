@@ -586,17 +586,33 @@ export class PhysicsDebugRenderer {
 
   // ------- joints -------
 
+  /** Body-local anchor → world (inverse of Joint._worldToLocal). */
+  _localAnchorToWorld(entity, lx, ly, out) {
+    const rot = Transform.rotation[entity] || 0;
+    const c = Math.cos(rot);
+    const s = Math.sin(rot);
+    out.x = Transform.x[entity] + lx * c - ly * s;
+    out.y = Transform.y[entity] + lx * s + ly * c;
+    return out;
+  }
+
   drawJoints(ctx, canvas, camera, zoom) {
     if (!Joint.initialized || !Joint.pairs || !Joint.active) return;
 
     const pairs = Joint.pairs;
     const restLength = Joint.length;
     const jointActive = Joint.active;
+    const jointType = Joint.type;
     const activeIndices = Joint.activeIndices;
     const activeJointCount = Joint.getDenseActiveCount();
-    const x = Transform.x;
-    const y = Transform.y;
     const entityActive = Transform.active;
+    const laX = Joint.localAnchorAX;
+    const laY = Joint.localAnchorAY;
+    const lbX = Joint.localAnchorBX;
+    const lbY = Joint.localAnchorBY;
+
+    const worldA = { x: 0, y: 0 };
+    const worldB = { x: 0, y: 0 };
 
     ctx.lineWidth = 2;
 
@@ -608,37 +624,80 @@ export class PhysicsDebugRenderer {
       const entityB = packed & 0xFFFF;
       if (!entityActive[entityA] || !entityActive[entityB]) continue;
 
-      const sax = (x[entityA] - camera.x) * zoom;
-      const say = (y[entityA] - camera.y) * zoom;
-      const sbx = (x[entityB] - camera.x) * zoom;
-      const sby = (y[entityB] - camera.y) * zoom;
+      this._localAnchorToWorld(entityA, laX[i], laY[i], worldA);
+      this._localAnchorToWorld(entityB, lbX[i], lbY[i], worldB);
+
+      const sax = (worldA.x - camera.x) * zoom;
+      const say = (worldA.y - camera.y) * zoom;
+      const sbx = (worldB.x - camera.x) * zoom;
+      const sby = (worldB.y - camera.y) * zoom;
 
       if ((sax < -50 && sbx < -50) || (sax > canvas.width + 50 && sbx > canvas.width + 50) ||
         (say < -50 && sby < -50) || (say > canvas.height + 50 && sby > canvas.height + 50)) continue;
 
-      const dx = x[entityB] - x[entityA];
-      const dy = y[entityB] - y[entityA];
-      const currentDist = Math.sqrt(dx * dx + dy * dy);
-      const targetDist = restLength[i] > 0 ? restLength[i] : currentDist || 1;
-      const stretchRatio = currentDist / targetDist;
+      const t = jointType[i] | 0;
 
-      let r, g, b;
-      if (stretchRatio < 0.9) { r = 0; g = 200; b = 255; }
-      else if (stretchRatio < 1.1) { r = 50; g = 255; b = 50; }
-      else if (stretchRatio < 1.3) {
-        const t = (stretchRatio - 1.1) / 0.2;
-        r = Math.floor(50 + 205 * t); g = 255; b = Math.floor(50 * (1 - t));
-      } else {
-        r = 255; g = Math.max(0, Math.floor(255 * (2 - stretchRatio))); b = 0;
+      if (t === Joint.TYPE.DISTANCE) {
+        const dx = worldB.x - worldA.x;
+        const dy = worldB.y - worldA.y;
+        const currentDist = Math.sqrt(dx * dx + dy * dy);
+        const targetDist = restLength[i] > 0 ? restLength[i] : currentDist || 1;
+        const stretchRatio = currentDist / targetDist;
+
+        let r, g, b;
+        if (stretchRatio < 0.9) { r = 0; g = 200; b = 255; }
+        else if (stretchRatio < 1.1) { r = 50; g = 255; b = 50; }
+        else if (stretchRatio < 1.3) {
+          const u = (stretchRatio - 1.1) / 0.2;
+          r = Math.floor(50 + 205 * u); g = 255; b = Math.floor(50 * (1 - u));
+        } else {
+          r = 255; g = Math.max(0, Math.floor(255 * (2 - stretchRatio))); b = 0;
+        }
+
+        const alpha = Joint.enableSpring[i] ? 0.55 : 0.9;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        ctx.beginPath(); ctx.moveTo(sax, say); ctx.lineTo(sbx, sby); ctx.stroke();
+
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha + 0.2})`;
+        ctx.beginPath(); ctx.arc(sax, say, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sbx, sby, 3, 0, Math.PI * 2); ctx.fill();
+        continue;
       }
 
-      const alpha = Joint.enableSpring[i] ? 0.55 : 0.9;
-      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-      ctx.beginPath(); ctx.moveTo(sax, say); ctx.lineTo(sbx, sby); ctx.stroke();
+      // Weld / revolute: draw at attachment point(s), not body centers
+      const mx = (sax + sbx) * 0.5;
+      const my = (say + sby) * 0.5;
+      const sep = Math.hypot(sbx - sax, sby - say);
 
-      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha + 0.2})`;
-      ctx.beginPath(); ctx.arc(sax, say, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(sbx, sby, 3, 0, Math.PI * 2); ctx.fill();
+      if (t === Joint.TYPE.WELD) {
+        ctx.strokeStyle = 'rgba(255, 180, 40, 0.95)';
+        ctx.fillStyle = 'rgba(255, 180, 40, 0.85)';
+        // Thin line only if anchors drifted apart (breaking / soft)
+        if (sep > 2) {
+          ctx.beginPath(); ctx.moveTo(sax, say); ctx.lineTo(sbx, sby); ctx.stroke();
+        }
+        const s = 5;
+        ctx.beginPath();
+        ctx.moveTo(mx - s, my); ctx.lineTo(mx + s, my);
+        ctx.moveTo(mx, my - s); ctx.lineTo(mx, my + s);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, Math.PI * 2); ctx.fill();
+      } else if (t === Joint.TYPE.REVOLUTE) {
+        ctx.strokeStyle = 'rgba(80, 200, 255, 0.95)';
+        ctx.fillStyle = 'rgba(80, 200, 255, 0.75)';
+        if (sep > 2) {
+          ctx.beginPath(); ctx.moveTo(sax, say); ctx.lineTo(sbx, sby); ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(mx, my, 5, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(mx, my, 2, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // Unknown / prismatic fallback: line between world anchors
+        ctx.strokeStyle = 'rgba(200, 200, 200, 0.8)';
+        ctx.beginPath(); ctx.moveTo(sax, say); ctx.lineTo(sbx, sby); ctx.stroke();
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.9)';
+        ctx.beginPath(); ctx.arc(sax, say, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sbx, sby, 3, 0, Math.PI * 2); ctx.fill();
+      }
     }
   }
 

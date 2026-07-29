@@ -91,16 +91,16 @@ export class WeldBreakBox extends GameObject {
     const y = (Transform.y[entityA] + Transform.y[entityB]) * 0.5;
 
     ParticleEmitter.emit({
-      count: 20 + Math.floor(Math.random() * 10),
+      count: 15 + Math.floor(Math.random() * 8),
       x,
-      y,
-      z: -5,
+      y: y + 50,
+      z: -50,
       angleXY: { min: 0, max: 360 },
-      speed: { min: 1, max: 20 },
+      speed: { min: 1, max: 5 },
       vz: 0,
-      gravity: 0.35,
-      lifespan: { min: 500, max: 1000 },
-      scale: { min: 1, max: 4 },
+      gravity: 0.3,
+      lifespan: { min: 200, max: 400 },
+      scale: { min: 1, max: 3 },
       texture: '_whiteCircle',
       // tint: { min: 0xffaa33, max: 0xffffaa },
       alpha: { min: 0.5, max: 0.95 },
