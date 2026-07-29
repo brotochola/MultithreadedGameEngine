@@ -25,7 +25,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
     LootableComponent,
   ];
 
-  static defaultFriction = 0.05;
+  static defaultFriction = 2; // match MySoldier.linearDamping
 
   static punchRangeSq = 30 ** 2;
   static punchDamage = 0.3;
@@ -35,15 +35,15 @@ export class PersonThatFollowsAFlowfield extends GameObject {
   static minSquaredDistanceToGroup = 140 ** 2;
   static groupingForce = 0;
   // Match MySoldier.separationForce (literal — avoid pulling MySoldier at class init)
-  static separationForce = 36000;
+  static separationForce = 60000;
   static separationRadius = 30;
   static separationRadiusSq = this.separationRadius * this.separationRadius;
   static resistance = 0.5;
   static flowfieldName = 'sidewalks';
   /** Match MySoldier.followDestinationStrength */
-  static flowFollowStrength = 360;
-  /** Match MySoldier.chaseStrength — used for car avoid 1/r² */
-  static avoidChaseStrength = 72000;
+  static flowFollowStrength = 300;
+  /** Match MySoldier.chaseStrength — used for car avoid 1/r */
+  static avoidChaseStrength = 24500;
 
   onSpawned(spawnConfig = {}) {
     const spritesheets = ['civil1', 'civil2', 'civil3'];
@@ -193,7 +193,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
       const dist2 = dx * dx + dy * dy;
       if (!(dist2 > 1)) continue;
 
-      // 1/r² push — same order as MySoldier.chaseStrength, scaled by car speed
+      // 1/r push — same order as MySoldier.chaseStrength, scaled by car speed
       const avoidStrength =
         PersonThatFollowsAFlowfield.avoidChaseStrength *
         (0.25 + Math.min(1, speed / 600));

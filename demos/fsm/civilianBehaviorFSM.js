@@ -72,9 +72,11 @@ class FleeingCivilianBehaviorState extends FSMState {
 
         // Guard: dist2 must be > 1 to avoid division producing Infinity
         if (dist2 > 1) {
-          // Inverse square for panic effect (closer = stronger flee)
-          fleeX += dx / dist2;
-          fleeY += dy / dist2;
+          // 1/r, floored — close range can't rocket
+          const floorSq = owner.constructor.accelDistFloorSq;
+          const d2 = dist2 < floorSq ? floorSq : dist2;
+          fleeX += dx / d2;
+          fleeY += dy / d2;
           predatorCount++;
         }
       }
@@ -86,8 +88,8 @@ class FleeingCivilianBehaviorState extends FSMState {
       return;
     }
 
-    // Same 1/r² accel as MySoldier.chaseStrength (72000) — literal avoids init cycle
-    const fleeFactor = 72000;
+    // Average over predators — sum stacked N× with dozens of soldiers and rocketed
+    const fleeFactor = 40500 / predatorCount;
     owner.addAcceleration(fleeX * fleeFactor, fleeY * fleeFactor);
   }
 
@@ -97,8 +99,6 @@ class FleeingCivilianBehaviorState extends FSMState {
 }
 
 const PANIC_DURATION_MS = 20_000;
-// Match MySoldier.chaseStrength (literal — Civilian↔MySoldier import cycle)
-const PANIC_FLEE_FACTOR = 8000;
 
 class PanicCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) {
@@ -120,11 +120,13 @@ class PanicCivilianBehaviorState extends FSMState {
     const dist2 = dx * dx + dy * dy;
 
     if (dist2 > 1) {
-      // Normalize and scale for maximum flee speed (no * dt — see FLEEING)
-      const invDist = 1 / dist2;
+      // 1/r, floored — close range can't rocket
+      const floorSq = owner.constructor.accelDistFloorSq;
+      const d2 = dist2 < floorSq ? floorSq : dist2;
+      const panicFleeFactor = owner.constructor.panicFleeFactor;
       owner.addAcceleration(
-        dx * invDist * PANIC_FLEE_FACTOR,
-        dy * invDist * PANIC_FLEE_FACTOR
+        (dx / d2) * panicFleeFactor,
+        (dy / d2) * panicFleeFactor
       );
     }
   }

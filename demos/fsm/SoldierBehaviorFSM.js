@@ -271,14 +271,13 @@ class GoingToEnemyState extends FSMState {
       // owner.separateFromTeam();
 
       const chaseStrength = owner.constructor.chaseStrength;
-      // Guard: distSq must be > 1 to avoid division producing Infinity
+      // 1/r, no sqrt: |a| = chaseStrength / dist. Floor distSq so close range can't rocket.
       if (distSq > 1) {
         const dx = targetX - owner.x;
         const dy = targetY - owner.y;
-        owner.addAcceleration(
-          (dx / distSq) * chaseStrength,
-          (dy / distSq) * chaseStrength
-        );
+        const floorSq = owner.constructor.punchRangeSq;
+        const d2 = distSq < floorSq ? floorSq : distSq;
+        owner.addAcceleration((dx / d2) * chaseStrength, (dy / d2) * chaseStrength);
       }
       return;
     }
@@ -365,4 +364,3 @@ export class SoldierBehaviorFSM extends FSM {
 
   static initial = this.states.IDLE;
 }
-

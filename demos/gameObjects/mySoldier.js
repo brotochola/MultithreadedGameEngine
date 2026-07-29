@@ -19,12 +19,13 @@ export class MySoldier extends Person {
   static punchRangeSq = 35 ** 2; // Distance to start punching
   static punchDamage = 0.4; // Damage per punch
 
-  // Flocking behavior (override Person defaults) — px/s² (was frame × 3600)
+  // Flocking / locomotion — px/s². Terminal ≈ accel / linearDamping (damping=10 → follow~80 px/s)
   static groupingForce = 1188;
-  static separationForce = 36000;
-  static chaseStrength = 72000;
+  static separationForce = 60000;
+  // 1/r chase coeff: |a| = chaseStrength / dist (floored at punchRange). At 35px → |a|≈700 → ~70 px/s
+  static chaseStrength = 24500;
 
-  static followDestinationStrength = 3060;
+  static followDestinationStrength = 400;
 
   // Damage resistance (override Person default)
   static resistance = 0.6;
@@ -47,7 +48,7 @@ export class MySoldier extends Person {
 
     this.collider.visualRange = 250;
     this.setFixedRotation(1);
-    this.rigidBody.linearDamping = 10;
+    this.rigidBody.linearDamping = 1.2;
   }
 
   /**

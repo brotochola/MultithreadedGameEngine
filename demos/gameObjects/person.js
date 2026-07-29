@@ -44,6 +44,10 @@ export class Person extends Lootable {
   static separationRadiusSq = this.separationRadius * this.separationRadius;
   // Damage resistance (static - same for all Person instances)
   static resistance = 0.5;
+  // Civilian panic sprint — 1/r accel coeff (faster than flee); subclasses may override
+  static panicFleeFactor = 70000;
+  // Floor for 1/r accel (chase/flee/panic) — close range can't rocket
+  static accelDistFloorSq = 35 ** 2;
 
   static components = [
     ...Lootable.components,

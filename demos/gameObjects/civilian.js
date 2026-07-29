@@ -10,13 +10,13 @@ const { rng, Transform, GameObject } = WEED;
 
 export class Civilian extends Person {
   static scriptUrl = import.meta.url;
-  static tickInterval = 8; // match MySoldier so force×tickInterval impulse matches
+  static tickInterval = 4; // match MySoldier so force×tickInterval impulse matches
 
   static components = [...Person.components, CivilianBehaviorFSM, CivilianComponent];
 
-  // Match MySoldier (literals — avoid import cycle Civilian↔MySoldier↔SoldierFSM)
+  // Match MySoldier (literals — avoid class-init pull of MySoldier statics)
   static groupingForce = 1188;
-  static separationForce = 36000;
+  static separationForce = 60000;
 
   onSpawned(spawnConfig = {}) {
     // Random spritesheet for variety
@@ -30,6 +30,7 @@ export class Civilian extends Person {
     // groupingForce now uses static class property (Civilian.groupingForce)
     this.collider.visualRange = 150;
     this.setFixedRotation(1);
+    this.rigidBody.linearDamping = 2; // match MySoldier
   }
 
   recieveDamage(damage, sourceX, sourceY) {

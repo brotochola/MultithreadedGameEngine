@@ -30,7 +30,7 @@ export class Barrel extends GameObject {
 
     this.collider.shapeType = ShapeType.Circle;
     this.collider.radius = 10;
-
+    this.rigidBody.linearDamping = 10
     this.collider.visualRange = 50;
     this.setFixedRotation(1);
 
