@@ -1930,6 +1930,8 @@ export class GameObject {
       SpriteRenderer.boundsHalfH[i] = 0;
       SpriteRenderer.anchorX[i] = 0.5;
       SpriteRenderer.anchorY[i] = 1.0;
+      SpriteRenderer.inheritTransformRotation[i] = 1;
+      SpriteRenderer.spriteRotation[i] = 0;
       SpriteRenderer.renderVisible[i] = 1;
       SpriteRenderer.isItOnScreen[i] = 0;
       SpriteRenderer.animationState[i] = -1;

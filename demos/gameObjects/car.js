@@ -1,21 +1,29 @@
-// Car.js - Base car class using Box2D joints with a grid of connected circles
-// The car consists of a cols x 2 grid of CarPart entities (3x2 or 4x2).
-// Triangular mesh constraints keep the shape rigid with fewer constraints.
-// Two rows give a flatter front/back for more predictable crash behavior.
-// This base class has no input - extend it (like PlayerCar) for controllable cars.
+// Car.js - Single ShapeType.Box chassis with Phaser-style top-down forces
+// Lateral cancel via dot projection (capped skid), drive-to-speed, torque steer.
 
 import WEED from '/src/index.js';
-import { CarComponent, CAR_DEFAULTS, PART_KEYS, CONSTRAINT_KEYS } from '../components/carComponent.js';
-import { CarPart } from './carPart.js';
+import { CarComponent, CAR_DEFAULTS } from '../components/carComponent.js';
+import { dot2 } from '/src/core/utils.js';
 
-const { GameObject, RigidBody, SpriteRenderer, Transform, Joint, SpriteSheetRegistry, ParticleEmitter } = WEED;
+const {
+    GameObject,
+    RigidBody,
+    Collider,
+    CollisionListener,
+    SpriteRenderer,
+    SpriteSheetRegistry,
+    Transform,
+    ParticleEmitter,
+    enums,
+} = WEED;
+const { ShapeType } = enums;
 
 const TWO_PI = Math.PI * 2;
 
 export class Car extends GameObject {
     static scriptUrl = import.meta.url;
 
-    static components = [SpriteRenderer, CarComponent];
+    static components = [RigidBody, Collider, CollisionListener, SpriteRenderer, CarComponent];
 
     setup() {
         this.spriteRenderer.anchorX = 0.5;
@@ -27,19 +35,17 @@ export class Car extends GameObject {
         const y = spawnConfig.y || 0;
         const sprite = spawnConfig.sprite || 'car';
 
-        // Set car tuning from spawnConfig or defaults (stored in CarComponent)
-        this.carComponent.accelerationForce = spawnConfig.accelerationForce ?? CAR_DEFAULTS.accelerationForce;
-        this.carComponent.turnForce = spawnConfig.turnForce ?? CAR_DEFAULTS.turnForce;
-        this.carComponent.steeringAngle = spawnConfig.steeringAngle ?? CAR_DEFAULTS.steeringAngle;
-        this.carComponent.brakeForce = spawnConfig.brakeForce ?? CAR_DEFAULTS.brakeForce;
-        this.carComponent.spriteScale = spawnConfig.scale ?? spawnConfig.spriteScale ?? CAR_DEFAULTS.spriteScale;
-        this.carComponent.constraintStiffness = spawnConfig.constraintStiffness ?? CAR_DEFAULTS.constraintStiffness;
-        this.carComponent.maxSteerSpeed = spawnConfig.maxSteerSpeed ?? CAR_DEFAULTS.maxSteerSpeed;
+        this.carComponent.maxForwardSpeed = spawnConfig.maxForwardSpeed ?? CAR_DEFAULTS.maxForwardSpeed;
+        this.carComponent.maxBackwardSpeed = spawnConfig.maxBackwardSpeed ?? CAR_DEFAULTS.maxBackwardSpeed;
+        this.carComponent.maxDriveForce = spawnConfig.maxDriveForce ?? CAR_DEFAULTS.maxDriveForce;
+        this.carComponent.maxLateralImpulse = spawnConfig.maxLateralImpulse ?? CAR_DEFAULTS.maxLateralImpulse;
+        this.carComponent.turnTorque = spawnConfig.turnTorque ?? CAR_DEFAULTS.turnTorque;
+        this.carComponent.angularFriction = spawnConfig.angularFriction ?? CAR_DEFAULTS.angularFriction;
+        this.carComponent.forwardDrag = spawnConfig.forwardDrag ?? CAR_DEFAULTS.forwardDrag;
+        this.carComponent.minSteerSpeed = spawnConfig.minSteerSpeed ?? CAR_DEFAULTS.minSteerSpeed;
         this.carComponent.minSteerFactor = spawnConfig.minSteerFactor ?? CAR_DEFAULTS.minSteerFactor;
-        this.carComponent.slipSpeed = spawnConfig.slipSpeed ?? CAR_DEFAULTS.slipSpeed;
-        this.carComponent.tractionTight = spawnConfig.tractionTight ?? CAR_DEFAULTS.tractionTight;
-        this.carComponent.tractionLoose = spawnConfig.tractionLoose ?? CAR_DEFAULTS.tractionLoose;
-        this.carComponent.lateralDampening = spawnConfig.lateralDampening ?? CAR_DEFAULTS.lateralDampening;
+        this.carComponent.maxSteerSpeed = spawnConfig.maxSteerSpeed ?? CAR_DEFAULTS.maxSteerSpeed;
+        this.carComponent.spriteScale = spawnConfig.scale ?? spawnConfig.spriteScale ?? CAR_DEFAULTS.spriteScale;
 
         const scale = this.carComponent.spriteScale;
         this.setSpritesheet(sprite);
@@ -49,370 +55,150 @@ export class Car extends GameObject {
         const carLength = this.spriteRenderer.originalWidth * scale * 0.9;
         const carHeight = this.spriteRenderer.originalHeight * scale * 0.75;
 
-        // Circle radius - smaller so 2 rows fit within car height
-        const radius = carHeight / 4;
+        this.collider.shapeType = ShapeType.Box;
+        this.collider.width = carLength;
+        this.collider.height = carHeight;
+        this.collider.radius = 0;
+        this.collider.isTrigger = 0;
+        this.collider.friction = 0.3;
+        this.collider.visualRange = Math.hypot(carLength, carHeight) * 0.5 + 200;
 
-        // Grid: cols x 2 rows. Max 4x2.
-        const aspectRatio = carLength / carHeight;
-        let cols = aspectRatio >= 2.0 ? 4 : 3;
-        if (spawnConfig.gridCols) {
-            cols = Math.max(3, Math.min(4, spawnConfig.gridCols));
-        }
+        this.rigidBody.static = 0;
+        this.rigidBody.linearDamping = 0.05;
+        this.rigidBody.angularDamping = 0.5;
+        this.rigidBody.sleeping = 0;
+        // Box follows Transform.rotation; sprite uses pre-baked frames (draw rot = 0)
+        this.setFixedRotation(0);
+        this.spriteRenderer.inheritTransformRotation = 0;
+        this.spriteRenderer.spriteRotation = 0;
 
-        const rows = 2;
-        const partCount = cols * rows;
+        this.x = x;
+        this.y = y;
+        const heading = spawnConfig.rotation ?? 0;
+        this.rotation = heading;
 
-        this.carComponent.gridCols = cols;
-        this.carComponent.gridRows = rows;
-        this.carComponent.partCount = partCount;
-
-        // Spacing: parts span car length and height (minus padding for radius)
-        // Minimum center-to-center = 2*radius + 2px so edges are at least 2px apart
-        const minGap = 2;
-        const minSpacing = 2 * radius + minGap;
-        const lengthSpan = carLength - 2 * radius;
-        const heightSpan = carHeight - 2 * radius;
-        const colSpacing = cols > 1 ? Math.max(lengthSpan / (cols - 1), minSpacing) : minSpacing;
-        const rowSpacing = rows > 1 ? Math.max(heightSpan / (rows - 1), minSpacing) : minSpacing;
-
-        const totalLength = (cols - 1) * colSpacing;
-        const totalHeight = (rows - 1) * rowSpacing;
-        const startX = x - totalLength / 2;
-        const startY = y - totalHeight / 2;
-
-        const parts = [];
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
-                const partX = startX + col * colSpacing;
-                const partY = startY + row * rowSpacing;
-                const part = CarPart.spawn({ x: partX, y: partY, radius });
-
-                if (!part) {
-                    console.error(`Car: Failed to spawn CarPart ${row * cols + col}`);
-                    for (const p of parts) p.despawn();
-                    return;
-                }
-                parts.push(part);
-                this.carComponent[PART_KEYS[row * cols + col]] = part.index;
-            }
-        }
-
-        // Triangular mesh constraints - unique edges only
-        const edgeSet = new Set();
-        const addEdge = (a, b) => {
-            const key = a < b ? `${a},${b}` : `${b},${a}`;
-            if (edgeSet.has(key)) return -1;
-            edgeSet.add(key);
-            const dist = Math.hypot(
-                Transform.x[parts[a].index] - Transform.x[parts[b].index],
-                Transform.y[parts[a].index] - Transform.y[parts[b].index]
-            );
-            return Joint.addDistance({
-                entityA: parts[a].index,
-                entityB: parts[b].index,
-                length: dist,
-                enableSpring: this.carComponent.constraintStiffness < 0.99,
-                hertz: this.carComponent.constraintStiffness * 20,
-                dampingRatio: 0.7,
-            });
-        };
-
-        let constraintIndex = 0;
-        for (let row = 0; row < rows - 1; row++) {
-            for (let col = 0; col < cols - 1; col++) {
-                const i = row * cols + col;
-                const iRight = i + 1;
-                const iBottom = i + cols;
-                const iDiag = i + cols + 1;
-                // Two triangles: (i, iRight, iDiag) and (i, iDiag, iBottom)
-                const edges = [
-                    [i, iRight], [iRight, iDiag], [i, iDiag],
-                    [i, iBottom], [iDiag, iBottom]
-                ];
-                for (const [a, b] of edges) {
-                    const idx = addEdge(a, b);
-                    if (idx >= 0 && constraintIndex < CONSTRAINT_KEYS.length) {
-                        this.carComponent[CONSTRAINT_KEYS[constraintIndex]] = idx;
-                        constraintIndex++;
-                    }
-                }
-            }
-        }
-        this.carComponent.constraintCount = constraintIndex;
-    }
-
-    onDespawned() {
-        const constraintCount = this.carComponent.constraintCount;
-        const partCount = this.carComponent.partCount;
-
-        for (let i = 0; i < constraintCount; i++) {
-            const idx = this.carComponent[CONSTRAINT_KEYS[i]];
-            if (idx >= 0) Joint.remove(idx);
-            this.carComponent[CONSTRAINT_KEYS[i]] = -1;
-        }
-
-        for (let i = 0; i < partCount; i++) {
-            const partIdx = this.carComponent[PART_KEYS[i]];
-            if (partIdx > 0 && Transform.active[partIdx]) {
-                const part = GameObject.get(partIdx);
-                if (part) part.despawn();
-            }
-            this.carComponent[PART_KEYS[i]] = 0;
-        }
-
-        this.carComponent.partCount = 0;
-        this.carComponent.constraintCount = 0;
+        this.carComponent.active = 1;
         this.carComponent.vx = 0;
         this.carComponent.vy = 0;
-    }
-
-    /** Get front and back row part indices (for position/angle) */
-    _getFrontBackParts() {
-        const cols = this.carComponent.gridCols;
-        const rows = this.carComponent.gridRows;
-        const frontIndices = [];
-        const backIndices = [];
-        for (let r = 0; r < rows; r++) {
-            backIndices.push(this.carComponent[PART_KEYS[r * cols]]);
-            frontIndices.push(this.carComponent[PART_KEYS[r * cols + cols - 1]]);
-        }
-        return { frontIndices, backIndices };
-    }
-
-    /** Get all part indices (for applying forces) */
-    _getAllPartIndices() {
-        const partCount = this.carComponent.partCount;
-        const indices = [];
-        for (let i = 0; i < partCount; i++) {
-            indices.push(this.carComponent[PART_KEYS[i]]);
-        }
-        return indices;
-    }
-
-    /** Get front column part indices (for turning) */
-    _getFrontPartIndices() {
-        const cols = this.carComponent.gridCols;
-        const rows = this.carComponent.gridRows;
-        const indices = [];
-        for (let r = 0; r < rows; r++) {
-            indices.push(this.carComponent[PART_KEYS[r * cols + cols - 1]]);
-        }
-        return indices;
-    }
-
-    tick(dtRatio) {
-        const { frontIndices, backIndices } = this._getFrontBackParts();
-
-        const frontActive = frontIndices.every(i => Transform.active[i]);
-        const backActive = backIndices.every(i => Transform.active[i]);
-        if (!frontActive || !backActive) return;
-
-        const frontX = frontIndices.reduce((s, i) => s + Transform.x[i], 0) / frontIndices.length;
-        const frontY = frontIndices.reduce((s, i) => s + Transform.y[i], 0) / frontIndices.length;
-        const backX = backIndices.reduce((s, i) => s + Transform.x[i], 0) / backIndices.length;
-        const backY = backIndices.reduce((s, i) => s + Transform.y[i], 0) / backIndices.length;
-
-        const centerX = (frontX + backX) / 2;
-        const centerY = (frontY + backY) / 2;
-        Transform.x[this.index] = centerX;
-        Transform.y[this.index] = centerY;
-
-        // Average velocity across all car parts for stable camera/gameplay reads
-        const partCount = this.carComponent.partCount;
-        let sumVx = 0;
-        let sumVy = 0;
-        let activePartCount = 0;
-        for (let i = 0; i < partCount; i++) {
-            const partIdx = this.carComponent[PART_KEYS[i]];
-            if (partIdx > 0 && Transform.active[partIdx]) {
-                sumVx += RigidBody.vx[partIdx];
-                sumVy += RigidBody.vy[partIdx];
-                activePartCount++;
-            }
-        }
-        if (activePartCount > 0) {
-            const invCount = 1 / activePartCount;
-            this.carComponent.vx = sumVx * invCount;
-            this.carComponent.vy = sumVy * invCount;
-        } else {
-            this.carComponent.vx = 0;
-            this.carComponent.vy = 0;
-        }
-
-        this.carComponent.angle = Math.atan2(frontY - backY, frontX - backX);
-        this._applyLateralFriction(dtRatio);
-        this._emitDust(centerX, centerY, frontX, frontY, backX, backY);
+        this.carComponent.angle = heading;
         this._updateSpriteFrame();
     }
 
-    /** Emit dust particles from rear when driving (like fire.js smoke) */
-    _emitDust(centerX, centerY, frontX, frontY, backX, backY) {
-
-        const pi = this.carComponent.part0Index;
-        // const vx = RigidBody.vx[pi];
-        // const vy = RigidBody.vy[pi];
-        const speed = RigidBody.speed[pi];
-
-        if (speed < 90 || Math.random() > 0.35) return; // px/s
-
-        const angle = this.carComponent.angle;
-        const angleDeg = (angle * 180) / Math.PI;
-        const rearAngleMin = angleDeg + 160;
-        const rearAngleMax = angleDeg + 200;
-
-        ParticleEmitter.emit({
-            count: Math.floor(Math.random() * 2) + 1,
-            x: backX + (Math.random() - 0.5) * 8,
-            y: backY + (Math.random() - 0.5) * 8,
-            z: -5 - Math.random() * 10,
-            angleXY: { min: rearAngleMin, max: rearAngleMax },
-            speed: { min: 0.2, max: 1.2 },
-            vz: -Math.random() * 0.5,
-            gravity: 0,
-            rotation: { min: 0, max: 360 },
-            flipX: Math.random() > 0.5,
-            flipY: Math.random() > 0.5,
-            lifespan: { min: 300, max: 1800 },
-            scale: { min: 0.4, max: 1.5 },
-            texture: 'smoke',
-            tint: { min: 0x999999, max: 0xbbbbbb },
-            alpha: { min: 0.05, max: 0.1 },
-            tweenToAlpha0: true,
-        });
+    onDespawned() {
+        this.carComponent.active = 0;
+        this.carComponent.vx = 0;
+        this.carComponent.vy = 0;
+        this.carComponent.angle = 0;
     }
 
-    /** Apply force opposing lateral velocity - tire-like friction. Resists sliding from collisions. */
-    _applyLateralFriction(_dtRatio) {
+    _getHeadingAxes() {
+        // Heading in carComponent.angle; synced to Transform.rotation for the box
         const angle = this.carComponent.angle;
-        const forwardX = Math.cos(angle);
-        const forwardY = Math.sin(angle);
-        const lateralX = -forwardY;
-        const lateralY = forwardX;
-        // px/s² per (px/s) lateral — was 0.25 on frame-vel → ×60 (damping, not Δv)
-        const strength = (1 - this.carComponent.lateralDampening) * 15;
+        const frontX = Math.cos(angle);
+        const frontY = Math.sin(angle);
+        const rightX = frontY;
+        const rightY = -frontX;
+        return { angle, frontX, frontY, rightX, rightY };
+    }
 
-        for (const partIdx of this._getAllPartIndices()) {
-            const vx = RigidBody.vx[partIdx];
-            const vy = RigidBody.vy[partIdx];
-            const lateral = vx * lateralX + vy * lateralY;
-            RigidBody.ax[partIdx] -= lateralX * lateral * strength;
-            RigidBody.ay[partIdx] -= lateralY * lateral * strength;
+    /**
+     * Phaser updateFriction: capped lateral cancel + forward drag.
+     * Lateral cancel as impulse J=-m*v_lat → ax = Δv/dt (WEED force channel).
+     */
+    _updateFriction(dtRatio) {
+        const i = this.index;
+        const dt = Math.max(dtRatio / 60, 1e-6);
+        const vx = RigidBody.vx[i];
+        const vy = RigidBody.vy[i];
+        const { frontX, frontY, rightX, rightY } = this._getHeadingAxes();
+
+        const latSpeed = dot2(vx, vy, rightX, rightY);
+        let dVx = -rightX * latSpeed;
+        let dVy = -rightY * latSpeed;
+        const dLen = Math.hypot(dVx, dVy);
+        const maxDv = this.carComponent.maxLateralImpulse;
+        if (dLen > maxDv && dLen > 1e-6) {
+            const s = maxDv / dLen;
+            dVx *= s;
+            dVy *= s;
+        }
+        RigidBody.ax[i] += dVx / dt;
+        RigidBody.ay[i] += dVy / dt;
+
+        const fwdSpeed = dot2(vx, vy, frontX, frontY);
+        if (Math.abs(fwdSpeed) > 1e-3) {
+            const drag = -this.carComponent.forwardDrag * Math.abs(fwdSpeed);
+            const inv = 1 / Math.abs(fwdSpeed);
+            RigidBody.ax[i] += frontX * fwdSpeed * inv * drag;
+            RigidBody.ay[i] += frontY * fwdSpeed * inv * drag;
         }
     }
 
-    applyForces(forwardForce, turnForce, _dtRatio = 1) {
-        const { frontIndices, backIndices } = this._getFrontBackParts();
-        const frontActive = frontIndices.every(i => Transform.active[i]);
-        const backActive = backIndices.every(i => Transform.active[i]);
-        if (!frontActive || !backActive) return;
+    /**
+     * Phaser updateDrive + updateTurn.
+     * Turn integrates carComponent.angle; tick syncs Transform.rotation for the box.
+     * @param {number} desiredSpeed - target forward speed px/s (0 = coast)
+     * @param {number} turnInput - steer in [-1, 1]
+     */
+    applyForces(desiredSpeed, turnInput = 0, dtRatio = 1) {
+        const i = this.index;
+        if (!Transform.active[i]) return;
 
-        const angle = this.carComponent.angle;
-        const forwardX = Math.cos(angle);
-        const forwardY = Math.sin(angle);
-        const lateralX = -forwardY;
-        const lateralY = forwardX;
+        const vx = RigidBody.vx[i];
+        const vy = RigidBody.vy[i];
+        const { frontX, frontY } = this._getHeadingAxes();
+        const currentSpeed = dot2(vx, vy, frontX, frontY);
 
-        const allParts = this._getAllPartIndices();
-        let centerVx = 0, centerVy = 0;
-        for (const partIdx of allParts) {
-            centerVx += RigidBody.vx[partIdx];
-            centerVy += RigidBody.vy[partIdx];
-        }
-        centerVx /= allParts.length;
-        centerVy /= allParts.length;
-        const speed = Math.hypot(centerVx, centerVy);
-        const forwardSpeed = centerVx * forwardX + centerVy * forwardY;
-
-        const maxSteer = this.carComponent.maxSteerSpeed;
-        const minSteer = this.carComponent.minSteerFactor;
-        const speedFactor = Math.min(Math.abs(forwardSpeed) / maxSteer, 1.0);
-        const steerFactor = minSteer + (1 - minSteer) * speedFactor;
-        const steerDirection = forwardSpeed >= 0 ? 1 : -1;
-
-        const cols = this.carComponent.gridCols;
-        const partCount = this.carComponent.partCount;
-        const fX = frontIndices.reduce((s, i) => s + Transform.x[i], 0) / frontIndices.length;
-        const fY = frontIndices.reduce((s, i) => s + Transform.y[i], 0) / frontIndices.length;
-        const bX = backIndices.reduce((s, i) => s + Transform.x[i], 0) / backIndices.length;
-        const bY = backIndices.reduce((s, i) => s + Transform.y[i], 0) / backIndices.length;
-        const wheelBase = Math.hypot(fX - bX, fY - bY);
-
-        let newHeadingX = forwardX;
-        let newHeadingY = forwardY;
-        if (turnForce !== 0 && wheelBase > 0.1) {
-            const steerAngle = turnForce * this.carComponent.steeringAngle;
-            const delta = 0.016;
-            const rearX = (fX + bX) / 2 - forwardX * wheelBase / 2;
-            const rearY = (fY + bY) / 2 - forwardY * wheelBase / 2;
-            const rearNextX = rearX + centerVx * delta;
-            const rearNextY = rearY + centerVy * delta;
-            const cosS = Math.cos(steerAngle);
-            const sinS = Math.sin(steerAngle);
-            const frontNextX = rearX + forwardX * wheelBase + (centerVx * cosS - centerVy * sinS) * delta;
-            const frontNextY = rearY + forwardY * wheelBase + (centerVx * sinS + centerVy * cosS) * delta;
-            const dx = frontNextX - rearNextX;
-            const dy = frontNextY - rearNextY;
-            const len = Math.hypot(dx, dy) || 0.001;
-            newHeadingX = dx / len;
-            newHeadingY = dy / len;
-        }
-
-        const turnMagnitude = turnForce !== 0 ? Math.abs(turnForce) * steerFactor : 0;
-        const forwardScale = turnMagnitude > 0 ? 1 / (1 + turnMagnitude * 1.5) : 1;
-        // forwardForce already px/s² — do not * dtRatio
-        const scaledForward = forwardForce * forwardScale;
-
-        const slipSpeed = this.carComponent.slipSpeed;
-        const traction = speed > slipSpeed ? this.carComponent.tractionLoose : this.carComponent.tractionTight;
-        // was 0.008 on frame vel → ×60 into accel; no * dtRatio
-        const redirectK = 0.48 * traction;
-
-        if (speed > 60) { // px/s — was 1 frame unit
-            const dir = forwardSpeed >= 0 ? 1 : -1;
-            const desiredVx = newHeadingX * speed * dir;
-            const desiredVy = newHeadingY * speed * dir;
-            const corrX = (desiredVx - centerVx) * redirectK;
-            const corrY = (desiredVy - centerVy) * redirectK;
-            for (const partIdx of allParts) {
-                RigidBody.ax[partIdx] += corrX;
-                RigidBody.ay[partIdx] += corrY;
+        if (desiredSpeed !== 0) {
+            const maxForce = this.carComponent.maxDriveForce;
+            let force = 0;
+            if (desiredSpeed > currentSpeed) force = maxForce;
+            else if (desiredSpeed < currentSpeed) force = -maxForce;
+            if (force !== 0) {
+                RigidBody.ax[i] += frontX * force;
+                RigidBody.ay[i] += frontY * force;
             }
         }
 
-        if (scaledForward !== 0) {
-            for (const partIdx of allParts) {
-                RigidBody.ax[partIdx] += forwardX * scaledForward;
-                RigidBody.ay[partIdx] += forwardY * scaledForward;
+        if (turnInput !== 0) {
+            const absFwd = Math.abs(currentSpeed);
+            const minSteer = this.carComponent.minSteerSpeed;
+            if (absFwd >= minSteer) {
+                const maxSteer = this.carComponent.maxSteerSpeed;
+                const minFactor = this.carComponent.minSteerFactor;
+                const speedFactor = Math.min(absFwd / maxSteer, 1);
+                const steerFactor = minFactor + (1 - minFactor) * speedFactor;
+                const steerDirection = currentSpeed >= 0 ? 1 : -1;
+                const dt = Math.max(dtRatio / 60, 1e-6);
+                this.carComponent.angle +=
+                    turnInput * this.carComponent.turnTorque * steerFactor * steerDirection * dt;
             }
         }
 
-        if (turnForce !== 0) {
-            // turnForce is control units (~0.36); ×3600 → px/s² (frame Δv → continuous)
-            const effectiveTurn = turnForce * steerFactor * steerDirection * 3600;
-            for (let i = 0; i < partCount; i++) {
-                const partIdx = this.carComponent[PART_KEYS[i]];
-                const col = i % cols;
-                const frontness = (col - (cols - 1) / 2) * (2 / (cols - 1));
-                const partTurn = effectiveTurn * frontness;
-                RigidBody.ax[partIdx] += lateralX * partTurn;
-                RigidBody.ay[partIdx] += lateralY * partTurn;
-            }
-        }
-
-        if (forwardForce !== 0 || turnForce !== 0) {
-            for (const partIdx of allParts) {
-                RigidBody.sleeping[partIdx] = 0;
-                RigidBody.stillnessTime[partIdx] = 0;
-            }
+        if (desiredSpeed !== 0 || turnInput !== 0) {
+            RigidBody.sleeping[i] = 0;
         }
     }
 
+    tick(dtRatio) {
+        const i = this.index;
+        if (!Transform.active[i]) return;
+
+        this.carComponent.vx = RigidBody.vx[i];
+        this.carComponent.vy = RigidBody.vy[i];
+        // Drive Box2D body angle via command ring (raw Transform.rotation poke gets
+        // overwritten by physics step → collider flicker). Kill ω so collisions
+        // don't spin the box away from arcade heading.
+        this.rotation = this.carComponent.angle;
+        this.angularVelocity = 0;
+
+        this._updateFriction(dtRatio);
+        this._emitDust();
+        this._updateSpriteFrame();
+    }
+
+    /** Pick pre-baked angle animation from carComponent.angle (old jointed-car visual). */
     _updateSpriteFrame() {
-        const { frontIndices, backIndices } = this._getFrontBackParts();
-        const frontActive = frontIndices.every(i => Transform.active[i]);
-        const backActive = backIndices.every(i => Transform.active[i]);
-        if (!frontActive || !backActive) return;
-
         const spritesheetId = this.spriteRenderer.spritesheetId;
         if (!spritesheetId) return;
         const spritesheet = SpriteSheetRegistry.getSpritesheetName(spritesheetId);
@@ -433,5 +219,92 @@ export class Car extends GameObject {
 
         const index = Math.round((degreesNorm / 360) * angleKeys.length) % angleKeys.length;
         this.setAnimation(angleKeys[index].key);
+    }
+
+    _emitDust() {
+        const i = this.index;
+        const speed = RigidBody.speed[i];
+        if (speed < 90 || Math.random() > 0.35) return;
+
+        const angle = this.carComponent.angle;
+        const angleDeg = (angle * 180) / Math.PI;
+        const backX = Transform.x[i] - Math.cos(angle) * (this.collider.width * 0.35);
+        const backY = Transform.y[i] - Math.sin(angle) * (this.collider.width * 0.35);
+
+        ParticleEmitter.emit({
+            count: Math.floor(Math.random() * 2) + 1,
+            x: backX + (Math.random() - 0.5) * 8,
+            y: backY + (Math.random() - 0.5) * 8,
+            z: -5 - Math.random() * 10,
+            angleXY: { min: angleDeg + 160, max: angleDeg + 200 },
+            speed: { min: 0.2, max: 1.2 },
+            vz: -Math.random() * 0.5,
+            gravity: 0,
+            rotation: { min: 0, max: 360 },
+            flipX: Math.random() > 0.5,
+            flipY: Math.random() > 0.5,
+            lifespan: { min: 300, max: 1800 },
+            scale: { min: 0.4, max: 1.5 },
+            texture: 'smoke',
+            tint: { min: 0x999999, max: 0xbbbbbb },
+            alpha: { min: 0.05, max: 0.1 },
+            tweenToAlpha0: true,
+        });
+    }
+
+    onCollisionEnter(otherEntityIndex) {
+        this.rigidBody.ax *= 0.3;
+        this.rigidBody.ay *= 0.3;
+
+        const hitX = (this.x + Transform.x[otherEntityIndex]) / 2;
+        const hitY = (this.y + Transform.y[otherEntityIndex]) / 2;
+        const halfDiag = Math.hypot(this.collider.width, this.collider.height) * 0.5;
+        const speed = RigidBody.speed[this.index];
+
+        const relSpeed =
+            Math.abs(RigidBody.vx[otherEntityIndex] - RigidBody.vx[this.index]) +
+            Math.abs(RigidBody.vy[otherEntityIndex] - RigidBody.vy[this.index]);
+        const numSparks = Math.min(24, Math.max(1, Math.floor(relSpeed / 60)));
+
+        if (speed > 180) {
+            ParticleEmitter.emit({
+                count: numSparks,
+                x: hitX,
+                y: hitY,
+                z: -Math.random() * halfDiag * 0.25,
+                angleXY: { min: 0, max: 360 },
+                speed: { min: halfDiag * 0.08, max: halfDiag * 0.18 },
+                rotation: { min: 0, max: 360 },
+                vz: -Math.random() * 4 - 2,
+                gravity: 0.6,
+                lifespan: { min: 200, max: 1200 },
+                scale: { min: 0.3, max: 0.66 },
+                texture: '_whiteCircle',
+                tint: { min: 0xffff00, max: 0xffbb00 },
+                alpha: { min: 0.8, max: 1 },
+                stayOnTheFloor: false,
+                despawnOnGroundContact: true,
+            });
+
+            ParticleEmitter.emit({
+                count: numSparks,
+                x: hitX,
+                y: hitY + Math.random() * 8,
+                z: -5 - Math.random() * 10,
+                angleXY: 0,
+                speed: { min: 0.2, max: 1.2 },
+                vz: -Math.random() * 1.5,
+                gravity: 0,
+                rotation: { min: 0, max: 360 },
+                flipX: Math.random() > 0.5,
+                flipY: Math.random() > 0.5,
+                lifespan: { min: 300, max: 1800 },
+                scale: { min: 0.4, max: 1.5 },
+                texture: 'smoke',
+                tint: { min: 0x999999, max: 0xbbbbbb },
+                alpha: { min: 0.05, max: 0.1 },
+                tweenToAlpha0: true,
+            });
+        }
     }
 }

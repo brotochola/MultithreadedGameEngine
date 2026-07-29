@@ -368,6 +368,18 @@ export function distanceSq2D(x1, y1, x2, y2) {
 }
 
 /**
+ * 2D dot product (JS Math has no Math.dot).
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} bx
+ * @param {number} by
+ * @returns {number} ax*bx + ay*by
+ */
+export function dot2(ax, ay, bx, by) {
+  return ax * bx + ay * by;
+}
+
+/**
  * Generate a unique numeric key for an ordered pair using Cantor pairing function
  * Maps two natural numbers to a single unique natural number.
  * Used for collision tracking to avoid string allocation.

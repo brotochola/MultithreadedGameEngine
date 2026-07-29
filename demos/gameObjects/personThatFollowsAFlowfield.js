@@ -4,7 +4,6 @@ import { PersonAnimationFSM } from '../fsm/PersonAnimationFSM.js';
 import { LootableComponent } from '../components/lootableComponent.js';
 import { CarComponent } from '../components/carComponent.js';
 import { ParticleEmitter, SpriteSheetRegistry, SoundManager } from '../../src/index.js';
-import { CarPart } from './carPart.js';
 
 const { rng, GameObject, RigidBody, Collider, CollisionListener, SpriteRenderer, NavGrid, Transform } = WEED;
 
@@ -91,7 +90,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
   }
 
   onCollisionEnter(other) {
-    if (Transform.entityType[other] != CarPart.entityType) return;
+    if (!CarComponent.active || !CarComponent.active[other]) return;
 
     const carVx = CarComponent.vx[other];
     const carVy = CarComponent.vy[other];
@@ -181,7 +180,7 @@ export class PersonThatFollowsAFlowfield extends GameObject {
 
     for (let n = 0; n < this.neighborCount; n++) {
       const neighborIndex = this.getNeighbor(n);
-      if (Transform.entityType[neighborIndex] !== CarPart.entityType) continue;
+      if (!CarComponent.active || !CarComponent.active[neighborIndex]) continue;
 
       const carX =
         Transform.x[neighborIndex] + CarComponent.vx[neighborIndex] * lookAheadSec;

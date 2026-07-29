@@ -29,6 +29,11 @@ export class SpriteRenderer extends Component {
     anchorX: Float32Array, // Separate X anchor
     anchorY: Float32Array, // Separate Y anchor
 
+    // Draw rotation: 1 = use Transform.rotation (default); 0 = use spriteRotation
+    // Lets physics/collider angle diverge from pre-baked directional sprites (e.g. cars)
+    inheritTransformRotation: Uint8Array,
+    spriteRotation: Float32Array, // radians; used when inheritTransformRotation === 0
+
     // Layer assignment (0 = default ENTITIES layer, set via GameObject.setLayer())
     layerId: Uint8Array,
 

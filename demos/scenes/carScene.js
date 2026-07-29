@@ -1,11 +1,10 @@
 // CarScene.js - Car physics demo scene
-// Demonstrates Box2D car using two connected circles (joints)
+// Single ShapeType.Box chassis per car (Phaser-style top-down forces)
 
 import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
 import { AICar } from '../gameObjects/aiCar.js';
 import { PlayerCar } from '../gameObjects/playerCar.js';
-import { CarPart } from '../gameObjects/carPart.js';
 import { NavGrid } from '../../src/core/NavGrid.js';
 import { rng } from '../../src/core/utils.js';
 import { Rock } from '../gameObjects/rock.js';
@@ -73,9 +72,9 @@ export class CarScene extends WEED.Scene {
 
         // Physics configuration
         physics: {
-            subStepCount: 6, // Higher substeps for stable constraints
+            subStepCount: 4,
             noLimitFPS: true,
-            maxJoints: 4096, // Box2D WASM joint cap
+            maxJoints: 0,
             boundaryElasticity: 0.3,
             collisionResponseStrength: 0.8,
             gravity: { x: 0, y: 0 },
@@ -193,7 +192,6 @@ export class CarScene extends WEED.Scene {
     // ========================================
 
     static entities = [
-        [CarPart, 5000],   // Physics bodies (up to 8 per car, 501 cars) - must load first (Car depends on it)
         [AICar, 1000],    // NPC cars following player via flowfield - must load before PlayerCar
         [PlayerCar, 1],   // Player-controlled car (only 1)
         [Rock, 1000],

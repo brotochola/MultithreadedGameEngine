@@ -5,22 +5,21 @@ import { Car } from './car.js';
 import { PlayerCar } from './playerCar.js';
 import { NavGrid } from '../../src/core/NavGrid.js';
 import { CarComponent } from '../components/carComponent.js';
-import { distanceSq2D } from '../../src/index.js';
+import { dot2 } from '/src/core/utils.js';
 
-const { Transform, SpriteRenderer } = WEED;
+const { SpriteRenderer, RigidBody, Collider, CollisionListener } = WEED;
 
-// Reusable object for flowfield sampling (zero allocation)
 const _navVec = { x: 0, y: 0 };
 
 export class AICar extends Car {
     static scriptUrl = import.meta.url;
 
-    static components = [SpriteRenderer, CarComponent];
+    static components = [RigidBody, Collider, CollisionListener, SpriteRenderer, CarComponent];
 
     static aiTurnStrength = 0.8;
     static aiForwardStrength = 0.9;
     static aiForwardAlignmentThreshold = 0.15;
-    static aiBrakeForwardSpeedThreshold = 60; // px/s — was 1 frame unit
+    static aiBrakeForwardSpeedThreshold = 60; // px/s
     static flowfieldName = 'roads';
 
     tick(dtRatio) {
@@ -28,53 +27,41 @@ export class AICar extends Car {
 
         NavGrid.requestVectorFromStaticFlowfield(this.constructor.flowfieldName, this.x, this.y, _navVec);
 
-        // Fallback to dynamic flowfield toward player if static flowfield has no direction here
         if (_navVec.x === 0 && _navVec.y === 0) {
-
             const player = PlayerCar.getFirstActiveInstance();
             if (player) {
-                //   NavGrid.requestVector(this.x, this.y, player.x, player.y, _navVec);
-
-                _navVec.x = player.x - this.x
-                _navVec.y = player.y - this.y
+                _navVec.x = player.x - this.x;
+                _navVec.y = player.y - this.y;
             }
-
         }
 
         const lenSq = _navVec.x * _navVec.x + _navVec.y * _navVec.y;
         if (lenSq < 0.01) return;
 
-        const { frontIndices, backIndices } = this._getFrontBackParts();
-        const frontActive = frontIndices.every(i => Transform.active[i]);
-        const backActive = backIndices.every(i => Transform.active[i]);
-        if (!frontActive || !backActive) return;
-
-        const frontX = frontIndices.reduce((s, i) => s + Transform.x[i], 0) / frontIndices.length;
-        const frontY = frontIndices.reduce((s, i) => s + Transform.y[i], 0) / frontIndices.length;
-        const backX = backIndices.reduce((s, i) => s + Transform.x[i], 0) / backIndices.length;
-        const backY = backIndices.reduce((s, i) => s + Transform.y[i], 0) / backIndices.length;
-
-        const currentAngle = Math.atan2(frontY - backY, frontX - backX);
+        const currentAngle = this.carComponent.angle;
         const desiredAngle = Math.atan2(_navVec.y, _navVec.x);
 
         let angleDiff = desiredAngle - currentAngle;
         while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
         while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-        const turnForce = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff) * 2, 1) * this.constructor.aiTurnStrength;
+        const turnInput = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff) * 2, 1) * this.constructor.aiTurnStrength;
 
         const alignment = Math.cos(angleDiff);
-        const accel = this.carComponent.accelerationForce;
-        const brakeForce = this.carComponent.brakeForce;
-        const forwardSpeed = this.carComponent.vx * Math.cos(currentAngle) + this.carComponent.vy * Math.sin(currentAngle);
+        const forwardSpeed = dot2(
+            this.carComponent.vx,
+            this.carComponent.vy,
+            Math.cos(currentAngle),
+            Math.sin(currentAngle)
+        );
 
-        let forwardForce = 0;
+        let desiredSpeed = 0;
         if (alignment > this.constructor.aiForwardAlignmentThreshold) {
-            forwardForce = accel * this.constructor.aiForwardStrength;
+            desiredSpeed = this.carComponent.maxForwardSpeed * this.constructor.aiForwardStrength;
         } else if (forwardSpeed > this.constructor.aiBrakeForwardSpeedThreshold) {
-            forwardForce = -accel * brakeForce;
+            desiredSpeed = 0; // coast / let friction kill speed while turning
         }
 
-        this.applyForces(forwardForce, turnForce, dtRatio);
+        this.applyForces(desiredSpeed, turnInput, dtRatio);
     }
 }

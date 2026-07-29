@@ -1453,6 +1453,8 @@ class PreRenderWorker extends AbstractWorker {
         const srAnimSpeed = SpriteRenderer.animationSpeed;
         const srLoop = SpriteRenderer.loop;
         const srIsAnimated = SpriteRenderer.isAnimated;
+        const srInheritTransformRotation = SpriteRenderer.inheritTransformRotation;
+        const srSpriteRotation = SpriteRenderer.spriteRotation;
 
         const particleX = ParticleComponent.x;
         const particleY = ParticleComponent.y;
@@ -1537,7 +1539,9 @@ class PreRenderWorker extends AbstractWorker {
                 rqY[out] = currY;
                 rqScaleX[out] = srScaleX[idx];
                 rqScaleY[out] = srScaleY[idx];
-                rqRotation[out] = entityRotation[idx];
+                rqRotation[out] = srInheritTransformRotation[idx]
+                    ? entityRotation[idx]
+                    : srSpriteRotation[idx];
                 rqAlpha[out] = srAlpha[idx];
                 rqTint[out] = srTint[idx];
                 rqAnchorX[out] = srAnchorX[idx];
@@ -1770,6 +1774,8 @@ class PreRenderWorker extends AbstractWorker {
         const srAnimSpeed = SpriteRenderer.animationSpeed;
         const srLoop = SpriteRenderer.loop;
         const srIsAnimated = SpriteRenderer.isAnimated;
+        const srInheritTransformRotation = SpriteRenderer.inheritTransformRotation;
+        const srSpriteRotation = SpriteRenderer.spriteRotation;
 
         const frameIndex = this.entityFrameIndex;
         const frameAccum = this.entityFrameAccumulator;
@@ -1908,7 +1914,9 @@ class PreRenderWorker extends AbstractWorker {
                     rqY[out] = entityY[idx];
                     rqScaleX[out] = srScaleX[idx];
                     rqScaleY[out] = srScaleY[idx];
-                    rqRotation[out] = entityRotation[idx];
+                    rqRotation[out] = srInheritTransformRotation[idx]
+                        ? entityRotation[idx]
+                        : srSpriteRotation[idx];
                     rqAlpha[out] = srAlpha[idx];
                     rqTint[out] = srTint[idx];
                     rqAnchorX[out] = srAnchorX[idx];

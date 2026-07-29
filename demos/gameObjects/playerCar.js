@@ -1,25 +1,24 @@
 // PlayerCar.js - Player-controlled car extending the base Car class
-// Adds keyboard input handling for WASD/Arrow keys
+// WASD/Arrows → desired speed + turn input (Phaser drive-to-speed)
 
 import WEED from '/src/index.js';
 import { Car } from './car.js';
 import { CarComponent } from '../components/carComponent.js';
+import { dot2 } from '/src/core/utils.js';
 
-const { Keyboard, SpriteRenderer, RigidBody, Camera, Transform } = WEED;
-// Velocities are px/s — old constants assumed frame-vel (~1/60)
+const { Keyboard, SpriteRenderer, RigidBody, Collider, CollisionListener, Camera, Transform } = WEED;
+
 const ZOOM_AT_MIN_SPEED = 1.0;
 const ZOOM_AT_MAX_SPEED = 0.25;
 const SPEED_FOR_MIN_ZOOM = 0;
-const SPEED_FOR_MAX_ZOOM = 1200; // px/s — was 60 (frame-vel era / too low for px/s)
-const LOOK_AHEAD_SEC = 0.25; // was vx_frame * 15 ≡ vx_pxs * 0.25
+const SPEED_FOR_MAX_ZOOM = 1200; // px/s
+const LOOK_AHEAD_SEC = 0.25;
 const CAMERA_FOLLOW_SMOOTH = 0.05;
-const SHADOW_TEXTURE_SIZE = 200;
 
 export class PlayerCar extends Car {
     static scriptUrl = import.meta.url;
 
-    // Must explicitly define components for entity pool initialization
-    static components = [SpriteRenderer, CarComponent];
+    static components = [RigidBody, Collider, CollisionListener, SpriteRenderer, CarComponent];
 
     tick(dtRatio) {
         super.tick(dtRatio);
@@ -30,8 +29,9 @@ export class PlayerCar extends Car {
         this._updateCamera(dtRatio);
         this._handleInput(dtRatio);
     }
+
     _updateCamera(dtRatio) {
-        const player = this.index
+        const player = this.index;
         if (player === null) return;
         if (!Transform.active[player]) return;
 
@@ -40,64 +40,52 @@ export class PlayerCar extends Car {
         const vx = CarComponent.vx[player];
         const vy = CarComponent.vy[player];
 
-        const futureX = centerX + vx * LOOK_AHEAD_SEC;
-        const futureY = centerY + vy * LOOK_AHEAD_SEC;
-        Camera.follow(futureX, futureY, CAMERA_FOLLOW_SMOOTH, dtRatio);
+        Camera.follow(
+            centerX + vx * LOOK_AHEAD_SEC,
+            centerY + vy * LOOK_AHEAD_SEC,
+            CAMERA_FOLLOW_SMOOTH,
+            dtRatio
+        );
 
         const speed = Math.hypot(vx, vy);
         const speedT = Math.min(
             1,
             Math.max(0, (speed - SPEED_FOR_MIN_ZOOM) / (SPEED_FOR_MAX_ZOOM - SPEED_FOR_MIN_ZOOM))
         );
-        const zoom = ZOOM_AT_MIN_SPEED + speedT * (ZOOM_AT_MAX_SPEED - ZOOM_AT_MIN_SPEED);
-        Camera.setZoom(zoom);
+        Camera.setZoom(ZOOM_AT_MIN_SPEED + speedT * (ZOOM_AT_MAX_SPEED - ZOOM_AT_MIN_SPEED));
     }
 
     /**
-     * Handle keyboard input for car controls
-     * W/S = accelerate/brake-reverse
-     * A/D = turn (works at all speeds - arcade feel)
+     * W/S → desired forward/back speed; A/D → turn [-1, 1]
      */
     _handleInput(dtRatio) {
-        let forwardForce = 0;
-        let turnForce = 0;
+        const forward = Keyboard.w || Keyboard.arrowup;
+        const reverse = Keyboard.s || Keyboard.arrowdown;
 
-        const accel = this.carComponent.accelerationForce;
-        const brakeMult = this.carComponent.brakeForce;
-
-        // W - Accelerate forward
-        if (Keyboard.w || Keyboard.arrowup) {
-            forwardForce += accel;
+        let desiredSpeed = 0;
+        if (forward && !reverse) {
+            desiredSpeed = this.carComponent.maxForwardSpeed;
+        } else if (reverse && !forward) {
+            // Phaser: reverse desired speed also brakes while moving forward
+            desiredSpeed = this.carComponent.maxBackwardSpeed;
         }
 
-        // S - Brake (stronger when going forward) or reverse
-        if (Keyboard.s || Keyboard.arrowdown) {
-            const forwardSpeed = this._getForwardSpeed();
-            const isMovingForward = forwardSpeed > 60; // px/s — was 1 frame unit
-            forwardForce -= isMovingForward ? accel * brakeMult : accel;
-        }
+        let turnInput = 0;
+        if (Keyboard.d || Keyboard.arrowright) turnInput += 1;
+        if (Keyboard.a || Keyboard.arrowleft) turnInput -= 1;
 
-        // D - Turn right
-        if (Keyboard.d || Keyboard.arrowright) {
-            turnForce += this.carComponent.turnForce;
-        }
-
-        // A - Turn left
-        if (Keyboard.a || Keyboard.arrowleft) {
-            turnForce -= this.carComponent.turnForce;
-        }
-
-        if (forwardForce !== 0 || turnForce !== 0) {
-            this.applyForces(forwardForce, turnForce, dtRatio);
+        if (desiredSpeed !== 0 || turnInput !== 0) {
+            this.applyForces(desiredSpeed, turnInput, dtRatio);
         }
     }
 
     _getForwardSpeed() {
-        const { frontIndices } = this._getFrontBackParts();
         const angle = this.carComponent.angle;
-        const velX = frontIndices.reduce((s, i) => s + RigidBody.vx[i], 0) / frontIndices.length;
-        const velY = frontIndices.reduce((s, i) => s + RigidBody.vy[i], 0) / frontIndices.length;
-        return velX * Math.cos(angle) + velY * Math.sin(angle);
+        return dot2(
+            RigidBody.vx[this.index],
+            RigidBody.vy[this.index],
+            Math.cos(angle),
+            Math.sin(angle)
+        );
     }
-
 }
