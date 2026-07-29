@@ -89,6 +89,12 @@ export {
   bindMovedBodies,
   isMovedBodiesBound,
 } from './box2d/box2dMovedBodies.js';
+export {
+  box2dQueryAABB,
+  box2dQueryAABBAsync,
+  bindQueryAabbSab,
+  isQueryAabbBound,
+} from './box2d/box2dQueryAabb.js';
 
 // ============================================================================
 // FLASHES
@@ -195,6 +201,12 @@ import {
   isMovedBodiesBound,
 } from './box2d/box2dMovedBodies.js';
 import {
+  box2dQueryAABB,
+  box2dQueryAABBAsync,
+  bindQueryAabbSab,
+  isQueryAabbBound,
+} from './box2d/box2dQueryAabb.js';
+import {
   ShapeType,
   MAX_POLYGON_VERTICES,
   Box2dBodyType,
@@ -282,6 +294,12 @@ const WEED = Object.freeze({
   getMovedBodiesViews,
   bindMovedBodies,
   isMovedBodiesBound,
+
+  // Box2D QueryAABB (logic sync / Scene async)
+  box2dQueryAABB,
+  box2dQueryAABBAsync,
+  bindQueryAabbSab,
+  isQueryAabbBound,
 
   // Flashes
   Flash,

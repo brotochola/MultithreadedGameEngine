@@ -15,6 +15,7 @@
     'box2dContactHitRing.impl.js',
     'box2dJointBreakRing.impl.js',
     'box2dMovedBodies.impl.js',
+    'box2dQueryAabb.impl.js',
   );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
   const publishBox2dContactEvent = Box2dContactRing.publishContactEvent;
@@ -896,6 +897,32 @@
     return drainBox2dCommandRing(cmdI32, cmdF32, cmdHandlers);
   }
 
+  function serviceQueryAabb() {
+    if (!world || !world._querySlots) return;
+    Box2dQueryAabb.servicePendingQuery(function (
+      x0,
+      y0,
+      x1,
+      y1,
+      categoryBits,
+      maskBits,
+      results,
+      cap,
+    ) {
+      var n = world.overlapAABB(x0, y0, x1, y1, world._querySlots, {
+        categoryBits: categoryBits,
+        maskBits: maskBits,
+      });
+      var write = n < cap ? n : cap;
+      var slots = world._querySlots;
+      if (write > slots.length) write = slots.length;
+      for (var i = 0; i < write; i++) {
+        results[i] = slots[i] | 0;
+      }
+      return n | 0;
+    });
+  }
+
   function applyForcesAndTorque() {
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
@@ -1133,7 +1160,12 @@
     // Honor scene physics.subStepCount (BallsScene = 4) — do not inflate
     const solverSteps = Math.max(1, hostSubSteps | 0);
     const dt = hostDt;
-    if (!(dt > 0) || !world) {
+    if (!world) {
+      return;
+    }
+    // Service even when dt==0 / paused so sync box2dQueryAABB callers do not hang.
+    if (!(dt > 0)) {
+      serviceQueryAabb();
       return;
     }
     const t0 = performance.now();
@@ -1143,6 +1175,7 @@
     const t2 = performance.now();
     const commandCount = drainCommands();
     const t3 = performance.now();
+    serviceQueryAabb();
     snapshotPrevPose(entityCount);
     applyForcesAndTorque();
     const t4 = performance.now();
@@ -1279,6 +1312,9 @@
     if (data.commandSab) {
       cmdI32 = new Int32Array(data.commandSab);
       cmdF32 = new Float32Array(data.commandSab);
+    }
+    if (data.queryAabbSab) {
+      Box2dQueryAabb.bindQueryAabbSab(data.queryAabbSab);
     }
     if (data.contactSab) {
       Box2dContactRing.bindContactRing(data.contactSab);

@@ -278,6 +278,7 @@
     frameRateIndex: -1,
     frameRateStride: 1,
     commandSab: null,
+    queryAabbSab: null,
     contactSab: null,
     movedSab: null,
     hitSab: null,
@@ -336,6 +337,7 @@
       channelOffsets: ready.channelOffsets,
       sleepingByteOffset: ready.sleepingByteOffset,
       commandSab: state.commandSab,
+      queryAabbSab: state.queryAabbSab,
       contactSab: state.contactSab,
       movedSab: state.movedSab,
       hitSab: state.hitSab,
@@ -366,6 +368,8 @@
 
     state.commandSab = Box2dCommandRing.createCommandRingSab();
     Box2dCommandRing.bindCommandRing(state.commandSab);
+    state.queryAabbSab = Box2dQueryAabb.createQueryAabbSab();
+    Box2dQueryAabb.bindQueryAabbSab(state.queryAabbSab);
     state.contactSab = Box2dContactRing.createContactRingSab(
       state.settings.contactRingCapacity,
     );
@@ -395,6 +399,7 @@
       subSteps: s.subStepCount,
       sleeping: state.sleepingEnabled !== false,
       commandSab: state.commandSab,
+      queryAabbSab: state.queryAabbSab,
       contactSab: state.contactSab,
       movedSab: state.movedSab,
       hitSab: state.hitSab,

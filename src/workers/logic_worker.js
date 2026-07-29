@@ -24,6 +24,7 @@ import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
 import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
+import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
 import {
   bindContactRing,
@@ -922,6 +923,9 @@ class LogicWorker extends AbstractWorker {
         rebindBox2dHotFields(data);
         if (data.commandSab) {
           bindCommandRing(data.commandSab);
+        }
+        if (data.queryAabbSab) {
+          bindQueryAabbSab(data.queryAabbSab);
         }
         if (data.movedSab) {
           bindMovedBodies(data.movedSab);

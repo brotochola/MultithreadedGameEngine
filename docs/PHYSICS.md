@@ -107,6 +107,23 @@ Body create/destroy sync uses a **dirty bitset + generation** (`box2dBodySync`),
 
 ---
 
+## Gameplay QueryAABB
+
+On-demand Box2D broadphase query for entity ids (parallel to spatial `neighborData`, does **not** replace spatial workers).
+
+| Caller | API | Blocking |
+|--------|-----|----------|
+| Logic / `GameObject` | `box2dQueryAABB(x0, y0, x1, y1, out, filter?)` | Sync (`Atomics.wait`) |
+| Scene (main) | `scene.box2dQueryAABB(...)` → Promise | Async (`Atomics.waitAsync`) |
+
+- `out` must be `Int32Array`. Return value = full hit count; written slots = `min(count, out.length)`.
+- Single-flight SAB (`box2dQueryAabb`): one outstanding query process-wide; concurrent callers serialize.
+- Physics services pending queries in `doStep` after command drain (and when `dt==0` so paused worlds still answer).
+- Optional `filter`: `{ categoryBits, maskBits }` (defaults match `physics-api` overlap filters).
+- Demo self-check: [`demos/scenes/Box2dQueryAabbScene.js`](../demos/scenes/Box2dQueryAabbScene.js).
+
+---
+
 ## Dense collider list (`buildDenseColliders`)
 
 **Legacy (pre–Box2D):** Once per physics frame the Verlet path built a dense list of entities with `neighborData` collision candidates.

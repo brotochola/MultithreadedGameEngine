@@ -45,6 +45,7 @@
     import { ConstraintBoxScene } from '/demos/scenes/ConstraintBoxScene.js';
     import { OrientedBoxScene } from '/demos/scenes/OrientedBoxScene.js';
     import { WeldBreakScene } from '/demos/scenes/WeldBreakScene.js';
+    import { Box2dQueryAabbScene } from '/demos/scenes/Box2dQueryAabbScene.js';
     // Destructure what we need from WEED
     const { GameEngine } = WEED;
 
@@ -72,6 +73,7 @@
       { name: 'Constraint Boxes', class: ConstraintBoxScene },
       { name: 'Oriented Boxes', class: OrientedBoxScene },
       { name: 'Weld Break', class: WeldBreakScene },
+      { name: 'Box2D QueryAABB', class: Box2dQueryAabbScene },
     ]
     // Register available scenes with DebugUI for scene switching
     if (game.debugUI) {

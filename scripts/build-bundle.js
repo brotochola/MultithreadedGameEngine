@@ -43,6 +43,7 @@ const BOX2D_SIBLING_NAMES = [
     'box2dContactHitRing.impl.js',
     'box2dJointBreakRing.impl.js',
     'box2dMovedBodies.impl.js',
+    'box2dQueryAabb.impl.js',
 ];
 
 const KEEP_DIST_FILES = new Set([

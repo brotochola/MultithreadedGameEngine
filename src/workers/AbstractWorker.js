@@ -40,6 +40,7 @@ import { SoundManager } from '../core/SoundManager.js';
 import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
+import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
 import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
 
@@ -1148,6 +1149,9 @@ export class AbstractWorker {
       rebindBox2dHotFields(data);
       if (data.commandSab) {
         bindCommandRing(data.commandSab);
+      }
+      if (data.queryAabbSab) {
+        bindQueryAabbSab(data.queryAabbSab);
       }
       if (data.movedSab) {
         bindMovedBodies(data.movedSab);

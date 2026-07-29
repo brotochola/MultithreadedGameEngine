@@ -9,6 +9,10 @@ import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing, enqueueExplode } from '../box2d/box2dCommandRing.js';
+import {
+  bindQueryAabbSab,
+  box2dQueryAABBAsync,
+} from '../box2d/box2dQueryAabb.js';
 import { bindMovedBodies, getMovedBodiesViews } from '../box2d/box2dMovedBodies.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
@@ -1567,6 +1571,7 @@ class Scene {
         channelOffsets: e.data.channelOffsets,
         sleepingByteOffset: e.data.sleepingByteOffset,
         commandSab: e.data.commandSab,
+        queryAabbSab: e.data.queryAabbSab || null,
         contactSab: e.data.contactSab,
         movedSab: e.data.movedSab || null,
         hitSab: e.data.hitSab || null,
@@ -1585,6 +1590,9 @@ class Scene {
       this.box2dHotFields = payload;
       if (payload.commandSab) {
         bindCommandRing(payload.commandSab);
+      }
+      if (payload.queryAabbSab) {
+        bindQueryAabbSab(payload.queryAabbSab);
       }
       if (payload.movedSab) {
         bindMovedBodies(payload.movedSab);
@@ -1722,6 +1730,21 @@ class Scene {
    */
   explode({ x, y, radius, impulsePerLength, maskBits = 0xffffffff }) {
     enqueueExplode(maskBits >>> 0, x, y, radius, impulsePerLength);
+  }
+
+  /**
+   * Box2D QueryAABB from main thread (async — Atomics.waitAsync).
+   * Logic / GameObject should use sync `box2dQueryAABB` instead.
+   * @param {number} x0
+   * @param {number} y0
+   * @param {number} x1
+   * @param {number} y1
+   * @param {Int32Array} out
+   * @param {{categoryBits?:number, maskBits?:number}} [filter]
+   * @returns {Promise<number>} full hit count (may exceed out.length)
+   */
+  box2dQueryAABB(x0, y0, x1, y1, out, filter) {
+    return box2dQueryAABBAsync(x0, y0, x1, y1, out, filter);
   }
 
   updatePhysicsConfig(partialConfig = {}) {
