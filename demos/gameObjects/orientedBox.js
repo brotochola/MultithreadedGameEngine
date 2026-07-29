@@ -34,7 +34,6 @@ export class OrientedBox extends GameObject {
         this.rigidBody.angularDamping = 0.01;
         this.rigidBody.angularVelocity = 0;
         this.rigidBody.sleeping = 0;
-        this.rigidBody.stillnessTime = 0;
 
         this.rotation = spawnConfig.rotation ?? 0;
 
@@ -48,3 +47,4 @@ export class OrientedBox extends GameObject {
         // Physics owns position + rotation
     }
 }
+

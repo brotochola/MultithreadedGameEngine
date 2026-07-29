@@ -50,7 +50,8 @@ export class BallsScene extends Scene {
     },
 
     renderer: {
-      noLimitFPS: true
+      noLimitFPS: true,
+      maxVisibleRenderables: 11000,
     },
 
     lighting: {
@@ -73,7 +74,7 @@ export class BallsScene extends Scene {
   // ========================================
 
   static entities = [
-    [Ball, 10000], // Pre-allocate pool for 10000 balls
+    [Ball, 20000], // Pre-allocate pool for 10000 balls
     [Floor, 1000], // Pre-allocate pool for floor and walls
   ];
 

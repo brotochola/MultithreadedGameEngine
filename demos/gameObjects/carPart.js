@@ -30,7 +30,6 @@ export class CarPart extends GameObject {
 
         // Ensure physics are active and awake
         this.rigidBody.sleeping = 0;
-        this.rigidBody.stillnessTime = 0;
         this.rigidBody.static = 0;  // Not static - can move
         this.setFixedRotation(1);
     }
@@ -107,3 +106,4 @@ export class CarPart extends GameObject {
         // }
     }
 }
+

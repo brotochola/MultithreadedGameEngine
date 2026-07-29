@@ -48,7 +48,6 @@ test('despawnAll clears attached decorations plus rigidbody, light, and flash po
   const previousTransformActive = Transform.active;
   const previousRigidBodyActive = RigidBody.active;
   const previousRigidBodySleeping = RigidBody.sleeping;
-  const previousRigidBodyStillnessTime = RigidBody.stillnessTime;
   const previousLightEmitterActive = LightEmitter.active;
   const previousLightEmitterColor = LightEmitter.lightColor;
   const previousLightEmitterIntensity = LightEmitter.lightIntensity;
@@ -69,7 +68,6 @@ test('despawnAll clears attached decorations plus rigidbody, light, and flash po
   Transform.active = new Uint8Array([1, 0, 1]);
   RigidBody.active = new Uint8Array([1, 0, 1]);
   RigidBody.sleeping = new Uint8Array([1, 7, 1]);
-  RigidBody.stillnessTime = new Float32Array([12, 34, 56]);
   LightEmitter.active = new Uint8Array([1, 0, 1]);
   LightEmitter.lightColor = new Uint32Array([0x112233, 0x010203, 0x445566]);
   LightEmitter.lightIntensity = new Float32Array([900, 25, 400]);
@@ -109,7 +107,6 @@ test('despawnAll clears attached decorations plus rigidbody, light, and flash po
     assert.deepEqual(Array.from(Transform.active), [0, 0, 0]);
     assert.deepEqual(Array.from(RigidBody.active), [0, 0, 0]);
     assert.deepEqual(Array.from(RigidBody.sleeping), [0, 7, 0]);
-    assert.deepEqual(Array.from(RigidBody.stillnessTime), [0, 34, 0]);
     assert.deepEqual(Array.from(LightEmitter.active), [0, 0, 0]);
     assert.deepEqual(Array.from(LightEmitter.lightColor), [0xffffff, 0x010203, 0xffffff]);
     assert.deepEqual(Array.from(LightEmitter.lightIntensity), [0, 25, 0]);
@@ -126,7 +123,6 @@ test('despawnAll clears attached decorations plus rigidbody, light, and flash po
     Transform.active = previousTransformActive;
     RigidBody.active = previousRigidBodyActive;
     RigidBody.sleeping = previousRigidBodySleeping;
-    RigidBody.stillnessTime = previousRigidBodyStillnessTime;
     LightEmitter.active = previousLightEmitterActive;
     LightEmitter.lightColor = previousLightEmitterColor;
     LightEmitter.lightIntensity = previousLightEmitterIntensity;
@@ -331,7 +327,6 @@ test('despawnAll forwards non-logic0 logic workers to logic0 without mutating lo
   const previousTransformActive = Transform.active;
   const previousRigidBodyActive = RigidBody.active;
   const previousRigidBodySleeping = RigidBody.sleeping;
-  const previousRigidBodyStillnessTime = RigidBody.stillnessTime;
   const previousClearAttached = DecorationPool.clearAttachedAndDespawnAll;
   const previousSelf = globalThis.self;
 
@@ -342,7 +337,6 @@ test('despawnAll forwards non-logic0 logic workers to logic0 without mutating lo
   Transform.active = new Uint8Array([1, 1]);
   RigidBody.active = new Uint8Array([1, 1]);
   RigidBody.sleeping = new Uint8Array([1, 1]);
-  RigidBody.stillnessTime = new Float32Array([12, 56]);
 
   DecorationPool.clearAttachedAndDespawnAll = (entityIndex) => {
     clearedAttachments.push(entityIndex);
@@ -388,12 +382,10 @@ test('despawnAll forwards non-logic0 logic workers to logic0 without mutating lo
     assert.deepEqual(Array.from(Transform.active), [1, 1]);
     assert.deepEqual(Array.from(RigidBody.active), [1, 1]);
     assert.deepEqual(Array.from(RigidBody.sleeping), [1, 1]);
-    assert.deepEqual(Array.from(RigidBody.stillnessTime), [12, 56]);
   } finally {
     Transform.active = previousTransformActive;
     RigidBody.active = previousRigidBodyActive;
     RigidBody.sleeping = previousRigidBodySleeping;
-    RigidBody.stillnessTime = previousRigidBodyStillnessTime;
     DecorationPool.clearAttachedAndDespawnAll = previousClearAttached;
     if (previousSelf === undefined) delete globalThis.self;
     else globalThis.self = previousSelf;
@@ -406,7 +398,6 @@ test('despawnAll returns 0 and preserves local state when non-logic0 forwarding 
   const previousTransformActive = Transform.active;
   const previousRigidBodyActive = RigidBody.active;
   const previousRigidBodySleeping = RigidBody.sleeping;
-  const previousRigidBodyStillnessTime = RigidBody.stillnessTime;
   const previousClearAttached = DecorationPool.clearAttachedAndDespawnAll;
   const previousSelf = globalThis.self;
 
@@ -416,7 +407,6 @@ test('despawnAll returns 0 and preserves local state when non-logic0 forwarding 
   Transform.active = new Uint8Array([1, 1]);
   RigidBody.active = new Uint8Array([1, 1]);
   RigidBody.sleeping = new Uint8Array([1, 1]);
-  RigidBody.stillnessTime = new Float32Array([12, 56]);
 
   DecorationPool.clearAttachedAndDespawnAll = (entityIndex) => {
     clearedAttachments.push(entityIndex);
@@ -452,12 +442,10 @@ test('despawnAll returns 0 and preserves local state when non-logic0 forwarding 
     assert.deepEqual(Array.from(Transform.active), [1, 1]);
     assert.deepEqual(Array.from(RigidBody.active), [1, 1]);
     assert.deepEqual(Array.from(RigidBody.sleeping), [1, 1]);
-    assert.deepEqual(Array.from(RigidBody.stillnessTime), [12, 56]);
   } finally {
     Transform.active = previousTransformActive;
     RigidBody.active = previousRigidBodyActive;
     RigidBody.sleeping = previousRigidBodySleeping;
-    RigidBody.stillnessTime = previousRigidBodyStillnessTime;
     DecorationPool.clearAttachedAndDespawnAll = previousClearAttached;
     if (previousSelf === undefined) delete globalThis.self;
     else globalThis.self = previousSelf;

@@ -1525,7 +1525,6 @@ export class GameObject {
     if (this.rigidBody) {
       RigidBody.active[i] = 0;
       RigidBody.sleeping[i] = 0;
-      RigidBody.stillnessTime[i] = 0;
     }
     if (this.collider) Collider.active[i] = 0;
     if (this.spriteRenderer) SpriteRenderer.active[i] = 0;
@@ -1869,7 +1868,6 @@ export class GameObject {
       RigidBody.fixedRotation[i] = 0;
       // Reset sleeping state (entity must start awake for physics to work)
       RigidBody.sleeping[i] = 0;
-      RigidBody.stillnessTime[i] = 0;
     }
 
     // Transform is always present
@@ -2135,7 +2133,6 @@ export class GameObject {
     const transformActive = Transform.active;
     const rigidBodyActive = RigidBody.active;
     const rigidBodySleeping = RigidBody.sleeping;
-    const rigidBodyStillnessTime = RigidBody.stillnessTime;
     const colliderActive = Collider.active;
     const spriteRendererActive = SpriteRenderer.active;
     const adobeAnimActive = AdobeAnimComponent.active;
@@ -2185,7 +2182,6 @@ export class GameObject {
         transformActive[i] = 0;
         if (rigidBodyActive) rigidBodyActive[i] = 0;
         if (rigidBodySleeping) rigidBodySleeping[i] = 0;
-        if (rigidBodyStillnessTime) rigidBodyStillnessTime[i] = 0;
         if (colliderActive) colliderActive[i] = 0;
         if (spriteRendererActive) spriteRendererActive[i] = 0;
         if (adobeAnimActive) adobeAnimActive[i] = 0;

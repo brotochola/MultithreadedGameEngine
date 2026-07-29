@@ -44,24 +44,11 @@ Inertia (synced from collider geometry in `RigidBody.syncMassFromCollider`):
 
 ### Sleeping
 
-Bodies that stay still can sleep so Box2D / Weed can skip work on idle bodies. Cell sleeping (particle worker) builds on the same `RigidBody.sleeping` bits — see [Spatial hashing](./SPATIAL_HASHING.md).
-
-Scene knobs live under `config.physics` (merged from `PHYSICS_DEFAULTS`). Sleep enter/exit thresholds are read by the **particle worker at scene init**; prefer setting them on the scene’s `static config` rather than mid-run `updatePhysicsConfig`.
+Box2D owns sleep. Weed exposes one scene knob:
 
 | Knob | Default | Role |
 |------|---------|------|
-| `sleeping` | `true` | Master switch. When `false`, bodies never enter sleep (thresholds ignored). |
-| `sleepThreshold` | `0.1` | Max linear `speed` **and** `\|angularVelocity\|` to count as still. |
-| `sleepDuration` | `30` | Consecutive particle ticks still before `sleeping = 1` (**frames**, not seconds). |
-| `wakeUpThreshold` | `0.05` | Accel magnitude (post-`dtRatio`) that resets `stillnessTime` on **awake** bodies. |
-
-**Enter sleep** (particle `updateDerivedProperties`): when `sleeping` is enabled, a dynamic body with both `speed` and `|ω|` below `sleepThreshold` increments `stillnessTime`; at `sleepDuration` it sets `RigidBody.sleeping = 1`. Tumbling sticks stay awake until spin dies.
-
-**While asleep:** Box2D body sleeps; Weed keeps `RigidBody.sleeping` in sync. Spatial may still keep visual-only neighbors.
-
-**Wake:** speed/spin above `sleepThreshold`; meaningful collision penetration (above penetration slop); manual `RigidBody.sleeping[i] = 0` (and usually `stillnessTime[i] = 0`); awake-body accel above `wakeUpThreshold` resets the stillness counter.
-
-Disable for a scene:
+| `sleeping` | `true` | Maps to `b2World_EnableSleeping`. When `false`, dynamics never sleep. |
 
 ```javascript
 physics: {
@@ -69,9 +56,14 @@ physics: {
 }
 ```
 
-Weed passes this into the nested Box2D worker (`WEEDJS_INIT` / `WEEDJS_CONFIG`). There is no WASM `world_enable_sleep` export yet, so `sleeping: false` wakes every dynamic body each step and clears `RigidBody.sleeping` flags (so sleep-cell debug matches the config).
+Passed on nested Box2D worker `WEEDJS_INIT` / `WEEDJS_CONFIG` via `PhysicsWorld.enableSleeping`. HEAP `RigidBody.sleeping` follows Box2D (debug Sleeping overlay / cell sleep). Statics can still mark spatial cells “asleep.”
 
-Also: `SET_VELOCITY` always wakes — Box2D ignores zero-velocity writes on sleeping bodies, which previously left idle characters stuck after sleep.
+Legacy Weed knobs (`sleepThreshold`, `sleepDuration`, `wakeUpThreshold`, `stillnessTime`) are removed — they did nothing after Box2D took sleep ownership.
+
+Velocity commands trust Box2D: nonzero `SetLinearVelocity` / `SetAngularVelocity` wake; zero on a sleeper is a no-op.
+
+World `maximumLinearSpeed` (scene `physics.maximumLinearSpeed`) clamps in the solver. Per-entity `RigidBody.maxLinearSpeed` is unused.
+
 ### Collision filtering
 
 Box2D sees the same rules Weed stores on `Collider`:

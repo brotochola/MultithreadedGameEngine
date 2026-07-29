@@ -35,7 +35,7 @@ export class RigidBody extends Component {
     linearDamping: Float32Array,
     angularDamping: Float32Array,
 
-    // Weed post-step speed clamp (px/s); 0 = no clamp
+    // Unused by Box2D path (world maximumLinearSpeed clamps instead); kept for SoA compat
     maxLinearSpeed: Float32Array,
 
     /** 1 = lock Box2D angular DOF (motionLocks.angularZ); sprite stays upright */
@@ -45,9 +45,8 @@ export class RigidBody extends Component {
     velocityAngle: Float32Array,
     speed: Float32Array,
 
-    // Sleeping optimization (gated by physics.sleeping config)
+    // Sleeping: Box2D owns RigidBody.sleeping (HEAP). Scene config.physics.sleeping → b2World_EnableSleeping.
     sleeping: Uint8Array, // 0 = awake, 1 = sleeping
-    stillnessTime: Uint16Array, // Consecutive still frames (particle ticks), not seconds
   };
 
   // ═══════════════════════════════════════════════════════════════════════════

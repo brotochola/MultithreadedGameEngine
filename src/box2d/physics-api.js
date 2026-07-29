@@ -14,6 +14,10 @@ function createPhysicsApi(Module) {
     "number",
     "number",
   ]);
+  const worldEnableSleeping = wrap("world_enable_sleeping", null, [
+    "number",
+    "number",
+  ]);
   const bindGameBuffers = wrap("bind_game_buffers", "number", ["number"]);
   const createBodyBox = wrap("create_body_box", "number", [
     "number",
@@ -566,6 +570,10 @@ function createPhysicsApi(Module) {
         o.box2dWorkerCount ?? 4,
       );
       this._buffersBound = false;
+    }
+
+    enableSleeping(enable = true) {
+      worldEnableSleeping(this.worldId, enable ? 1 : 0);
     }
 
     bindBuffers(maxBodies) {

@@ -196,7 +196,6 @@ class IdleSoldierState extends FSMState {
 class GoingToDestinationState extends FSMState {
   static onEnter(owner, i, fromState) {
     RigidBody.sleeping[i] = 0;
-    RigidBody.stillnessTime[i] = 0;
   }
 
   static onUpdate(owner, i, dt) {
@@ -366,3 +365,4 @@ export class SoldierBehaviorFSM extends FSM {
 
   static initial = this.states.IDLE;
 }
+

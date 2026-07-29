@@ -44,6 +44,7 @@
   let contactRingI32 = null;
   let views = null;
   let hasBody = null;
+  let createFailed = null;
   let denseList = null;
   let densePositions = null;
   let denseCount = 0;
@@ -437,6 +438,7 @@
         /* slot may already be clear */
       }
       hasBody[i] = 0;
+      createFailed[i] = 0;
       have = 0;
       removeDenseBody(i);
       changes++;
@@ -445,14 +447,14 @@
     if (want && !have) {
       if (createBodyForEntity(i)) {
         hasBody[i] = 1;
+        createFailed[i] = 0;
         seenBodyGeneration[i] = generation;
         addDenseBody(i);
         created = true;
         changes++;
-      } else if (bodyDirtyFlags && bodyDirtyWords) {
-        // Invalid/incomplete spawn data may become valid later; retry sparsely.
-        Atomics.or(bodyDirtyFlags, i, 1);
-        Atomics.or(bodyDirtyWords, i >>> 5, 1 << (i & 31));
+      } else if (!createFailed[i]) {
+        createFailed[i] = 1;
+        console.warn('[weedjs-box2d] createBody failed; wait for next dirty', i);
       }
     }
     if (hasBody[i] && !created && flags !== BODY_DIRTY.LIFECYCLE) {
@@ -462,58 +464,24 @@
   }
 
   function syncBodies(entityCount) {
-    if (bodyDirtyFlags && bodyDirtyWords) {
-      let changes = 0;
-      let visited = 0;
-      for (let wordIndex = 0; wordIndex < bodyDirtyWords.length; wordIndex++) {
-        let bits = Atomics.exchange(bodyDirtyWords, wordIndex, 0) >>> 0;
-        while (bits !== 0) {
-          const bit = 31 - Math.clz32(bits & -bits);
-          const i = (wordIndex << 5) + bit;
-          bits = (bits & (bits - 1)) >>> 0;
-          if (i >= entityCount) continue;
-          const flags = Atomics.exchange(bodyDirtyFlags, i, 0);
-          visited++;
-          changes += syncBodySlot(i, flags);
-        }
-      }
-      lastBodySyncVisited = visited;
-      return changes;
+    if (!bodyDirtyFlags || !bodyDirtyWords) {
+      throw new Error('[weedjs-box2d] body dirty sync buffers required');
     }
-
-    // Compatibility fallback for payloads created before sparse body sync.
-    denseCount = 0;
     let changes = 0;
-    const bodyCap = hasBody ? hasBody.length : 0;
-    const n = Math.min(entityCount | 0, bodyCap);
-    lastBodySyncVisited = n;
-    densePositions.fill(-1);
-    for (let i = 0; i < n; i++) {
-      const want =
-        views.entityActive[i] !== 0 &&
-        views.rbActive[i] !== 0 &&
-        views.colActive[i] !== 0
-          ? 1
-          : 0;
-      const have = hasBody[i];
-      if (want && !have) {
-        if (createBodyForEntity(i)) {
-          hasBody[i] = 1;
-          changes++;
-        }
-      } else if (!want && have) {
-        try {
-          world.destroyBody(i);
-        } catch (_) {
-          /* slot may already be clear */
-        }
-        hasBody[i] = 0;
-        changes++;
-      }
-      if (hasBody[i]) {
-        addDenseBody(i);
+    let visited = 0;
+    for (let wordIndex = 0; wordIndex < bodyDirtyWords.length; wordIndex++) {
+      let bits = Atomics.exchange(bodyDirtyWords, wordIndex, 0) >>> 0;
+      while (bits !== 0) {
+        const bit = 31 - Math.clz32(bits & -bits);
+        const i = (wordIndex << 5) + bit;
+        bits = (bits & (bits - 1)) >>> 0;
+        if (i >= entityCount) continue;
+        const flags = Atomics.exchange(bodyDirtyFlags, i, 0);
+        visited++;
+        changes += syncBodySlot(i, flags);
       }
     }
+    lastBodySyncVisited = visited;
     return changes;
   }
 
@@ -665,7 +633,6 @@
   let bodySetLinearVelocityFn = null;
   let bodySetTransformFn = null;
   let bodySetAngularVelocityFn = null;
-  let bodySetAwakeFn = null;
   let bodySetFixedRotationFn = null;
   let bodySetTypeFn = null;
   let bodySetLinearDampingFn = null;
@@ -681,20 +648,15 @@
   const cmdHandlers = {
     setTransform(entity, x, y, angle) {
       if (!hasBody[entity]) return;
-      bodySetAwakeFn(entity, 1);
       const a = isFixedRotation(entity) ? 0 : angle;
       bodySetTransformFn(entity, x, y, a);
     },
     setVelocity(entity, vx, vy) {
       if (!hasBody[entity]) return;
-      // Always wake: Box2D SetLinearVelocity(0) is a no-op on sleeping bodies (no state).
-      // Games often write vx=0 while idle; without wake, later forces never stick.
-      bodySetAwakeFn(entity, 1);
       bodySetLinearVelocityFn(entity, vx, vy);
     },
     setAngle(entity, angle) {
       if (!hasBody[entity]) return;
-      bodySetAwakeFn(entity, 1);
       const x = pxChan[entity];
       const y = pyChan[entity];
       const a = isFixedRotation(entity) ? 0 : angle;
@@ -702,7 +664,6 @@
     },
     setAngularVelocity(entity, w) {
       if (!hasBody[entity]) return;
-      bodySetAwakeFn(entity, 1);
       bodySetAngularVelocityFn(entity, w);
     },
     setFixedRotation(entity, flag) {
@@ -747,25 +708,6 @@
     }
   }
 
-  function clampMaxVel() {
-    for (let n = 0; n < denseCount; n++) {
-      const i = denseList[n];
-      if (views.rbStatic[i] || !hasBody[i]) continue;
-      const maxV = views.maxLinearSpeed[i];
-      if (!(maxV > 0)) continue;
-      const vx = vxChan[i];
-      const vy = vyChan[i];
-      const sp2 = vx * vx + vy * vy;
-      const max2 = maxV * maxV;
-      if (sp2 > max2 && sp2 > 0) {
-        const s = maxV / Math.sqrt(sp2);
-        bodySetLinearVelocityFn(i, vx * s, vy * s);
-        vxChan[i] = vx * s;
-        vyChan[i] = vy * s;
-      }
-    }
-  }
-
   function entityGen(i) {
     return bodyGeneration ? Atomics.load(bodyGeneration, i) | 0 : 0;
   }
@@ -796,34 +738,7 @@
   }
 
   function afterStep() {
-    const rotLen = rotChan ? rotChan.length : 0;
-    for (let n = 0; n < denseCount; n++) {
-      const i = denseList[n];
-      if (i >= rotLen) continue;
-      if (isFixedRotation(i)) {
-        rotChan[i] = 0;
-      }
-    }
-    clampMaxVel();
-    // WASM marks all dynamics sleeping=1 then clears only movers. With sleeping
-    // disabled, force awake + clear flags so cell-sleep / debug match config.
-    if (!sleepingEnabled) {
-      enforceAwakeDynamics();
-    }
     publishContactRingFromWasm();
-  }
-
-  /**
-   * Honor physics.sleeping === false (WASM has no world_enable_sleep export yet).
-   */
-  function enforceAwakeDynamics() {
-    if (!bodySetAwakeFn) return;
-    for (let n = 0; n < denseCount; n++) {
-      const i = denseList[n];
-      if (views.rbStatic[i]) continue;
-      bodySetAwakeFn(i, 1);
-      if (sleepingU8) sleepingU8[i] = 0;
-    }
   }
 
   function writePhysicsStats(
@@ -905,9 +820,6 @@
     const t2 = performance.now();
     const commandCount = drainCommands();
     const t3 = performance.now();
-    if (!sleepingEnabled) {
-      enforceAwakeDynamics();
-    }
     applyForcesAndTorque();
     const t4 = performance.now();
     world.step(dt, solverSteps);
@@ -963,6 +875,7 @@
       maximumLinearSpeed: data.maximumLinearSpeed,
       box2dWorkerCount: data.box2dWorkerCount,
     });
+    world.enableSleeping(sleepingEnabled);
     const slots = world.getMaxBodySlots();
     if (maxBodies <= 0 || maxBodies > slots) {
       throw new Error(
@@ -998,7 +911,6 @@
       null,
       ['number', 'number'],
     );
-    bodySetAwakeFn = Module.cwrap('body_set_awake', null, ['number', 'number']);
     bodySetFixedRotationFn = Module.cwrap('body_set_fixed_rotation', null, [
       'number',
       'number',
@@ -1069,6 +981,9 @@
 
     bindWeedViews(data.views);
     bindBodySyncViews(data.bodySync);
+    if (!bodyDirtyFlags || !bodyDirtyWords) {
+      throw new Error('[weedjs-box2d] WEEDJS_INIT missing bodySync dirty buffers');
+    }
     bindJointViews(data.jointViews, data.maxJoints | 0);
     if (data.stats) {
       statsF32 = viewFromDesc(data.stats, Float32Array);
@@ -1077,6 +992,7 @@
     }
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
+    createFailed = new Uint8Array(entityCount);
     denseList = new Uint16Array(entityCount);
     densePositions = new Int32Array(entityCount);
     densePositions.fill(-1);
@@ -1135,6 +1051,7 @@
     if (data.type === 'WEEDJS_CONFIG') {
       if (data.sleeping !== undefined) {
         sleepingEnabled = data.sleeping !== false;
+        if (world) world.enableSleeping(sleepingEnabled);
       }
       if (ctrlI32) {
         if (data.subSteps != null) {

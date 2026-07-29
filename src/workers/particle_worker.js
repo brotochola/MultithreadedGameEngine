@@ -352,8 +352,6 @@ class ParticleWorker extends AbstractWorker {
     // Derived properties
     this.globalEntityCount = 0;
     this.minSpeedForRotation = 0.1;
-    this.sleepThreshold = 0.1;
-    this.sleepDuration = 30;
     this.sleepingEnabled = true;
     this._queryRigidBody = null;
 
@@ -494,8 +492,6 @@ class ParticleWorker extends AbstractWorker {
     if (data.buffers?.componentData?.RigidBody && data.componentPools?.RigidBody) {
       const physicsConfig = data.config?.physics || {};
       this.minSpeedForRotation = physicsConfig.minSpeedForRotation ?? PHYSICS_DEFAULTS.minSpeedForRotation;
-      this.sleepThreshold = physicsConfig.sleepThreshold ?? PHYSICS_DEFAULTS.sleepThreshold;
-      this.sleepDuration = physicsConfig.sleepDuration ?? PHYSICS_DEFAULTS.sleepDuration;
       this.sleepingEnabled = physicsConfig.sleeping ?? PHYSICS_DEFAULTS.sleeping;
       this._queryRigidBody = [RigidBody];
 

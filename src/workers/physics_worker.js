@@ -261,11 +261,6 @@ class PhysicsWorker extends AbstractWorker {
       ...partialConfig,
     };
     this.settings = validatePhysicsConfig(this.settings, this.config.physics);
-    this._wakeUpThresholdSq =
-      (this.config.physics.wakeUpThreshold ?? PHYSICS_DEFAULTS.wakeUpThreshold) **
-      2;
-    this._sleepThreshold =
-      this.config.physics.sleepThreshold ?? PHYSICS_DEFAULTS.sleepThreshold;
     this._sleepingEnabled =
       this.config.physics.sleeping ?? PHYSICS_DEFAULTS.sleeping;
 

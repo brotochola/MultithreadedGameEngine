@@ -40,7 +40,7 @@ export class ConstraintsTestScene extends Scene {
         // Physics configuration
         physics: {
             subStepCount: 3, // Higher substeps for stable constraints
-            noLimitFPS: true,
+            noLimitFPS: false,
             maxJoints: 4096, // Enable constraint system
             boundaryElasticity: 0,
             collisionResponseStrength: 0.66,
@@ -48,6 +48,7 @@ export class ConstraintsTestScene extends Scene {
             sleepThreshold: 30,
             wakeUpThreshold: 30,
             sleepDuration: 1000,
+            sleeping: false,
         },
 
         renderer: {

@@ -1,5 +1,7 @@
 Since Box2d:
+
 - [x] make build, test built, see what to do with wasm (embedded in weed.bundle via Box2dWorkerSource)
+      -use the who moved function of box2d for networking
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar

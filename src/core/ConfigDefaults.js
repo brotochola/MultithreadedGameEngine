@@ -168,14 +168,8 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   box2dWorkerCount: 4,
   /** SPMC contact/sensor event ring capacity (begin+end). Dense spawns need large. */
   contactRingCapacity: 65536,
-  /** Master switch: when false, bodies never enter sleep (thresholds ignored). */
+  /** Master switch: maps to b2World_EnableSleeping. When false, Box2D never sleeps dynamics. */
   sleeping: true,
-  /** Max linear speed and |angularVelocity| (px/s, rad/s) to count as still. */
-  sleepThreshold: 6,
-  /** Accel magnitude (px/s²) that resets stillnessTime on awake bodies. */
-  wakeUpThreshold: 3,
-  /** Consecutive particle ticks still before sleeping = 1 (frames, not seconds). */
-  sleepDuration: 30,
 });
 
 // ============================================================================

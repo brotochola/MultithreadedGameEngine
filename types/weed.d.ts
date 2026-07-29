@@ -2008,7 +2008,6 @@ export declare class RigidBody extends Component {
     velocityAngle: typeof Float32Array;
     speed: typeof Float32Array;
     sleeping: typeof Uint8Array;
-    stillnessTime: typeof Float32Array;
   };
   static active: Uint8Array;
   /** SoA column: `RigidBody.static[index]` — `0` dynamic, `1` static. */
@@ -2030,7 +2029,6 @@ export declare class RigidBody extends Component {
   static velocityAngle: Float32Array;
   static speed: Float32Array;
   static sleeping: Uint8Array;
-  static stillnessTime: Float32Array;
   static syncMassFromCollider(index: number): boolean;
   syncMassFromCollider(): boolean;
   get static(): number;
