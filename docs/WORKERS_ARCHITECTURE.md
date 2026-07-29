@@ -64,12 +64,14 @@ Owns the Box2D tick. Scene’s `workers.physics` **is** the classic `box2d_wasm.
 2. Drain the command ring (set pose/vel, fixedRotation, etc.)
 3. After the step, contact begin/end (+ sensors) land in the sequenced contact ring for logic workers
 4. Sync Weed `Joint` slots into Box2D joints
+5. Publish display pose into `poseDataA/B` + `poseSync` (dense bodies only; Atomics readyFrame)
 
 Spatial `neighborData` is visual-range only — Box2D does narrowphase itself.
 
 | Buffer / channel                   | Access         | Notes                                                                                |
 | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------ |
 | Transform / RigidBody hot fields   | **Write** via HEAP rebind | `x,y,rotation,vx,vy,ω` live in WASM memory after `box2dReady`              |
+| `poseDataA/B` + `poseSync`         | **Write**      | Post-step display snapshot for pre_render / particle (not mid-step HEAP)             |
 | Collider                           | Read (sync)    | Shapes, radii, `friction`, layers/masks/`groupIndex`                                 |
 | `neighborData`                     | Read           | Visual-range neighbors — not the contact source                                      |
 | Command ring (`commandSab`)        | **Write** (logic/main) / drain (Box2D) | MPSC sequence-slot pose/vel commands                            |
@@ -146,7 +148,7 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 1. Update particle simulation (lifetime, gravity, ground collision, alpha fade)
 2. Stamp decals onto tile buffers
 3. Tick bullets (movement, trail, screen visibility, impact detection → `impactBuffer`; publishes `count` then bumps batch `seq` via Atomics so logic workers never double-process a batch)
-4. Update decoration sway
+4. Update decoration sway; resolve parented decorations from latched `posePublish` (no consume — pre_render owns `consumedFrame`)
 5. Build compact active + visible lists for particles, decorations, bullets
 6. Compute cell sleeping flags
 7. Handle navigation requests (flowfields via Dijkstra, A\* paths)
@@ -155,6 +157,7 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 
 | Buffer                         | Access         | Notes                                                              |
 | ------------------------------ | -------------- | ------------------------------------------------------------------ |
+| `poseDataA/B` + `poseSync`     | Read           | Latch display pose for parented decorations (no consume store)     |
 | `ParticleComponent`            | Read/**Write** | Particle simulation                                                |
 | `DecorationComponent`          | Read           | Sway animation                                                     |
 | `BulletComponent`              | Read/**Write** | Bullet physics + impacts                                           |
@@ -183,9 +186,9 @@ Reads visibility lists, advances animations, builds the render and shadow queues
 
 **What it does each frame:**
 
-1. Read compact visible lists (entities, particles, decorations, bullets)
-2. Advance sprite animation frames (including custom-layer entities)
-3. Compute interpolated positions, scales, rotations
+1. Latch published physics pose (`poseSync` / `poseDataA/B`) once — entities, adobe, shadows, parented deco compose from that snapshot (boot: live `Transform` if `ready===0`)
+2. Read compact visible lists (entities, particles, decorations, bullets)
+3. Advance sprite animation frames (including custom-layer entities)
 4. Collect visible renderables -- entities routed by `SpriteRenderer.layerId`:
    - `layerId === ENTITIES_ID` → main render queue
    - Otherwise → per-layer custom collector
@@ -202,6 +205,8 @@ Visibility polygon generation uses bounded event/active pools. If those caps ove
 
 | Buffer                     | Access         | Notes                                                                                 |
 | -------------------------- | -------------- | ------------------------------------------------------------------------------------- |
+| `poseDataA/B`              | Read           | Latched post-step display pose (SoA x/y/rotation); consume via `poseSync`             |
+| `poseSync`                 | Read/**Write** | Atomics: readyFrame (physics) + consumedFrame (pre_render, like pixi on render queue) |
 | `renderQueueDataA/B`       | **Write**      | Alternating double buffer (layout from `RenderQueueLayout.js`)                        |
 | `renderQueueCameraA/B`     | **Write**      | Per-buffer camera snapshot `[zoom,x,y]` frame-locked to render queue generation       |
 | `shadowRenderQueueDataA/B` | **Write**      | Shadow/light queue                                                                    |
@@ -514,7 +519,7 @@ Regression harness: `node tests/bench/scene-cycle-smoke.mjs`.
 ## Performance Notes
 
 - Workers are asynchronous. There's no global frame barrier. Each worker runs at its own pace.
-- Atomics are used where workers share mutable coordination state: render-queue double buffer (pre_render ↔ pixi), Treiber free-list heads (`atomicFreeList.js`), `impactBuffer` batch `seq`, NavGrid slot `status` publication, layer alpha/uniform dirty flags, audio slot CAS, query snapshot versioning, and assorted stats/debug fields. Most component SABs rely on single-writer ownership instead of per-field atomics.
+- Atomics are used where workers share mutable coordination state: render-queue double buffer (pre_render ↔ pixi), physics pose publish (`poseSync`: physics ↔ pre_render; particle latches without consume), Treiber free-list heads (`atomicFreeList.js`), `impactBuffer` batch `seq`, NavGrid slot `status` publication, layer alpha/uniform dirty flags, audio slot CAS, query snapshot versioning, and assorted stats/debug fields. Most component SABs rely on single-writer ownership instead of per-field atomics.
 - Single-writer ownership eliminates the need for locks on frame-critical data.
 - If your game stutters, check `frameRateData` in debug UI to find which worker is the bottleneck.
 - Audio slot writes are lock-free (CAS). The worklet reads the SAB at hardware sample rate with zero postMessage overhead per frame. If you see `droppedCount` rising, increase `maxSlots` or make sure you `stop()` looping sounds when they're no longer needed.

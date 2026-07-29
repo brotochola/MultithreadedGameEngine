@@ -128,6 +128,7 @@ class PreRenderWorker extends AbstractWorker {
         this._poseX = null;
         this._poseY = null;
         this._poseRot = null;
+        this._rbActive = null;
 
         // Texture metadata
         this.animationFrameStart = null;
@@ -1283,6 +1284,7 @@ class PreRenderWorker extends AbstractWorker {
         this._poseX = null;
         this._poseY = null;
         this._poseRot = null;
+        this._rbActive = RigidBody.active;
         if (!this.poseSync || !this.poseBuffers[0]) return;
         const ready = Atomics.load(this.poseSync, 0);
         if (!(ready > 0)) return;
@@ -1300,8 +1302,10 @@ class PreRenderWorker extends AbstractWorker {
      * @param {{ x: number, y: number, rotation: number }} out
      */
     _displayPose(idx, out) {
-        if (this._poseX && RigidBody.active?.[idx]) {
-            out.x = this._poseX[idx];
+        const poseX = this._poseX;
+        const rb = this._rbActive;
+        if (poseX && rb && rb[idx]) {
+            out.x = poseX[idx];
             out.y = this._poseY[idx];
             out.rotation = this._poseRot[idx];
             return;

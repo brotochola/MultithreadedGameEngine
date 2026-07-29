@@ -362,6 +362,7 @@ class ParticleWorker extends AbstractWorker {
     this._poseX = null;
     this._poseY = null;
     this._poseRot = null;
+    this._rbActive = null;
 
     // Active particle tracking
     this.activeParticleIndices = null;
@@ -867,6 +868,7 @@ class ParticleWorker extends AbstractWorker {
     this._poseX = null;
     this._poseY = null;
     this._poseRot = null;
+    this._rbActive = RigidBody.active;
     if (!this.poseSync || !this.poseBuffers[0]) return;
     const ready = Atomics.load(this.poseSync, 0);
     if (!(ready > 0)) return;
@@ -905,7 +907,7 @@ class ParticleWorker extends AbstractWorker {
     const ty = Transform.y;
     const tActive = Transform.active;
     const tRot = Transform.rotation;
-    const rbActive = RigidBody.active;
+    const rbActive = this._rbActive;
     const poseX = this._poseX;
     const poseY = this._poseY;
     const poseRot = this._poseRot;
@@ -923,7 +925,7 @@ class ParticleWorker extends AbstractWorker {
         continue;
       }
 
-      const usePose = poseX && rbActive?.[p];
+      const usePose = poseX && rbActive && rbActive[p];
       const px = usePose ? poseX[p] : tx[p];
       const py = usePose ? poseY[p] : ty[p];
       const pr = usePose ? poseRot[p] : tRot[p];

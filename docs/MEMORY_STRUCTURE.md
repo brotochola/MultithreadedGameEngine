@@ -29,8 +29,8 @@ all X values packed together, then all Y values, etc. No per-entity objects on t
 
 | Component               | Fields (type)                                                                                                                                                                                                                                                                                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Transform**           | `active` (Uint8), `entityType` (Uint8), `x` (Float32), `y` (Float32), `rotation` (Float32)                                                                                                                                                                                                                                                  |
-| **RigidBody**           | `active`, `static`, `sleeping` (Uint8); `vx`, `vy`, `ax`, `ay`, `angularVelocity`, `angularAccel`, `mass`, `invMass`, `inertia`, `invInertia`, `linearDamping`, `angularDamping`, `velocityAngle`, `speed`; `fixedRotation` (Uint8) |
+| **Transform**           | `active` (Uint8), `entityType` (Uint8), `isItOnScreen` (Uint8), `x` (Float32), `y` (Float32), `rotation` (Float32) — after `box2dReady`, pose channels rebind onto WASM HEAP (sim). Visuals latch **pose publish** instead of sampling HEAP mid-step. |
+| **RigidBody**           | `active`, `static`, `sleeping`, `fixedRotation` (Uint8); `vx`, `vy`, `ax`, `ay`, `px`, `py`, `pRotation`, `angularVelocity`, `angularAccel`, `mass`, `invMass`, `inertia`, `invInertia`, `linearDamping`, `angularDamping`, `velocityAngle`, `speed` — `px/py/pRotation` = prev sim pose (snapshot before `world.step`). |
 | **Collider**            | `active`, `shapeType` (0=Box, 1=Circle, 2=Polygon — WASM C), `isTrigger` (Uint8); `offsetX`, `offsetY`, `radius`, `width`, `height`, `visualRange`, `friction` (Float32; Box2D fixture μ, pair = min); `polyCount` (Uint8); `polyCentroidX/Y` (Float32); strided `polyVertexX/Y`, `polyNormalX/Y` (length entityCount×8); `collisionLayer` (Uint8, index 0-31); `collisionMask` (Uint32, bitmask -- 32 collision layers max); `collisionGroupIndex` (Int32, Box2D-style group: 0 = layer/mask only, same negative = never collide, same positive = always collide) |
 | **SpriteRenderer**      | `active`, `textureId`, animation fields, flip flags, etc.                                                                                                                                                                                                                                                                                   |
 | **ParticleComponent**   | `active`, `x`, `y`, `z`, `vx`, `vy`, `vz`, `lifespan`, `currentLife`, `gravity`, `scaleX/Y`, `alpha`, `tint`, `baseTint`, `textureId`, `rotation`, `flipX/Y`, `fadeOnTheFloor`, `timeOnFloor`, `initialAlpha`, `stayOnTheFloor`, `despawnOnGroundContact`, `tweenToAlpha0`, `isItOnScreen`, `blendMode` (mixed Uint8/Uint16/Float32/Uint32) |
@@ -164,6 +164,27 @@ Box2D still writes begin/end into WASM HEAP buffers each step. Nested `weedjs_po
 ---
 
 ## 6. Render Queues (Double-Buffered)
+
+### Physics pose publish (`poseDataA` / `poseDataB` + `poseSync`)
+
+Post-step display snapshot so pre_render / particle parent-follow never sample live HEAP mid-`world.step`. Same Atomics double-buffer idiom as the render queue.
+
+| Buffer | Size | Layout |
+|--------|------|--------|
+| `poseDataA` / `poseDataB` | `N * 3 * 4` bytes each (`N = totalEntityCount`) | SoA `Float32`: `x[N]`, `y[N]`, `rotation[N]` |
+| `poseSync` | 8 bytes | `[readyFrame: Int32, consumedFrame: Int32]` |
+
+**Protocol:**
+
+1. Physics writes dense bodies into buffer `poseFrame % 2`, then `Atomics.store(poseSync, 0, ++poseFrame)` (+ optional notify)
+2. Pre_render latches `(ready - 1) % 2` when `ready > 0`, then `Atomics.store(poseSync, 1, ready)` (consume)
+3. Particle parent-follow latches the same ready buffer **without** storing consumed (pre_render owns consume)
+
+| Writer | Readers |
+|--------|---------|
+| Physics (`weedjs_post.publishPose`) | Pre_render (consume), particle (latch only) |
+
+Allocated in `sceneSharedBuffers.js`; wired via `sceneWorkerBootstrap` `posePublish`.
 
 ### Main Render Queue (`renderQueueDataA` / `renderQueueDataB`)
 

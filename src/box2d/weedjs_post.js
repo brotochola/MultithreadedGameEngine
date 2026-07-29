@@ -305,21 +305,22 @@
   /**
    * Publish post-step Transform into double-buffered pose SAB (Atomics seq).
    * Same idiom as renderQueueSync: write buffer frame%2, then store readyFrame.
+   * Iterates dense body list only — typed views only, no alloc.
    */
-  function publishPose(entityCount) {
-    if (!poseSync || !poseBuffers[0]) return;
+  function publishPose(/* entityCount */) {
+    if (!poseSync || !poseBuffers[0] || !denseList) return;
     const writeIdx = poseFrame % 2;
     const buf = poseBuffers[writeIdx];
-    const n = Math.min(entityCount | 0, poseCapacity);
-    const rb = views.rbActive;
     const x = views.x;
     const y = views.y;
     const rot = views.rotation;
     const outX = buf.x;
     const outY = buf.y;
     const outR = buf.rotation;
-    for (let i = 0; i < n; i++) {
-      if (rb && !rb[i]) continue;
+    const list = denseList;
+    const n = denseCount;
+    for (let d = 0; d < n; d++) {
+      const i = list[d];
       outX[i] = x[i];
       outY[i] = y[i];
       outR[i] = rot[i];
