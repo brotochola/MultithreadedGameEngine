@@ -40,6 +40,8 @@ const BOX2D_SIBLING_NAMES = [
     'box2dConstants.impl.js',
     'box2dCommandRing.impl.js',
     'box2dContactRing.impl.js',
+    'box2dContactHitRing.impl.js',
+    'box2dJointBreakRing.impl.js',
     'box2dMovedBodies.impl.js',
 ];
 

@@ -385,6 +385,41 @@ function createPhysicsApi(Module) {
   const getProfileFloatCount = wrap("get_profile_float_count", "number", []);
   const getCountersByteOffset = wrap("get_counters_byte_offset", "number", []);
   const getCountersIntCount = wrap("get_counters_int_count", "number", []);
+  const getJointEventsByteOffset = wrap(
+    "get_joint_events_byte_offset",
+    "number",
+    [],
+  );
+  const getJointEventCapacity = wrap("get_joint_event_capacity", "number", []);
+  const bodySetRestitution = wrap("body_set_restitution", null, [
+    "number",
+    "number",
+  ]);
+  const bodySetSleepThreshold = wrap("body_set_sleep_threshold", null, [
+    "number",
+    "number",
+  ]);
+  const worldSetHitEventThreshold = wrap(
+    "world_set_hit_event_threshold",
+    null,
+    ["number", "number"],
+  );
+  const worldExplode = wrap("world_explode", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const jointConfigure = wrap("joint_configure", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
 
   const DEFAULT_MATERIAL = Object.freeze({
     density: 1.0,
@@ -503,6 +538,13 @@ function createPhysicsApi(Module) {
       getCountersByteOffset(),
       counterInts,
     );
+    // Stashed so callers can decode world._contactHit records without re-querying WASM.
+    world._contactHitStride = queryHitStride;
+    world._jointEvents = new Int32Array(
+      sab,
+      getJointEventsByteOffset(),
+      getJointEventCapacity(),
+    );
   }
 
   class JointHandle {
@@ -513,6 +555,16 @@ function createPhysicsApi(Module) {
 
     destroy() {
       this._world.destroyJoint(this.handle);
+    }
+
+    /**
+     * Wire break thresholds + weed joint index (read back from joint events after step).
+     * @param {number} userDataInt - weed Joint pool index
+     * @param {number} [forceThreshold=Infinity]
+     * @param {number} [torqueThreshold=Infinity]
+     */
+    configure(userDataInt, forceThreshold = Infinity, torqueThreshold = Infinity) {
+      jointConfigure(this.handle, userDataInt, forceThreshold, torqueThreshold);
     }
   }
 
@@ -584,6 +636,14 @@ function createPhysicsApi(Module) {
 
     setGravityScale(scale) {
       bodySetGravityScale(this.slot, scale);
+    }
+
+    setRestitution(value) {
+      bodySetRestitution(this.slot, value);
+    }
+
+    setSleepThreshold(value) {
+      bodySetSleepThreshold(this.slot, value);
     }
   }
 
@@ -1055,6 +1115,27 @@ function createPhysicsApi(Module) {
       return getSlotCount();
     }
 
+    setHitEventThreshold(value) {
+      worldSetHitEventThreshold(this.worldId, value);
+    }
+
+    explode(x, y, radius, falloff, impulsePerLength, maskBits = DEFAULT_FILTER_MASK) {
+      worldExplode(
+        this.worldId,
+        x,
+        y,
+        radius,
+        falloff,
+        impulsePerLength,
+        maskBits >>> 0,
+        0,
+      );
+    }
+
+    configureJoint(handle, userDataInt, forceThreshold, torqueThreshold) {
+      jointConfigure(handle, userDataInt, forceThreshold, torqueThreshold);
+    }
+
     step(dt, subSteps = 2) {
       stepWorld(this.worldId, dt, subSteps);
     }
@@ -1113,6 +1194,8 @@ function createPhysicsApi(Module) {
         bodyMoveBaseIndex: getBodyMoveByteOffset() >> 2,
         bodyFellAsleepByteOffset: getBodyFellAsleepByteOffset(),
         bodyMoveCapacity: getBodyMoveCapacity(),
+        jointEventsBaseIndex: getJointEventsByteOffset() >> 2,
+        jointEventCapacity: getJointEventCapacity(),
       };
     }
   }

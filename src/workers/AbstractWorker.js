@@ -57,6 +57,7 @@ import { FlashComponent } from '../components/FlashComponent.js';
 import { LightOccluder } from '../components/LightOccluder.js';
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
+import { JointBreakListener } from '../components/JointBreakListener.js';
 import { ShapeType } from '../core/ConfigDefaults.js';
 
 /**
@@ -773,6 +774,7 @@ export class AbstractWorker {
     self.BulletComponent = BulletComponent;
     self.CameraInOutListener = CameraInOutListener;
     self.CollisionListener = CollisionListener;
+    self.JointBreakListener = JointBreakListener;
 
     // Systems
     self.ParticleEmitter = ParticleEmitter;

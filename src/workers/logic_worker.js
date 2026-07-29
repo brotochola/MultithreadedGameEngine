@@ -14,6 +14,7 @@ import { RigidBody } from '../components/RigidBody.js';
 
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
+import { JointBreakListener } from '../components/JointBreakListener.js';
 
 import { SpriteSheetRegistry } from '../core/SpriteSheetRegistry.js';
 
@@ -30,6 +31,16 @@ import {
   initialContactCursor,
   BOX2D_CONTACT_KIND,
 } from '../box2d/box2dContactRing.js';
+import {
+  bindContactHitRing,
+  drainContactHitRing,
+  initialContactHitCursor,
+} from '../box2d/box2dContactHitRing.js';
+import {
+  bindJointBreakRing,
+  drainJointBreakRing,
+  initialJointBreakCursor,
+} from '../box2d/box2dJointBreakRing.js';
 import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
 
 // Note: Core engine classes (GameObject, Mouse, Keyboard, etc.) and components
@@ -84,6 +95,15 @@ class LogicWorker extends AbstractWorker {
     this.bodyGeneration = null;
     this.useBox2dContacts = false;
 
+    // Box2D contact-hit + joint-break rings (msg box2dReady, opt-in)
+    this.box2dHitRingI32 = null;
+    this.box2dHitRingF32 = null;
+    this.box2dHitCursor = 0;
+    this.useBox2dHits = false;
+    this.box2dJointBreakRingI32 = null;
+    this.box2dJointBreakCursor = 0;
+    this.useBox2dJointBreaks = false;
+
     // Screen visibility tracking (for onScreenEnter/Exit lifecycle methods)
     // Track previous frame's visibility state to detect transitions
     this.previousScreenVisibility = new Uint8Array(0); // Will be sized in initialize()
@@ -92,6 +112,10 @@ class LogicWorker extends AbstractWorker {
     // Resolved once in createGameObjectInstances, never changes
     this.collisionListenerByType = null; // Uint8Array sized to max entity types
     this.anyTypeNeedsCollisions = false; // Scene-level kill switch
+
+    // Joint-break listener per-type flags (indexed by entityType)
+    this.jointBreakListenerByType = null; // Uint8Array sized to max entity types
+    this.anyTypeNeedsJointBreaks = false; // Scene-level kill switch
 
     // ========================================
     // TICK DECIMATION OPTIMIZATION
@@ -210,9 +234,10 @@ class LogicWorker extends AbstractWorker {
    * Create GameObject instances for all registered entity classes - dynamically
    * DENSE ALLOCATION: entityIndex === componentIndex for all components
    */
-  createGameObjectInstances() {
+    createGameObjectInstances() {
     const numTypes = this.registeredClasses.length;
     this.collisionListenerByType = new Uint8Array(numTypes);
+    this.jointBreakListenerByType = new Uint8Array(numTypes);
 
     for (const classInfo of this.registeredClasses) {
       const { name, poolSize, startIndex, endIndex, entityType } = classInfo;
@@ -243,13 +268,18 @@ class LogicWorker extends AbstractWorker {
         const components = GameObject._collectComponents(EntityClass);
         let needsScreenCallbacks = false;
         let needsCollisionCallbacks = false;
+        let needsJointBreakCallbacks = false;
         for (const ComponentClass of components) {
           if (ComponentClass === CameraInOutListener) needsScreenCallbacks = true;
           if (ComponentClass === CollisionListener) needsCollisionCallbacks = true;
+          if (ComponentClass === JointBreakListener) needsJointBreakCallbacks = true;
         }
 
         if (needsCollisionCallbacks) {
           this.collisionListenerByType[entityType] = 1;
+        }
+        if (needsJointBreakCallbacks) {
+          this.jointBreakListenerByType[entityType] = 1;
         }
 
         // Special initialization for internal engine classes
@@ -305,8 +335,9 @@ class LogicWorker extends AbstractWorker {
       }
     }
 
-    // Scene-level kill switch: if no type has CollisionListener, skip processCollisionCallbacks entirely
+    // Scene-level kill switches: skip drain paths when no type opts in
     this.anyTypeNeedsCollisions = this.collisionListenerByType.includes(1);
+    this.anyTypeNeedsJointBreaks = this.jointBreakListenerByType.includes(1);
   }
 
   // ========================================
@@ -474,9 +505,13 @@ class LogicWorker extends AbstractWorker {
     // stable for the entire frame. Every worker does this independently.
     Mouse.updateEdgeFlags();
 
-    // Process collision callbacks BEFORE entity logic (Unity-style)
-    // Skip entirely if no entity type has CollisionListener component
-    if (this.anyTypeNeedsCollisions && this.useBox2dContacts) {
+    // Process collision/hit/joint-break callbacks BEFORE entity logic (Unity-style).
+    // Contacts/hits need CollisionListener; joint breaks need JointBreakListener.
+    if (
+      (this.anyTypeNeedsCollisions && this.useBox2dContacts) ||
+      this.useBox2dHits ||
+      (this.anyTypeNeedsJointBreaks && this.useBox2dJointBreaks)
+    ) {
       this.processCollisionCallbacks();
       this.systemsExecutedThisFrame++;
     }
@@ -647,6 +682,68 @@ class LogicWorker extends AbstractWorker {
    */
   processCollisionCallbacks() {
     this._processBox2dCollisionCallbacks();
+    if (this.useBox2dHits) this._processBox2dHitCallbacks();
+    if (this.anyTypeNeedsJointBreaks && this.useBox2dJointBreaks) {
+      this._processBox2dJointBreakCallbacks();
+    }
+  }
+
+  /**
+   * Drain contact-hit ring (opt-in Collider.enableHitEvents) — same worker
+   * partition + gen-validation rules as begin/end contacts.
+   */
+  _processBox2dHitCallbacks() {
+    const totalWorkers = this.totalLogicWorkers;
+    const myIndex = this.workerIndex;
+    const gameObjects = this.gameObjects;
+    const entityType = Transform.entityType;
+    const collisionFlags = this.collisionListenerByType;
+
+    const result = drainContactHitRing(
+      this.box2dHitRingI32,
+      this.box2dHitRingF32,
+      this.box2dHitCursor,
+      (a, b, genA, genB, px, py, nx, ny, speed) => {
+        if (this._entityGen(a) !== (genA | 0) || this._entityGen(b) !== (genB | 0)) return;
+        if (!Transform.active[a] || !Transform.active[b]) return;
+        const minE = a < b ? a : b;
+        if (minE % totalWorkers !== myIndex) return;
+        const aListens = collisionFlags[entityType[a]];
+        const bListens = collisionFlags[entityType[b]];
+        if (aListens) gameObjects[a]?.onCollisionHit(b, px, py, nx, ny, speed);
+        if (bListens) gameObjects[b]?.onCollisionHit(a, px, py, -nx, -ny, speed);
+      },
+    );
+    this.box2dHitCursor = result.nextCursor;
+  }
+
+  /**
+   * Drain joint-break ring — same worker partition + gen-validation rules as contacts.
+   * Dispatch only to entity types with JointBreakListener.
+   */
+  _processBox2dJointBreakCallbacks() {
+    const totalWorkers = this.totalLogicWorkers;
+    const myIndex = this.workerIndex;
+    const gameObjects = this.gameObjects;
+    const entityType = Transform.entityType;
+    const jointBreakFlags = this.jointBreakListenerByType;
+
+    const result = drainJointBreakRing(
+      this.box2dJointBreakRingI32,
+      this.box2dJointBreakCursor,
+      (jointIndex, entityA, entityB, genA, genB) => {
+        if (this._entityGen(entityA) !== (genA | 0) || this._entityGen(entityB) !== (genB | 0)) return;
+        if (!Transform.active[entityA] || !Transform.active[entityB]) return;
+        const minE = entityA < entityB ? entityA : entityB;
+        if (minE % totalWorkers !== myIndex) return;
+        const aListens = jointBreakFlags[entityType[entityA]];
+        const bListens = jointBreakFlags[entityType[entityB]];
+        if (!aListens && !bListens) return;
+        if (aListens) gameObjects[entityA]?.onJointBreak(jointIndex, entityA, entityB);
+        if (bListens) gameObjects[entityB]?.onJointBreak(jointIndex, entityA, entityB);
+      },
+    );
+    this.box2dJointBreakCursor = result.nextCursor;
   }
 
   _packGens(genA, genB) {
@@ -839,6 +936,26 @@ class LogicWorker extends AbstractWorker {
         } else {
           this.box2dContactRingI32 = null;
           this.useBox2dContacts = false;
+        }
+        if (data.hitSab) {
+          bindContactHitRing(data.hitSab);
+          this.box2dHitRingI32 = new Int32Array(data.hitSab);
+          this.box2dHitRingF32 = new Float32Array(data.hitSab);
+          this.box2dHitCursor = initialContactHitCursor(this.box2dHitRingI32);
+          this.useBox2dHits = true;
+        } else {
+          this.box2dHitRingI32 = null;
+          this.box2dHitRingF32 = null;
+          this.useBox2dHits = false;
+        }
+        if (data.jointBreakSab) {
+          bindJointBreakRing(data.jointBreakSab);
+          this.box2dJointBreakRingI32 = new Int32Array(data.jointBreakSab);
+          this.box2dJointBreakCursor = initialJointBreakCursor(this.box2dJointBreakRingI32);
+          this.useBox2dJointBreaks = true;
+        } else {
+          this.box2dJointBreakRingI32 = null;
+          this.useBox2dJointBreaks = false;
         }
         break;
       }

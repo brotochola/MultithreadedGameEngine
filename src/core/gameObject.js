@@ -1735,6 +1735,34 @@ export class GameObject {
   }
 
   /**
+   * Box2D contact-hit callback: Called when a hard impact occurs above the world
+   * hit-event threshold. Opt-in via Collider.enableHitEvents. Override in subclasses.
+   *
+   * @param {number} otherIndex - Index of the other entity in the impact
+   * @param {number} px - Contact point X (world space)
+   * @param {number} py - Contact point Y (world space)
+   * @param {number} nx - Contact normal X (points away from this entity)
+   * @param {number} ny - Contact normal Y (points away from this entity)
+   * @param {number} approachSpeed - Relative approach speed at impact
+   */
+  onCollisionHit(otherIndex, px, py, nx, ny, approachSpeed) {
+    // Override in subclasses
+  }
+
+  /**
+   * Box2D joint-break callback: Called when a joint on this entity exceeds its
+   * force/torque threshold (Joint.addX opts.forceThreshold / torqueThreshold) and
+   * is destroyed. Requires JointBreakListener on this entity type.
+   *
+   * @param {number} jointIndex - Weed Joint pool index that broke
+   * @param {number} entityA - First entity of the broken joint
+   * @param {number} entityB - Second entity of the broken joint
+   */
+  onJointBreak(jointIndex, entityA, entityB) {
+    // Override in subclasses
+  }
+
+  /**
    * LIFECYCLE: Called when this entity is hit by a bullet (raycast impact)
    * Override in subclasses to apply damage, spawn effects, etc.
    *
@@ -1907,6 +1935,7 @@ export class GameObject {
       RigidBody.fixedRotation[i] = 0;
       // Reset sleeping state (entity must start awake for physics to work)
       RigidBody.sleeping[i] = 0;
+      RigidBody.sleepThreshold[i] = 0;
     }
 
     // Transform is always present
@@ -1927,6 +1956,8 @@ export class GameObject {
       Collider.collisionMask[i] = 0xFFFFFFFF;
       Collider.collisionGroupIndex[i] = 0;
       Collider.friction[i] = 0;
+      Collider.restitution[i] = 0;
+      Collider.enableHitEvents[i] = 0;
       Collider.visualRange[i] = 0;
       Collider.polyCount[i] = 0;
       Collider.polyCentroidX[i] = 0;

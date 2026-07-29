@@ -44,6 +44,7 @@
     import { PlatformerGameScene } from '/demos/scenes/PlatformerGameScene.js';
     import { ConstraintBoxScene } from '/demos/scenes/ConstraintBoxScene.js';
     import { OrientedBoxScene } from '/demos/scenes/OrientedBoxScene.js';
+    import { WeldBreakScene } from '/demos/scenes/WeldBreakScene.js';
     // Destructure what we need from WEED
     const { GameEngine } = WEED;
 
@@ -70,6 +71,7 @@
       { name: 'platformer game', class: PlatformerGameScene },
       { name: 'Constraint Boxes', class: ConstraintBoxScene },
       { name: 'Oriented Boxes', class: OrientedBoxScene },
+      { name: 'Weld Break', class: WeldBreakScene },
     ]
     // Register available scenes with DebugUI for scene switching
     if (game.debugUI) {

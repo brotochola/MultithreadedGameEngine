@@ -1192,6 +1192,7 @@ async function loadSingleScript(scriptPath, loadedClasses, globalContext, isBlob
         'DecorationComponent', 'ParticleEmitter', 'DecorationPool', 'Flash', 'Mouse', 'Camera',
         'NavGrid', 'Ray', 'ShapeType', 'rng', 'randomColor', 'distanceSq2D', 'getDirectionFromAngle',
         'containerRadius', 'SpriteSheetRegistry', 'Keyboard', 'SoundManager',
+        'CollisionListener', 'CameraInOutListener', 'JointBreakListener',
         // Enum members (previously only ShapeType — anything destructured from
         // `enums` in user scripts must be provided here, otherwise the script
         // gets a ReferenceError after we strip the destructuring line).
@@ -1237,6 +1238,9 @@ async function loadSingleScript(scriptPath, loadedClasses, globalContext, isBlob
           g.SpriteSheetRegistry || WEED.SpriteSheetRegistry,
           g.Keyboard || WEED.Keyboard,
           g.SoundManager || WEED.SoundManager,
+          g.CollisionListener || WEED.CollisionListener,
+          g.CameraInOutListener || WEED.CameraInOutListener,
+          g.JointBreakListener || WEED.JointBreakListener,
           e.BLEND_MODES,
           e.DEFAULT_LAYERS,
           e.CAMERA_TYPES,

@@ -30,6 +30,7 @@
     box2dWorkerCount: 4,
     contactRingCapacity: 65536,
     sleeping: true,
+    hitEventThreshold: 0,
   };
 
   // Mirrors PHYSICS_STATS (workers-utils.js) — host writes FPS / STEP_MS / MSG_MS.
@@ -70,6 +71,7 @@
     velocityAngle: Float32Array,
     speed: Float32Array,
     sleeping: Uint8Array,
+    sleepThreshold: Float32Array,
   };
 
   var COLLIDER_SCHEMA = {
@@ -85,6 +87,8 @@
     collisionMask: Uint32Array,
     collisionGroupIndex: Int32Array,
     friction: Float32Array,
+    restitution: Float32Array,
+    enableHitEvents: Uint8Array,
     visualRange: Float32Array,
     polyCount: Uint8Array,
     polyCentroidX: Float32Array,
@@ -165,6 +169,10 @@
           ? n.contactRingCapacity
           : base.contactRingCapacity,
       sleeping: n.sleeping != null ? n.sleeping : base.sleeping,
+      hitEventThreshold:
+        n.hitEventThreshold != null
+          ? n.hitEventThreshold
+          : base.hitEventThreshold,
     };
   }
 
@@ -185,6 +193,10 @@
     var localAnchorBX = new Float32Array(buffer, offset, n);
     offset += n * 4;
     var localAnchorBY = new Float32Array(buffer, offset, n);
+    offset += n * 4;
+    var forceThreshold = new Float32Array(buffer, offset, n);
+    offset += n * 4;
+    var torqueThreshold = new Float32Array(buffer, offset, n);
     offset += n * 4;
     var active = new Uint8Array(buffer, offset, n);
     offset = align4(offset + n);
@@ -218,8 +230,10 @@
     offset += n * 4;
     var activeIndices = new Uint16Array(buffer, offset, n);
     offset += n * 2;
-    offset += n * 2; // activeIndexPositions
+    var activeIndexPositions = new Uint16Array(buffer, offset, n);
+    offset += n * 2;
     var activeCount = new Int32Array(buffer, offset, 1);
+    var activeListLock = new Int32Array(buffer, offset + 4, 1);
     offset += 8;
     var revision = new Uint32Array(buffer, offset, n);
     return {
@@ -229,6 +243,8 @@
       localAnchorAY: localAnchorAY,
       localAnchorBX: localAnchorBX,
       localAnchorBY: localAnchorBY,
+      forceThreshold: forceThreshold,
+      torqueThreshold: torqueThreshold,
       active: active,
       length: length,
       enableSpring: enableSpring,
@@ -245,7 +261,9 @@
       linearDampingRatio: linearDampingRatio,
       angularDampingRatio: angularDampingRatio,
       activeIndices: activeIndices,
+      activeIndexPositions: activeIndexPositions,
       activeCount: activeCount,
+      activeListLock: activeListLock,
       revision: revision,
     };
   }
@@ -262,6 +280,8 @@
     commandSab: null,
     contactSab: null,
     movedSab: null,
+    hitSab: null,
+    jointBreakSab: null,
     bodySyncViews: null,
     transform: null,
     rigidBody: null,
@@ -318,6 +338,8 @@
       commandSab: state.commandSab,
       contactSab: state.contactSab,
       movedSab: state.movedSab,
+      hitSab: state.hitSab,
+      jointBreakSab: state.jointBreakSab,
       eventHeaderBaseIndex: ready.eventHeaderBaseIndex,
       contactBeginBaseIndex: ready.contactBeginBaseIndex,
       contactEndBaseIndex: ready.contactEndBaseIndex,
@@ -326,7 +348,7 @@
       contactEventCapacity: ready.contactEventCapacity,
       sensorEventCapacity: ready.sensorEventCapacity,
       contactPairIntStride: ready.contactPairIntStride || 2,
-      eventHeaderIntCount: ready.eventHeaderIntCount || 8,
+      eventHeaderIntCount: ready.eventHeaderIntCount || 11,
     });
   }
 
@@ -349,6 +371,10 @@
     );
     state.movedSab = Box2dMovedBodies.createMovedBodiesSab(entityCount);
     Box2dMovedBodies.bindMovedBodies(state.movedSab);
+    state.hitSab = Box2dContactHitRing.createContactHitRingSab(
+      state.settings.contactRingCapacity,
+    );
+    state.jointBreakSab = Box2dJointBreakRing.createJointBreakRingSab();
 
     var s = state.settings;
     var T = state.transform;
@@ -371,6 +397,9 @@
       commandSab: state.commandSab,
       contactSab: state.contactSab,
       movedSab: state.movedSab,
+      hitSab: state.hitSab,
+      jointBreakSab: state.jointBreakSab,
+      hitEventThreshold: s.hitEventThreshold,
       stats: state.stats ? packView(state.stats) : null,
       posePublish: state.posePublish
         ? {
@@ -408,6 +437,7 @@
         angularDamping: packView(R.angularDamping),
         sleeping: packView(R.sleeping),
         fixedRotation: packView(R.fixedRotation),
+        sleepThreshold: packView(R.sleepThreshold),
         colActive: packView(C.active),
         offsetX: packView(C.offsetX),
         offsetY: packView(C.offsetY),
@@ -420,6 +450,8 @@
         collisionMask: packView(C.collisionMask),
         collisionGroupIndex: packView(C.collisionGroupIndex),
         friction: packView(C.friction),
+        restitution: packView(C.restitution),
+        enableHitEvents: packView(C.enableHitEvents),
         polyCount: packView(C.polyCount),
         polyVertexX: packView(C.polyVertexX),
         polyVertexY: packView(C.polyVertexY),
@@ -436,6 +468,8 @@
         localAnchorAY: packView(J.localAnchorAY),
         localAnchorBX: packView(J.localAnchorBX),
         localAnchorBY: packView(J.localAnchorBY),
+        forceThreshold: packView(J.forceThreshold),
+        torqueThreshold: packView(J.torqueThreshold),
         active: packView(J.active),
         length: packView(J.length),
         enableSpring: packView(J.enableSpring),
@@ -452,7 +486,9 @@
         linearDampingRatio: packView(J.linearDampingRatio),
         angularDampingRatio: packView(J.angularDampingRatio),
         activeIndices: packView(J.activeIndices),
+        activeIndexPositions: packView(J.activeIndexPositions),
         activeCount: packView(J.activeCount),
+        activeListLock: packView(J.activeListLock),
         revision: packView(J.revision),
       };
     }
@@ -488,6 +524,7 @@
       weedjsApplyConfig({
         subSteps: state.settings.subStepCount,
         sleeping: state.sleepingEnabled !== false,
+        hitEventThreshold: state.settings.hitEventThreshold,
       });
     }
   }

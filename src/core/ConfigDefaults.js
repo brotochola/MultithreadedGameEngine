@@ -170,6 +170,8 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   contactRingCapacity: 65536,
   /** Master switch: maps to b2World_EnableSleeping. When false, Box2D never sleeps dynamics. */
   sleeping: true,
+  /** Min relative approach speed (px/s) to emit a Collider.enableHitEvents contact-hit. 0 = Box2D default. */
+  hitEventThreshold: 0,
   noLimitFPS: false,
   fixedFps: 0,
 });

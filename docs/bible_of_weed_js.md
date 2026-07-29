@@ -91,6 +91,8 @@ Lifecycle hooks:
 - `onSpawned(spawnConfig)` each spawn
 - `tick(dtRatio, deltaTime, accumulatedTime, frameNumber)` update
 - `onCollisionEnter/Stay/Exit(otherIndex)` -- requires `CollisionListener` component
+- `onCollisionHit(...)` -- requires `CollisionListener` (opt-in via `Collider.enableHitEvents`)
+- `onJointBreak(jointIndex, entityA, entityB)` -- requires `JointBreakListener`
 - `isCollidingWith(other)` -- requires at least one entity type in the scene to have `CollisionListener` (see Collision Filtering)
 - `onScreenEnter/Exit()` -- requires `CameraInOutListener` component
 - `onDespawned()` before returning to pool
@@ -128,7 +130,8 @@ Some lifecycle callbacks are expensive to check every frame for every entity. Th
 
 | Tag Component | What you get when at least one entity **type** in the scene has this tag | What the engine skips when **no** entity type in the scene has this tag |
 |---|---|---|
-| `CollisionListener` | Collision enter/stay/exit callbacks **and** `isCollidingWith()` queries (see below for who receives callbacks) | The whole `processCollisionCallbacks()` pass — no collision Set, no callbacks, no `isCollidingWith()` |
+| `CollisionListener` | Collision enter/stay/exit callbacks **and** `isCollidingWith()` queries (see below for who receives callbacks); also gates `onCollisionHit` | Contact-ring Set build + enter/stay/exit (and hit dispatch) for non-listening types |
+| `JointBreakListener` | `onJointBreak` when a joint on that type exceeds force/torque threshold | Joint-break ring drain entirely |
 | `CameraInOutListener` | `onScreenEnter` / `onScreenExit` on listening types | Per-frame visibility tracking and screen enter/exit callbacks |
 
 ### How it works

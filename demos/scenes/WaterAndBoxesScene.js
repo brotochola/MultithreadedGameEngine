@@ -54,7 +54,8 @@ export class WaterAndBoxesScene extends WEED.Scene {
 
     renderer: {
       noLimitFPS: false,
-      ySorting: false
+      ySorting: false,
+      maxVisibleRenderables: 50000,
     },
 
     lighting: {

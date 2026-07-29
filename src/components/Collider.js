@@ -45,6 +45,12 @@ class Collider extends Component {
     // Box2D fixture friction (μ). Pair μ = min(μi, μj); 0 = off
     friction: Float32Array,
 
+    // Box2D restitution (bounce), typically 0..1
+    restitution: Float32Array,
+
+    // Opt-in contact hit events (impact above world hit threshold)
+    enableHitEvents: Uint8Array,
+
     // Perception (for spatial queries)
     visualRange: Float32Array,
 
@@ -309,6 +315,22 @@ class Collider extends Component {
   set friction(value) {
     Collider.friction[this.index] = Math.max(0, Number(value) || 0);
     markBodyDirty(this.index, BODY_DIRTY.FRICTION);
+  }
+
+  get restitution() {
+    return Collider.restitution[this.index];
+  }
+  set restitution(value) {
+    Collider.restitution[this.index] = Math.max(0, Number(value) || 0);
+    markBodyDirty(this.index, BODY_DIRTY.FRICTION);
+  }
+
+  get enableHitEvents() {
+    return Collider.enableHitEvents[this.index] !== 0;
+  }
+  set enableHitEvents(value) {
+    Collider.enableHitEvents[this.index] = value ? 1 : 0;
+    markBodyDirty(this.index, BODY_DIRTY.LIFECYCLE);
   }
 
   addLayerToMask(layer) {

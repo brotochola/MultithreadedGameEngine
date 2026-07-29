@@ -8,7 +8,7 @@ import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
-import { bindCommandRing } from '../box2d/box2dCommandRing.js';
+import { bindCommandRing, enqueueExplode } from '../box2d/box2dCommandRing.js';
 import { bindMovedBodies, getMovedBodiesViews } from '../box2d/box2dMovedBodies.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
@@ -23,6 +23,7 @@ import { LightEmitter } from '../components/LightEmitter.js';
 import { LightOccluder } from '../components/LightOccluder.js';
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
+import { JointBreakListener } from '../components/JointBreakListener.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { AdobeAnimRegistry } from './AdobeAnimRegistry.js';
 import { AdobeAnimCompiler } from './AdobeAnimCompiler.js';
@@ -246,6 +247,7 @@ class Scene {
       SpriteRenderer: { ComponentClass: SpriteRenderer },
       CameraInOutListener: { ComponentClass: CameraInOutListener },
       CollisionListener: { ComponentClass: CollisionListener },
+      JointBreakListener: { ComponentClass: JointBreakListener },
     };
 
     // Assign componentId IDs to always-seeded components
@@ -255,6 +257,7 @@ class Scene {
     SpriteRenderer.componentId = this.nextComponentId++;
     CameraInOutListener.componentId = this.nextComponentId++;
     CollisionListener.componentId = this.nextComponentId++;
+    JointBreakListener.componentId = this.nextComponentId++;
     // Clear stale IDs/views from a previous scene (realloc only if pooled again)
     AdobeAnimComponent.componentId = null;
     AdobeAnimComponent.clearArrays();
@@ -1566,6 +1569,8 @@ class Scene {
         commandSab: e.data.commandSab,
         contactSab: e.data.contactSab,
         movedSab: e.data.movedSab || null,
+        hitSab: e.data.hitSab || null,
+        jointBreakSab: e.data.jointBreakSab || null,
         eventHeaderBaseIndex: e.data.eventHeaderBaseIndex,
         contactBeginBaseIndex: e.data.contactBeginBaseIndex,
         contactEndBaseIndex: e.data.contactEndBaseIndex,
@@ -1574,7 +1579,7 @@ class Scene {
         contactEventCapacity: e.data.contactEventCapacity,
         sensorEventCapacity: e.data.sensorEventCapacity,
         contactPairIntStride: e.data.contactPairIntStride || 2,
-        eventHeaderIntCount: e.data.eventHeaderIntCount || 8,
+        eventHeaderIntCount: e.data.eventHeaderIntCount || 11,
       };
       rebindBox2dHotFields(payload);
       this.box2dHotFields = payload;
@@ -1708,6 +1713,15 @@ class Scene {
       }
     }
     console.log(`[Scene] ✅ All start messages sent`);
+  }
+
+  /**
+   * Box2D radial explosion — applies falling-off impulse to bodies within radius
+   * (falloff = 0.5 * radius, handled by the physics worker).
+   * @param {{x:number, y:number, radius:number, impulsePerLength:number, maskBits?:number}} opts
+   */
+  explode({ x, y, radius, impulsePerLength, maskBits = 0xffffffff }) {
+    enqueueExplode(maskBits >>> 0, x, y, radius, impulsePerLength);
   }
 
   updatePhysicsConfig(partialConfig = {}) {

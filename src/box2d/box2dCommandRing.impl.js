@@ -15,6 +15,8 @@
     SET_ANGLE: 3, // entity, angle
     SET_ANGULAR_VELOCITY: 4, // entity, w
     SET_FIXED_ROTATION: 5, // entity, flag (0|1)
+    EXPLODE: 6, // maskBits as entity, x, y, radius, impulsePerLength (falloff=0.5*radius)
+    SET_SLEEP_THRESHOLD: 7, // entity, threshold
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -110,6 +112,21 @@
     return enqueue(BOX2D_CMD.SET_FIXED_ROTATION, entity, flag ? 1 : 0, 0, 0, 0);
   }
 
+  function enqueueExplode(maskBits, x, y, radius, impulsePerLength) {
+    return enqueue(
+      BOX2D_CMD.EXPLODE,
+      maskBits | 0,
+      x,
+      y,
+      radius,
+      impulsePerLength == null ? 0 : impulsePerLength,
+    );
+  }
+
+  function enqueueSetSleepThreshold(entity, threshold) {
+    return enqueue(BOX2D_CMD.SET_SLEEP_THRESHOLD, entity, threshold, 0, 0, 0);
+  }
+
   function drainCommandRing(i32, f32, handlers) {
     if (!i32 || !f32 || !handlers) return 0;
     var cap = i32[HDR_CAP] | 0;
@@ -124,6 +141,7 @@
       var a = f32[base + 3];
       var b = f32[base + 4];
       var c = f32[base + 5];
+      var d = f32[base + 6];
       switch (op) {
         case BOX2D_CMD.SET_TRANSFORM:
           if (handlers.setTransform) handlers.setTransform(entity, a, b, c);
@@ -139,6 +157,12 @@
           break;
         case BOX2D_CMD.SET_FIXED_ROTATION:
           if (handlers.setFixedRotation) handlers.setFixedRotation(entity, a);
+          break;
+        case BOX2D_CMD.EXPLODE:
+          if (handlers.explode) handlers.explode(entity, a, b, c, d);
+          break;
+        case BOX2D_CMD.SET_SLEEP_THRESHOLD:
+          if (handlers.setSleepThreshold) handlers.setSleepThreshold(entity, a);
           break;
         default:
           break;
@@ -163,6 +187,8 @@
     enqueueSetAngle: enqueueSetAngle,
     enqueueSetAngularVelocity: enqueueSetAngularVelocity,
     enqueueSetFixedRotation: enqueueSetFixedRotation,
+    enqueueExplode: enqueueExplode,
+    enqueueSetSleepThreshold: enqueueSetSleepThreshold,
     drainCommandRing: drainCommandRing,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

@@ -49,6 +49,9 @@ export class RigidBody extends Component {
 
     // Sleeping: Box2D owns RigidBody.sleeping (HEAP). Scene config.physics.sleeping → b2World_EnableSleeping.
     sleeping: Uint8Array, // 0 = awake, 1 = sleeping
+
+    // Linear sleep speed threshold (m/s). 0 = Box2D default (~0.05 * lengthUnits)
+    sleepThreshold: Float32Array,
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -200,6 +203,17 @@ export class RigidBody extends Component {
   set angularDamping(value) {
     RigidBody.angularDamping[this.index] = Math.max(0, Number(value) || 0);
     markBodyDirty(this.index, BODY_DIRTY.DAMPING);
+  }
+
+  get sleepThreshold() {
+    return RigidBody.sleepThreshold[this.index];
+  }
+  set sleepThreshold(value) {
+    const v = Math.max(0, Number(value) || 0);
+    RigidBody.sleepThreshold[this.index] = v;
+    if (typeof globalThis.Box2dCommandRing?.enqueueSetSleepThreshold === 'function') {
+      globalThis.Box2dCommandRing.enqueueSetSleepThreshold(this.index, v);
+    }
   }
 
   /**

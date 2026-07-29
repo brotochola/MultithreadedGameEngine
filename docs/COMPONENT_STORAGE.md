@@ -22,6 +22,7 @@ That layout is intentional for hot components such as `Transform`, `RigidBody`, 
 
 - `CameraInOutListener`
 - `CollisionListener`
+- `JointBreakListener`
 
 **Optional SoA** — enter `componentPools` only when an entity lists the component, or when lighting/flash config needs them (`Scene.ensureOptionalComponentPools()`):
 

@@ -1,11 +1,27 @@
 import WEED from '/src/index.js';
 
-const { GameObject, Mouse, RigidBody, Collider, CollisionListener, SpriteRenderer, mixTint } = WEED;
+const {
+  GameObject,
+  Mouse,
+  RigidBody,
+  Collider,
+  CollisionListener,
+  SpriteRenderer,
+  ParticleEmitter,
+  Transform,
+  mixTint,
+} = WEED;
 
 const BASE_WATER_TINT = 0x0033ff;
 const SPLASH_TINT = 0xbbeeff;
 /** Tint scale only — world `physics.maximumLinearSpeed` clamps velocity. */
 const WATER_SPEED_REF = 7200;
+/** Particle worker still integrates in frame units (~px/frame @ 60Hz). Box2D vel is px/s. */
+const PX_PER_FRAME = 60;
+/** Ignore soft contacts (px/s relative). */
+const SPLASH_SPEED_MIN = 350;
+/** Relative speed that maps to full splash intensity (px/s). */
+const SPLASH_SPEED_FULL = 3500;
 
 class WaterBall extends GameObject {
   static scriptUrl = import.meta.url;
@@ -32,7 +48,7 @@ class WaterBall extends GameObject {
     this.collider.radius = colliderRadius;
     this.collider.visualRange = colliderRadius * 6;
 
-    RigidBody.mass[this.index] *= 2;
+    RigidBody.mass[this.index] *= 0.1;
     RigidBody.invMass[this.index] = 1 / (RigidBody.mass[this.index] || 1);
 
     this.setScale(this.collider.radius * 0.5);
@@ -59,40 +75,62 @@ class WaterBall extends GameObject {
   }
 
   onCollisionEnter(otherIndex) {
+    if (WaterBall.entityType == Transform.entityType[otherIndex]) return;
 
-    if (WaterBall.entityType == Transform.entityType[otherIndex]) return
+    const rb = RigidBody;
+    const i = this.index;
+    const relVx = rb.vx[otherIndex] - rb.vx[i];
+    const relVy = rb.vy[otherIndex] - rb.vy[i];
+    const impactSpeed = Math.hypot(relVx, relVy); // px/s
+    if (impactSpeed < SPLASH_SPEED_MIN) return;
 
-    const rb = RigidBody
-    const otherSpeed = rb.speed[otherIndex]
-    const mySpeed = rb.speed[this.index]
+    // Mass-weighted intensity so heavy boxes splash more than light taps.
+    const massFactor = Math.min(3, Math.sqrt(Math.max(1, rb.mass[otherIndex]) / 2000));
+    const intensity = Math.min(1.4, ((impactSpeed - SPLASH_SPEED_MIN) / (SPLASH_SPEED_FULL - SPLASH_SPEED_MIN)) * massFactor);
 
-    const difVelX = rb.vx[otherIndex] - rb.vx[this.index]
-    const difVelY = rb.vy[otherIndex] - rb.vy[this.index]
-    const difVel = difVelX + difVelY
-    const energy = difVel * rb.mass[otherIndex]
-    const energyRatio = energy / 600000; // was 10000 on frame-unit vel
+    const impactAngle = Math.atan2(relVy, relVx) * (180 / Math.PI);
+    const fan = 55 + intensity * 70;
+    // Convert impact to particle frame-speed — punchy spray.
+    const spray = Math.min(28, Math.max(6, (impactSpeed / PX_PER_FRAME) * 0.85));
+    const r = this.radius;
 
-    if (energyRatio < 3) return
-
+    // Main droplets — big, bright, long arc.
     ParticleEmitter.emit({
-      count: Math.floor(energyRatio * 0.5),
+      count: Math.floor(18 + intensity * 55),
       x: this.x,
       y: this.y,
-      z: -this.radius,
+      z: -r * (0.6 + Math.random() * 0.8),
       texture: '_whiteCircle',
-      alpha: { min: 0.25, max: 0.5 },
-      scale: { min: 0.66, max: 2 },
-      lifespan: { min: 1000, max: 5000 },
-      angleXY: { min: -180, max: 180 },
-      speed: { min: mySpeed * 0.25, max: otherSpeed * 0.5 },
-      gravity: 0.7,
-      vz: -energyRatio * 0.1 - 0.01,
+      tint: { min: 0x66aaff, max: 0xffffff },
+      alpha: { min: 0.55, max: 1 },
+      scale: { min: 0.55, max: 1.6 + intensity * 1.4 },
+      lifespan: { min: 500, max: 1400 + intensity * 1200 },
+      angleXY: { min: impactAngle - fan, max: impactAngle + fan },
+      speed: { min: spray * 0.55, max: spray },
+      gravity: 0.55,
+      vz: { min: -(3 + intensity * 8), max: -(1 + intensity * 3) },
       despawnOnGroundContact: true,
       tweenToAlpha0: true,
-      // layerId: 5,
-
     });
 
+    // Fine mist — dense cloud around hit.
+    ParticleEmitter.emit({
+      count: Math.floor(14 + intensity * 40),
+      x: this.x,
+      y: this.y,
+      z: -r * 0.4,
+      texture: '_whiteCircle',
+      tint: { min: 0xaaccff, max: 0xffffff },
+      alpha: { min: 0.35, max: 0.75 },
+      scale: { min: 0.25, max: 0.85 },
+      lifespan: { min: 350, max: 900 + intensity * 600 },
+      angleXY: { min: 0, max: 360 },
+      speed: { min: spray * 0.25, max: spray * 0.75 },
+      gravity: 0.28,
+      vz: { min: -(1.5 + intensity * 4), max: -0.4 },
+      despawnOnGroundContact: true,
+      tweenToAlpha0: true,
+    });
   }
 }
 

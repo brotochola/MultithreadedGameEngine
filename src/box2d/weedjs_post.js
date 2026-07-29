@@ -12,11 +12,15 @@
     'physics-api.js',
     'box2dCommandRing.impl.js',
     'box2dContactRing.impl.js',
+    'box2dContactHitRing.impl.js',
+    'box2dJointBreakRing.impl.js',
     'box2dMovedBodies.impl.js',
   );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
   const publishBox2dContactEvent = Box2dContactRing.publishContactEvent;
   const CONTACT_KIND = Box2dContactRing.BOX2D_CONTACT_KIND;
+  const publishContactHit = Box2dContactHitRing.publishContactHit;
+  const publishJointBreak = Box2dJointBreakRing.publishJointBreak;
   const publishMovedBodies = Box2dMovedBodies.publishMovedBodies;
   const bindMovedBodies = Box2dMovedBodies.bindMovedBodies;
 
@@ -44,6 +48,8 @@
   let cmdI32 = null;
   let cmdF32 = null;
   let contactRingI32 = null;
+  let hitRingBound = false;
+  let jointBreakRingBound = false;
   let views = null;
   let hasBody = null;
   let createFailed = null;
@@ -148,6 +154,9 @@
       fixedRotation: desc.fixedRotation
         ? viewFromDesc(desc.fixedRotation, Uint8Array)
         : null,
+      sleepThreshold: desc.sleepThreshold
+        ? viewFromDesc(desc.sleepThreshold, Float32Array)
+        : null,
       colActive: viewFromDesc(desc.colActive, Uint8Array),
       offsetX: viewFromDesc(desc.offsetX, Float32Array),
       offsetY: viewFromDesc(desc.offsetY, Float32Array),
@@ -160,6 +169,8 @@
       collisionMask: viewFromDesc(desc.collisionMask, Uint32Array),
       collisionGroupIndex: viewFromDesc(desc.collisionGroupIndex, Int32Array),
       friction: viewFromDesc(desc.friction, Float32Array),
+      restitution: viewFromDesc(desc.restitution, Float32Array),
+      enableHitEvents: viewFromDesc(desc.enableHitEvents, Uint8Array),
       polyCount: viewFromDesc(desc.polyCount, Uint8Array),
       polyVertexX: viewFromDesc(desc.polyVertexX, Float32Array),
       polyVertexY: viewFromDesc(desc.polyVertexY, Float32Array),
@@ -197,6 +208,8 @@
       localAnchorAY: viewFromDesc(desc.localAnchorAY, Float32Array),
       localAnchorBX: viewFromDesc(desc.localAnchorBX, Float32Array),
       localAnchorBY: viewFromDesc(desc.localAnchorBY, Float32Array),
+      forceThreshold: viewFromDesc(desc.forceThreshold, Float32Array),
+      torqueThreshold: viewFromDesc(desc.torqueThreshold, Float32Array),
       active: viewFromDesc(desc.active, Uint8Array),
       length: viewFromDesc(desc.length, Float32Array),
       enableSpring: viewFromDesc(desc.enableSpring, Uint8Array),
@@ -213,7 +226,9 @@
       linearDampingRatio: viewFromDesc(desc.linearDampingRatio, Float32Array),
       angularDampingRatio: viewFromDesc(desc.angularDampingRatio, Float32Array),
       activeIndices: viewFromDesc(desc.activeIndices, Uint16Array),
+      activeIndexPositions: viewFromDesc(desc.activeIndexPositions, Uint16Array),
       activeCount: viewFromDesc(desc.activeCount, Int32Array),
+      activeListLock: viewFromDesc(desc.activeListLock, Int32Array),
       revision: viewFromDesc(desc.revision, Uint32Array),
     };
     jointHandle = new Int32Array(maxJoints);
@@ -382,6 +397,8 @@
     const shape = views.shapeType[i] | 0;
     const rawFriction = views.friction[i];
     const friction = rawFriction >= 0 ? rawFriction : 0;
+    const restitution = views.restitution[i] || 0;
+    const enableHitEvents = views.enableHitEvents[i] !== 0;
     const linearDamping = views.linearDamping[i] || 0;
     const angularDamping = views.angularDamping[i] || 0;
     const angle = isFixedRotation(i) ? 0 : views.rotation[i];
@@ -394,7 +411,7 @@
       offsetY: views.offsetY[i],
       density: densityForEntity(i, shape),
       friction,
-      restitution: 0,
+      restitution,
       linearDamping,
       angularDamping,
       gravityScale: 1,
@@ -402,6 +419,7 @@
       vy: views.vy[i],
       angularVelocity: views.angularVelocity[i],
       isSensor: views.isTrigger[i] !== 0,
+      enableHitEvents,
       categoryBits: categoryBitsFor(i),
       maskBits: views.collisionMask[i] >>> 0,
       groupIndex: views.collisionGroupIndex[i] | 0,
@@ -499,6 +517,7 @@
     if (flags & BODY_DIRTY.FRICTION) {
       const friction = views.friction[i];
       bodySetFrictionFn(i, friction >= 0 ? friction : 0);
+      bodySetRestitutionFn(i, views.restitution[i] || 0);
     }
   }
 
@@ -555,6 +574,10 @@
         addDenseBody(i);
         created = true;
         changes++;
+        const sleepThreshold = views.sleepThreshold ? views.sleepThreshold[i] : 0;
+        if (sleepThreshold > 0) {
+          bodySetSleepThresholdFn(i, sleepThreshold);
+        }
         if (views.px) {
           const x = views.x[i];
           const y = views.y[i];
@@ -614,6 +637,51 @@
     }
     jointHandle[idx] = -1;
     jointSeenRev[idx] = 0;
+  }
+
+  function acquireJointSpinLock(lockView) {
+    if (!lockView) return;
+    while (Atomics.compareExchange(lockView, 0, 0, 1) !== 0) {
+      // Joint break is rare — short spin lock acceptable here.
+    }
+  }
+
+  function releaseJointSpinLock(lockView) {
+    if (!lockView) return;
+    Atomics.store(lockView, 0, 0);
+  }
+
+  /** Mirrors Joint.remove (src/core/Joint.js) — pool free list untouched (ponytail: idx leak on break, upgrade: bind jointFreeList/jointFreeListTop here too). */
+  function removeWeedJoint(idx) {
+    const jv = jointViews;
+    if (!jv || idx < 0 || idx >= maxJoints || !jv.active[idx]) return;
+
+    acquireJointSpinLock(jv.activeListLock);
+    try {
+      if (!jv.active[idx]) return;
+      const count = jv.activeCount ? Atomics.load(jv.activeCount, 0) : 0;
+      const slot = jv.activeIndexPositions[idx];
+      const lastSlot = count - 1;
+
+      jv.active[idx] = 0;
+
+      if (slot !== 0xffff && lastSlot >= 0) {
+        const lastIdx = jv.activeIndices[lastSlot];
+        if (slot !== lastSlot) {
+          jv.activeIndices[slot] = lastIdx;
+          jv.activeIndexPositions[lastIdx] = slot;
+        }
+        jv.activeIndices[lastSlot] = 0xffff;
+        jv.activeIndexPositions[idx] = 0xffff;
+        if (jv.activeCount) {
+          Atomics.store(jv.activeCount, 0, lastSlot);
+        }
+      }
+    } finally {
+      releaseJointSpinLock(jv.activeListLock);
+    }
+
+    if (jv.revision) Atomics.add(jv.revision, idx, 1);
   }
 
   function createJointAt(idx) {
@@ -687,6 +755,13 @@
 
     jointHandle[idx] = handleObj.handle;
     jointSeenRev[idx] = rev;
+    const force = jv.forceThreshold ? jv.forceThreshold[idx] : Infinity;
+    const torque = jv.torqueThreshold ? jv.torqueThreshold[idx] : Infinity;
+    handleObj.configure(
+      idx,
+      Number.isFinite(force) ? force : 1e30,
+      Number.isFinite(torque) ? torque : 1e30,
+    );
     return true;
   }
 
@@ -751,6 +826,8 @@
   let bodySetAngularDampingFn = null;
   let bodySetFilterFn = null;
   let bodySetFrictionFn = null;
+  let bodySetRestitutionFn = null;
+  let bodySetSleepThresholdFn = null;
   let bodySetDensityFn = null;
   let bodySetShapeBoxFn = null;
   let bodySetShapeCircleFn = null;
@@ -803,6 +880,14 @@
         rotChan[entity] = 0;
         bodySetAngularVelocityFn(entity, 0);
       }
+    },
+    explode(maskBits, x, y, radius, impulsePerLength) {
+      if (!world) return;
+      world.explode(x, y, radius, radius * 0.5, impulsePerLength, maskBits >>> 0);
+    },
+    setSleepThreshold(entity, threshold) {
+      if (!hasBody[entity]) return;
+      bodySetSleepThresholdFn(entity, threshold);
     },
   };
 
@@ -866,8 +951,54 @@
     publishPairBuffer(world._sensorBegin, sensorBeginCount, CONTACT_KIND.SENSOR_BEGIN, stride);
   }
 
+  function publishHitsFromWasm() {
+    if (!world || !hitRingBound) return;
+    const hdr = world._eventHeader;
+    const hits = world._contactHit;
+    if (!hdr || !hits) return;
+    const stride = world._contactHitStride || 8;
+    const count = hdr[EVENT_HEADER.CONTACT_HIT_COUNT] | 0;
+    for (let i = 0; i < count; i++) {
+      const base = i * stride;
+      const a = hits[base] | 0;
+      const b = hits[base + 1] | 0;
+      publishContactHit(
+        a,
+        b,
+        entityGen(a),
+        entityGen(b),
+        hits[base + 2],
+        hits[base + 3],
+        hits[base + 4],
+        hits[base + 5],
+        hits[base + 6],
+      );
+    }
+  }
+
+  function publishJointBreaksFromWasm() {
+    if (!world || !jointBreakRingBound || !jointViews) return;
+    const hdr = world._eventHeader;
+    const events = world._jointEvents;
+    if (!hdr || !events) return;
+    const count = hdr[EVENT_HEADER.JOINT_EVENT_COUNT] | 0;
+    const jv = jointViews;
+    for (let i = 0; i < count; i++) {
+      const idx = events[i] | 0;
+      if (idx < 0 || idx >= maxJoints) continue;
+      const packed = jv.pairs[idx];
+      const entityA = packed >>> 16;
+      const entityB = packed & 0xffff;
+      destroyJointAt(idx);
+      removeWeedJoint(idx);
+      publishJointBreak(idx, entityA, entityB, entityGen(entityA), entityGen(entityB));
+    }
+  }
+
   function afterStep() {
     publishContactRingFromWasm();
+    publishHitsFromWasm();
+    publishJointBreaksFromWasm();
     publishMovedSabFromStep();
   }
 
@@ -1106,6 +1237,14 @@
       'number',
       'number',
     ]);
+    bodySetRestitutionFn = Module.cwrap('body_set_restitution', null, [
+      'number',
+      'number',
+    ]);
+    bodySetSleepThresholdFn = Module.cwrap('body_set_sleep_threshold', null, [
+      'number',
+      'number',
+    ]);
     bodySetDensityFn = Module.cwrap('body_set_density', null, [
       'number',
       'number',
@@ -1149,6 +1288,17 @@
     }
     if (data.movedSab) {
       bindMovedBodies(data.movedSab);
+    }
+    if (data.hitSab) {
+      Box2dContactHitRing.bindContactHitRing(data.hitSab);
+      hitRingBound = true;
+    }
+    if (data.jointBreakSab) {
+      Box2dJointBreakRing.bindJointBreakRing(data.jointBreakSab);
+      jointBreakRingBound = true;
+    }
+    if (data.hitEventThreshold > 0) {
+      world.setHitEventThreshold(data.hitEventThreshold);
     }
 
     bindWeedViews(data.views);
@@ -1246,6 +1396,9 @@
     }
     if (data.entityCount != null) {
       hostEntityCount = data.entityCount | 0;
+    }
+    if (data.hitEventThreshold != null && world) {
+      world.setHitEventThreshold(data.hitEventThreshold);
     }
   }
 

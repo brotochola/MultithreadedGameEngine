@@ -26,6 +26,10 @@ export class Joint extends SharedAtomicPool {
   static localAnchorBY = null;
   static active = null; // Uint8Array
 
+  // Break thresholds (Box2D joint_configure). Infinity = never breaks.
+  static forceThreshold = null; // Float32Array
+  static torqueThreshold = null; // Float32Array
+
   // Distance
   static length = null; // Float32Array
   static enableSpring = null; // Uint8Array
@@ -62,6 +66,8 @@ export class Joint extends SharedAtomicPool {
     offset = align4(offset + n); // type
     offset += n * 4; // pairs
     offset += n * 4 * 4; // localAnchors
+    offset += n * 4; // forceThreshold
+    offset += n * 4; // torqueThreshold
     offset = align4(offset + n); // active
     offset += n * 4; // length
     offset = align4(offset + n); // enableSpring
@@ -99,6 +105,11 @@ export class Joint extends SharedAtomicPool {
     this.localAnchorBX = new Float32Array(buffer, offset, n);
     offset += n * 4;
     this.localAnchorBY = new Float32Array(buffer, offset, n);
+    offset += n * 4;
+
+    this.forceThreshold = new Float32Array(buffer, offset, n);
+    offset += n * 4;
+    this.torqueThreshold = new Float32Array(buffer, offset, n);
     offset += n * 4;
 
     this.active = new Uint8Array(buffer, offset, n);
@@ -150,6 +161,8 @@ export class Joint extends SharedAtomicPool {
 
     this.active.fill(0);
     this.type.fill(0);
+    this.forceThreshold.fill(Infinity);
+    this.torqueThreshold.fill(Infinity);
     this.revision.fill(0);
     this.activeIndices.fill(this.INVALID_INDEX);
     this.activeIndexPositions.fill(this.INVALID_INDEX);
@@ -227,6 +240,8 @@ export class Joint extends SharedAtomicPool {
     const anchors = this._resolveLocalAnchors(opts, entityA, entityB);
     this.type[idx] = JOINT_TYPE.DISTANCE;
     this._setPairAndAnchors(idx, entityA, entityB, anchors);
+    this.forceThreshold[idx] = opts.forceThreshold ?? Infinity;
+    this.torqueThreshold[idx] = opts.torqueThreshold ?? Infinity;
     this.length[idx] = opts.length ?? 0;
     this.enableSpring[idx] = opts.enableSpring ? 1 : 0;
     this.hertz[idx] = opts.hertz ?? 1;
@@ -244,6 +259,8 @@ export class Joint extends SharedAtomicPool {
     const anchors = this._resolveLocalAnchors(opts, entityA, entityB);
     this.type[idx] = JOINT_TYPE.REVOLUTE;
     this._setPairAndAnchors(idx, entityA, entityB, anchors);
+    this.forceThreshold[idx] = opts.forceThreshold ?? Infinity;
+    this.torqueThreshold[idx] = opts.torqueThreshold ?? Infinity;
     this.enableLimit[idx] = opts.enableLimit ? 1 : 0;
     this.lowerAngle[idx] = opts.lowerAngle ?? 0;
     this.upperAngle[idx] = opts.upperAngle ?? 0;
@@ -263,6 +280,8 @@ export class Joint extends SharedAtomicPool {
     const anchors = this._resolveLocalAnchors(opts, entityA, entityB);
     this.type[idx] = JOINT_TYPE.WELD;
     this._setPairAndAnchors(idx, entityA, entityB, anchors);
+    this.forceThreshold[idx] = opts.forceThreshold ?? Infinity;
+    this.torqueThreshold[idx] = opts.torqueThreshold ?? Infinity;
     this.linearHertz[idx] = opts.linearHertz ?? 0;
     this.angularHertz[idx] = opts.angularHertz ?? 0;
     this.linearDampingRatio[idx] = opts.linearDampingRatio ?? 1;
@@ -451,6 +470,8 @@ export class Joint extends SharedAtomicPool {
     this.localAnchorAY = null;
     this.localAnchorBX = null;
     this.localAnchorBY = null;
+    this.forceThreshold = null;
+    this.torqueThreshold = null;
     this.active = null;
     this.length = null;
     this.enableSpring = null;

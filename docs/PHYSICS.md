@@ -72,7 +72,7 @@ physics: {
 
 Passed on nested Box2D worker `WEEDJS_INIT` / `WEEDJS_CONFIG` via `PhysicsWorld.enableSleeping`. HEAP `RigidBody.sleeping` follows Box2D (debug Sleeping overlay / cell sleep). Statics can still mark spatial cells “asleep.”
 
-Legacy Weed knobs (`sleepThreshold`, `sleepDuration`, `wakeUpThreshold`, `stillnessTime`) are removed — they did nothing after Box2D took sleep ownership.
+Legacy Weed knobs (`sleepDuration`, `wakeUpThreshold`, `stillnessTime`, and the old unused scene `sleepThreshold`) are removed — they did nothing after Box2D took sleep ownership. Use world `physics.sleeping` and per-body `RigidBody.sleepThreshold` instead.
 
 Velocity commands trust Box2D: nonzero `SetLinearVelocity` / `SetAngularVelocity` wake; zero on a sleeper is a no-op.
 
@@ -86,6 +86,16 @@ Box2D sees the same rules Weed stores on `Collider`:
 2. Else **`collisionLayer` / `collisionMask`**: mutual bit checks.
 
 See [Collision Filtering](./bible_of_weed_js.md#collision-filtering) in the bible.
+
+### Restitution & contact hits
+
+- **`Collider.restitution`** — Box2D bounce coefficient (`0..1`, typically). Synced via `body_set_restitution` on create and whenever `Collider.friction`/`restitution` marks the body dirty (`BODY_DIRTY.FRICTION`).
+- **`Collider.enableHitEvents`** — opt-in per-shape hard-impact events (creation-time property; toggling it marks `BODY_DIRTY.LIFECYCLE`, so the body is re-created). When enabled and the impact speed exceeds the world **hit-event threshold** (`physics.hitEventThreshold`, `PhysicsWorld.setHitEventThreshold`), Box2D emits a contact-hit event.
+- Hits are drained from a dedicated **contact-hit ring** (`box2dContactHitRing`, separate from the begin/end contact ring) by each logic worker and dispatched to `GameObject.onCollisionHit(otherIndex, px, py, nx, ny, approachSpeed)` on entities with a `CollisionListener`. Same worker-partition + generation-validation rules as begin/end contacts.
+
+### Per-body sleep threshold
+
+**`RigidBody.sleepThreshold`** overrides Box2D's default linear-velocity sleep threshold for that body (`body_set_sleep_threshold`); `0` (default) leaves Box2D's global default in place. Also settable live via `Scene`/`GameObject` commands (`Box2dCommandRing.enqueueSetSleepThreshold`), independent of the scene-wide `sleeping` on/off knob above.
 
 ### Scene `physics` config: substeps
 
@@ -143,6 +153,14 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 ### Sync
 
 `weedjs_post.syncJoints` after `syncBodies`: create/destroy/recreate Box2D joints via `create*_joint_local`. Change detection uses `Joint.revision` (bumped on add/update/remove), not float fingerprints. Live WASM handles tracked via a dense list (no full `maxJoints` sweep). Failed creates (`handle === -2`) retry only after the slot's revision changes.
+
+### Break thresholds
+
+`Joint.addDistance` / `addRevolute` / `addWeld` accept `forceThreshold` / `torqueThreshold` (default `Infinity` — never breaks). On successful create, `weedjs_post` wires them via `joint_configure(handle, weedJointIndex, forceThreshold, torqueThreshold)`. When Box2D reports the joint exceeded a threshold, `weedjs_post` destroys the WASM joint, removes it from the `Joint` dense active list, and publishes a **joint-break ring** (`box2dJointBreakRing`) record. Logic workers drain it only when at least one entity type has **`JointBreakListener`**, and dispatch `GameObject.onJointBreak(jointIndex, entityA, entityB)` only to listening types on A and/or B (same worker-partition + generation rules as contacts). Hits stay on `CollisionListener`; breaks use `JointBreakListener`. Demo: **Weld Break** scene (`demos/scenes/WeldBreakScene.js`) — welded stacks + particle burst on snap.
+
+### Explosions
+
+`Scene.explode({ x, y, radius, impulsePerLength, maskBits })` enqueues a radial impulse command (`Box2dCommandRing.enqueueExplode`); the physics worker applies it via `PhysicsWorld.explode` with `falloff = 0.5 * radius`.
 
 ---
 
