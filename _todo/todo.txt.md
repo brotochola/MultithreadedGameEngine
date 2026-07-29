@@ -1,7 +1,10 @@
 Since Box2d:
 
-- [x] make build, test built, see what to do with wasm (embedded in weed.bundle via Box2dWorkerSource)
-      -use the who moved function of box2d for networking
+-particleEmitter.emit2D(), emit3d(), should have a property to make it isometric with z or plain 2d.
+
+-use the who moved function of box2d for networking
+
+---
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar

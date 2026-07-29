@@ -34,4 +34,4 @@ From `box2d_3.0_wasm_sab`:
 build_for_weed.bat
 ```
 
-That builds with `weed_post.js` (`importScripts('weedjs_post.js')` then `physics_host.impl.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.
+Default: **4 pthreads + `-flto=full`** (`build_for_weed.bat` / `build_for_weed.bat 4 full`). Use `4 1` for plain `-flto`. Builds with `weed_post.js` (`importScripts('weedjs_post.js')` then `physics_host.impl.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.

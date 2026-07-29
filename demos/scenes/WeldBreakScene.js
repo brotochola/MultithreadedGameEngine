@@ -12,8 +12,10 @@ const { Mouse, Transform, RigidBody, Collider, Joint } = WEED;
 const WELD_FORCE_THRESHOLD = 50e8;
 const WELD_TORQUE_THRESHOLD = 25e9;
 const BOX_SIZE = 80;
-const STACK_COUNT = 5;
-const BOXES_PER_STACK = 10;
+/** Vertical boxes per leg (includes top corner). */
+const LEG_HEIGHT = 10;
+/** Horizontal boxes on top bar (includes both corners). */
+const TOP_WIDTH = 12;
 const HEAVY_SIZE = 160;
 const HEAVY_MASS = 200000;
 
@@ -93,7 +95,7 @@ export class WeldBreakScene extends WEED.Scene {
 
   create() {
     this.spawnFloorAndWalls();
-    this._spawnWeldedStacks();
+    this._spawnWeldedU();
     // this._spawnHeavyDroppers();
 
     this.cameraFollowX = this.config.worldWidth / 2;
@@ -119,51 +121,73 @@ export class WeldBreakScene extends WEED.Scene {
     this._handleDrag();
   }
 
-  _spawnWeldedStacks() {
+  _weld(a, b, ax, ay) {
+    if (a < 0 || b < 0) return;
+    Joint.addWeld({
+      entityA: a,
+      entityB: b,
+      worldAnchorX: ax,
+      worldAnchorY: ay,
+      forceThreshold: WELD_FORCE_THRESHOLD,
+      torqueThreshold: WELD_TORQUE_THRESHOLD,
+    });
+  }
+
+  /** Upside-down U: left leg up, top bar across, right leg down. */
+  _spawnWeldedU() {
     const floorY = this.config.worldHeight - 150;
     const baseY = floorY - BOX_SIZE / 2 - 8;
-    const startX = this.config.worldWidth * 0.25;
-    const spacingX = (this.config.worldWidth * 0.5) / (STACK_COUNT - 1 || 1);
+    const leftX = this.config.worldWidth / 2 - ((TOP_WIDTH - 1) * BOX_SIZE) / 2;
+    const rightX = leftX + (TOP_WIDTH - 1) * BOX_SIZE;
+    const topY = baseY - (LEG_HEIGHT - 1) * BOX_SIZE;
+    const tint = 0xc8a06a;
 
-    for (let s = 0; s < STACK_COUNT; s++) {
-      const cx = startX + s * spacingX;
-      let prevIdx = -1;
-      let prevY = 0;
+    const spawnAt = (x, y) => {
+      const box = WeldBreakBox.spawn({ x, y, size: BOX_SIZE, tint });
+      return box ? box.index : -1;
+    };
 
-      for (let i = 0; i < BOXES_PER_STACK; i++) {
-        const y = baseY - i * BOX_SIZE;
-        const box = WeldBreakBox.spawn({
-          x: cx,
-          y,
-          size: BOX_SIZE,
-          tint: 0xc8a06a + ((s * 0x101010) & 0x303030),
-        });
-        if (!box) continue;
+    // Left leg (floor → top, includes top-left corner)
+    let prev = -1;
+    let prevY = 0;
+    for (let i = 0; i < LEG_HEIGHT; i++) {
+      const y = baseY - i * BOX_SIZE;
+      const idx = spawnAt(leftX, y);
+      this._weld(prev, idx, leftX, (prevY + y) * 0.5);
+      prev = idx;
+      prevY = y;
+    }
 
-        if (prevIdx >= 0) {
-          Joint.addWeld({
-            entityA: prevIdx,
-            entityB: box.index,
-            worldAnchorX: cx,
-            worldAnchorY: (prevY + y) * 0.5,
-            forceThreshold: WELD_FORCE_THRESHOLD,
-            torqueThreshold: WELD_TORQUE_THRESHOLD,
-          });
-        }
-        prevIdx = box.index;
-        prevY = y;
-      }
+    // Top bar (skip corner already placed; left → right)
+    let prevX = leftX;
+    for (let i = 1; i < TOP_WIDTH; i++) {
+      const x = leftX + i * BOX_SIZE;
+      const idx = spawnAt(x, topY);
+      this._weld(prev, idx, (prevX + x) * 0.5, topY);
+      prev = idx;
+      prevX = x;
+    }
+
+    // Right leg (skip top-right corner; top → floor)
+    prevY = topY;
+    for (let i = LEG_HEIGHT - 2; i >= 0; i--) {
+      const y = baseY - i * BOX_SIZE;
+      const idx = spawnAt(rightX, y);
+      this._weld(prev, idx, rightX, (prevY + y) * 0.5);
+      prev = idx;
+      prevY = y;
     }
   }
 
   _spawnHeavyDroppers() {
-    const startX = this.config.worldWidth * 0.25;
-    const spacingX = (this.config.worldWidth * 0.5) / (STACK_COUNT - 1 || 1);
+    const leftX = this.config.worldWidth / 2 - ((TOP_WIDTH - 1) * BOX_SIZE) / 2;
+    const rightX = leftX + (TOP_WIDTH - 1) * BOX_SIZE;
+    const midX = (leftX + rightX) * 0.5;
     const dropY = this.config.worldHeight * 0.22;
 
-    for (let s = 0; s < STACK_COUNT; s++) {
+    for (const x of [leftX, midX, rightX]) {
       WeldBreakBox.spawn({
-        x: startX + s * spacingX + (s % 2 === 0 ? -12 : 12),
+        x,
         y: dropY,
         size: HEAVY_SIZE,
         mass: HEAVY_MASS,

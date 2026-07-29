@@ -296,7 +296,7 @@ function initRuntime() {
   runtimeInitialized = true;
   if (ENVIRONMENT_IS_PTHREAD) return;
   // No ATINITS hooks
-  wasmExports["p"]();
+  wasmExports["t"]();
 }
 
 function postRun() {
@@ -412,7 +412,7 @@ async function createWasm() {
   // performing other necessary setup
   function receiveInstance(instance, module) {
     wasmExports = instance.exports;
-    registerTLSInit(wasmExports["hb"]);
+    registerTLSInit(wasmExports["kb"]);
     assignWasmExports(wasmExports);
     // We now have the Wasm module loaded up, keep a reference to the compiled module so we can post it to the workers.
     wasmModule = module;
@@ -903,6 +903,8 @@ var ___pthread_create_js = (pthread_ptr, attr, startRoutine, arg) => {
   return spawnThread(threadParams);
 };
 
+var __abort_js = () => abort("");
+
 var __emscripten_init_main_thread_js = tb => {
   var can_block = !ENVIRONMENT_IS_WEB;
   // Feature detect whether the main thread can block.
@@ -1044,6 +1046,11 @@ var __emscripten_receive_on_main_thread_js = (funcIndex, emAsmAddr, callingThrea
   return rtn;
 };
 
+var __emscripten_runtime_keepalive_clear = () => {
+  noExitRuntime = false;
+  runtimeKeepaliveCounter = 0;
+};
+
 var __emscripten_thread_cleanup = thread => {
   // Called when a thread needs to be cleaned up so it can be reused.
   // A thread is considered reusable when it either returns from its
@@ -1058,7 +1065,30 @@ var __emscripten_thread_cleanup = thread => {
 
 var __emscripten_thread_set_strongref = thread => {};
 
+var timers = {};
+
 var _emscripten_get_now = () => performance.timeOrigin + performance.now();
+
+function __setitimer_js(which, timeout_ms) {
+  if (ENVIRONMENT_IS_PTHREAD) return proxyToMainThread(3, 0, 1, which, timeout_ms);
+  // First, clear any existing timer.
+  if (timers[which]) {
+    clearTimeout(timers[which].id);
+    delete timers[which];
+  }
+  // A timeout of zero simply cancels the current timeout so we have nothing
+  // more to do.
+  if (!timeout_ms) return 0;
+  var id = setTimeout(() => {
+    delete timers[which];
+    callUserCallback(() => __emscripten_timeout(which, _emscripten_get_now()));
+  }, timeout_ms);
+  timers[which] = {
+    id,
+    timeout_ms
+  };
+  return 0;
+}
 
 var _emscripten_date_now = () => Date.now();
 
@@ -1209,7 +1239,7 @@ var printChar = (stream, curr) => {
    */ var UTF8ToString = (ptr, maxBytesToRead, ignoreNul) => ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead, ignoreNul) : "";
 
 function _fd_write(fd, iov, iovcnt, pnum) {
-  if (ENVIRONMENT_IS_PTHREAD) return proxyToMainThread(3, 0, 1, fd, iov, iovcnt, pnum);
+  if (ENVIRONMENT_IS_PTHREAD) return proxyToMainThread(4, 0, 1, fd, iov, iovcnt, pnum);
   // hack to support printf in SYSCALLS_REQUIRE_FILESYSTEM=0
   var num = 0;
   for (var i = 0; i < iovcnt; i++) {
@@ -1419,146 +1449,151 @@ Module["cwrap"] = cwrap;
 // either synchronously or asynchronously from other threads in postMessage()d
 // or internally queued events. This way a pthread in a Worker can synchronously
 // access e.g. the DOM on the main thread.
-var proxiedFunctionTable = [ _proc_exit, exitOnMainThread, pthreadCreateProxied, _fd_write ];
+var proxiedFunctionTable = [ _proc_exit, exitOnMainThread, pthreadCreateProxied, __setitimer_js, _fd_write ];
 
 // Imports from the Wasm binary.
-var _create_world, _world_enable_sleeping, _bind_game_buffers, _free, _malloc, _create_body_box, _create_body_circle, _create_body_polygon, _destroy_body, _body_set_transform, _body_set_linear_velocity, _body_set_angular_velocity, _body_set_fixed_rotation, _body_set_type, _body_apply_force, _body_apply_force_center, _body_set_linear_damping, _body_set_angular_damping, _body_set_gravity_scale, _body_apply_linear_impulse, _body_apply_linear_impulse_center, _body_apply_angular_impulse, _body_apply_torque, _body_set_awake, _body_set_filter, _body_set_friction, _body_set_restitution, _body_set_sleep_threshold, _world_set_hit_event_threshold, _world_explode, _joint_configure, _body_set_density, _body_set_shape_box, _body_set_shape_circle, _body_set_shape_polygon, _overlap_aabb_into, _overlap_aabb, _overlap_circle, _overlap_box, _cast_ray_closest, _cast_ray_all, _cast_mover, _collide_mover, _create_revolute_joint, _create_distance_joint, _create_prismatic_joint, _create_weld_joint, _create_distance_joint_local, _create_revolute_joint_local, _create_weld_joint_local, _destroy_joint, _get_joint_count, _step_world, _get_state_byte_offset, _get_sleeping_byte_offset, _get_meta_byte_offset, _get_body_capacity, _get_max_body_slots, _get_slot_count, _get_state_channel_offset, _get_meta_float_stride, _get_state_region_bytes, _get_meta_region_bytes, _get_joint_byte_offset, _get_joint_float_stride, _get_joint_region_bytes, _get_joint_capacity, _get_query_slots_byte_offset, _get_query_hits_byte_offset, _get_event_header_byte_offset, _get_contact_begin_byte_offset, _get_contact_end_byte_offset, _get_contact_hit_byte_offset, _get_sensor_begin_byte_offset, _get_sensor_end_byte_offset, _get_joint_events_byte_offset, _get_joint_event_capacity, _get_mover_planes_byte_offset, _get_query_capacity, _get_ray_hit_capacity, _get_query_hit_float_stride, _get_contact_event_capacity, _get_sensor_event_capacity, _get_contact_hit_capacity, _get_mover_plane_capacity, _get_mover_plane_float_stride, _get_event_header_int_count, _get_contact_pair_int_stride, _get_body_move_count, _get_body_move_byte_offset, _get_body_fell_asleep_byte_offset, _get_body_move_capacity, _get_awake_body_count, _get_profile_byte_offset, _get_profile_float_count, _get_counters_byte_offset, _get_counters_int_count, _weedjs_heap_bytes_used, __emscripten_tls_init, _pthread_self, __emscripten_thread_init, ___set_thread_state, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread_done, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, __emscripten_check_mailbox, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, __indirect_function_table, wasmTable;
+var _create_world, _world_enable_sleeping, _bind_game_buffers, _free, _malloc, _create_body_box, _create_body_circle, _create_body_polygon, _destroy_body, _body_set_transform, _body_set_linear_velocity, _body_set_angular_velocity, _body_set_fixed_rotation, _body_set_type, _body_apply_force, _body_apply_force_center, _body_set_linear_damping, _body_set_angular_damping, _body_set_gravity_scale, _body_apply_linear_impulse, _body_apply_linear_impulse_center, _body_apply_angular_impulse, _body_apply_torque, _body_set_awake, _body_set_filter, _body_set_friction, _body_set_restitution, _body_set_sleep_threshold, _world_set_hit_event_threshold, _world_explode, _joint_configure, _body_set_density, _body_set_shape_box, _body_set_shape_circle, _body_set_shape_polygon, _overlap_aabb_into, _overlap_aabb, _overlap_circle, _overlap_box, _cast_ray_closest, _cast_ray_all, _cast_mover, _collide_mover, _create_revolute_joint, _create_distance_joint, _create_prismatic_joint, _create_weld_joint, _create_distance_joint_local, _create_revolute_joint_local, _create_weld_joint_local, _destroy_joint, _get_joint_count, _step_world, _get_state_byte_offset, _get_sleeping_byte_offset, _get_meta_byte_offset, _get_body_capacity, _get_max_body_slots, _get_slot_count, _get_state_channel_offset, _get_meta_float_stride, _get_state_region_bytes, _get_meta_region_bytes, _get_joint_byte_offset, _get_joint_float_stride, _get_joint_region_bytes, _get_joint_capacity, _get_query_slots_byte_offset, _get_query_hits_byte_offset, _get_event_header_byte_offset, _get_contact_begin_byte_offset, _get_contact_end_byte_offset, _get_contact_hit_byte_offset, _get_sensor_begin_byte_offset, _get_sensor_end_byte_offset, _get_joint_events_byte_offset, _get_joint_event_capacity, _get_mover_planes_byte_offset, _get_query_capacity, _get_ray_hit_capacity, _get_query_hit_float_stride, _get_contact_event_capacity, _get_sensor_event_capacity, _get_contact_hit_capacity, _get_mover_plane_capacity, _get_mover_plane_float_stride, _get_event_header_int_count, _get_contact_pair_int_stride, _get_body_move_count, _get_body_move_byte_offset, _get_body_fell_asleep_byte_offset, _get_body_move_capacity, _get_awake_body_count, _get_profile_byte_offset, _get_profile_float_count, _get_counters_byte_offset, _get_counters_int_count, _weedjs_heap_bytes_used, __emscripten_tls_init, _pthread_self, __emscripten_thread_init, ___set_thread_state, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread_done, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, __emscripten_timeout, __emscripten_check_mailbox, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, __indirect_function_table, wasmTable;
 
 function assignWasmExports(wasmExports) {
-  _create_world = Module["_create_world"] = wasmExports["q"];
-  _world_enable_sleeping = Module["_world_enable_sleeping"] = wasmExports["r"];
-  _bind_game_buffers = Module["_bind_game_buffers"] = wasmExports["s"];
-  _free = Module["_free"] = wasmExports["t"];
-  _malloc = Module["_malloc"] = wasmExports["u"];
-  _create_body_box = Module["_create_body_box"] = wasmExports["v"];
-  _create_body_circle = Module["_create_body_circle"] = wasmExports["w"];
-  _create_body_polygon = Module["_create_body_polygon"] = wasmExports["x"];
-  _destroy_body = Module["_destroy_body"] = wasmExports["y"];
-  _body_set_transform = Module["_body_set_transform"] = wasmExports["z"];
-  _body_set_linear_velocity = Module["_body_set_linear_velocity"] = wasmExports["A"];
-  _body_set_angular_velocity = Module["_body_set_angular_velocity"] = wasmExports["B"];
-  _body_set_fixed_rotation = Module["_body_set_fixed_rotation"] = wasmExports["C"];
-  _body_set_type = Module["_body_set_type"] = wasmExports["D"];
-  _body_apply_force = Module["_body_apply_force"] = wasmExports["E"];
-  _body_apply_force_center = Module["_body_apply_force_center"] = wasmExports["F"];
-  _body_set_linear_damping = Module["_body_set_linear_damping"] = wasmExports["G"];
-  _body_set_angular_damping = Module["_body_set_angular_damping"] = wasmExports["H"];
-  _body_set_gravity_scale = Module["_body_set_gravity_scale"] = wasmExports["I"];
-  _body_apply_linear_impulse = Module["_body_apply_linear_impulse"] = wasmExports["J"];
-  _body_apply_linear_impulse_center = Module["_body_apply_linear_impulse_center"] = wasmExports["K"];
-  _body_apply_angular_impulse = Module["_body_apply_angular_impulse"] = wasmExports["L"];
-  _body_apply_torque = Module["_body_apply_torque"] = wasmExports["M"];
-  _body_set_awake = Module["_body_set_awake"] = wasmExports["N"];
-  _body_set_filter = Module["_body_set_filter"] = wasmExports["O"];
-  _body_set_friction = Module["_body_set_friction"] = wasmExports["P"];
-  _body_set_restitution = Module["_body_set_restitution"] = wasmExports["Q"];
-  _body_set_sleep_threshold = Module["_body_set_sleep_threshold"] = wasmExports["R"];
-  _world_set_hit_event_threshold = Module["_world_set_hit_event_threshold"] = wasmExports["S"];
-  _world_explode = Module["_world_explode"] = wasmExports["T"];
-  _joint_configure = Module["_joint_configure"] = wasmExports["U"];
-  _body_set_density = Module["_body_set_density"] = wasmExports["V"];
-  _body_set_shape_box = Module["_body_set_shape_box"] = wasmExports["W"];
-  _body_set_shape_circle = Module["_body_set_shape_circle"] = wasmExports["X"];
-  _body_set_shape_polygon = Module["_body_set_shape_polygon"] = wasmExports["Y"];
-  _overlap_aabb_into = Module["_overlap_aabb_into"] = wasmExports["Z"];
-  _overlap_aabb = Module["_overlap_aabb"] = wasmExports["_"];
-  _overlap_circle = Module["_overlap_circle"] = wasmExports["$"];
-  _overlap_box = Module["_overlap_box"] = wasmExports["aa"];
-  _cast_ray_closest = Module["_cast_ray_closest"] = wasmExports["ba"];
-  _cast_ray_all = Module["_cast_ray_all"] = wasmExports["ca"];
-  _cast_mover = Module["_cast_mover"] = wasmExports["da"];
-  _collide_mover = Module["_collide_mover"] = wasmExports["ea"];
-  _create_revolute_joint = Module["_create_revolute_joint"] = wasmExports["fa"];
-  _create_distance_joint = Module["_create_distance_joint"] = wasmExports["ga"];
-  _create_prismatic_joint = Module["_create_prismatic_joint"] = wasmExports["ha"];
-  _create_weld_joint = Module["_create_weld_joint"] = wasmExports["ia"];
-  _create_distance_joint_local = Module["_create_distance_joint_local"] = wasmExports["ja"];
-  _create_revolute_joint_local = Module["_create_revolute_joint_local"] = wasmExports["ka"];
-  _create_weld_joint_local = Module["_create_weld_joint_local"] = wasmExports["la"];
-  _destroy_joint = Module["_destroy_joint"] = wasmExports["ma"];
-  _get_joint_count = Module["_get_joint_count"] = wasmExports["na"];
-  _step_world = Module["_step_world"] = wasmExports["oa"];
-  _get_state_byte_offset = Module["_get_state_byte_offset"] = wasmExports["pa"];
-  _get_sleeping_byte_offset = Module["_get_sleeping_byte_offset"] = wasmExports["qa"];
-  _get_meta_byte_offset = Module["_get_meta_byte_offset"] = wasmExports["ra"];
-  _get_body_capacity = Module["_get_body_capacity"] = wasmExports["sa"];
-  _get_max_body_slots = Module["_get_max_body_slots"] = wasmExports["ta"];
-  _get_slot_count = Module["_get_slot_count"] = wasmExports["ua"];
-  _get_state_channel_offset = Module["_get_state_channel_offset"] = wasmExports["va"];
-  _get_meta_float_stride = Module["_get_meta_float_stride"] = wasmExports["wa"];
-  _get_state_region_bytes = Module["_get_state_region_bytes"] = wasmExports["xa"];
-  _get_meta_region_bytes = Module["_get_meta_region_bytes"] = wasmExports["ya"];
-  _get_joint_byte_offset = Module["_get_joint_byte_offset"] = wasmExports["za"];
-  _get_joint_float_stride = Module["_get_joint_float_stride"] = wasmExports["Aa"];
-  _get_joint_region_bytes = Module["_get_joint_region_bytes"] = wasmExports["Ba"];
-  _get_joint_capacity = Module["_get_joint_capacity"] = wasmExports["Ca"];
-  _get_query_slots_byte_offset = Module["_get_query_slots_byte_offset"] = wasmExports["Da"];
-  _get_query_hits_byte_offset = Module["_get_query_hits_byte_offset"] = wasmExports["Ea"];
-  _get_event_header_byte_offset = Module["_get_event_header_byte_offset"] = wasmExports["Fa"];
-  _get_contact_begin_byte_offset = Module["_get_contact_begin_byte_offset"] = wasmExports["Ga"];
-  _get_contact_end_byte_offset = Module["_get_contact_end_byte_offset"] = wasmExports["Ha"];
-  _get_contact_hit_byte_offset = Module["_get_contact_hit_byte_offset"] = wasmExports["Ia"];
-  _get_sensor_begin_byte_offset = Module["_get_sensor_begin_byte_offset"] = wasmExports["Ja"];
-  _get_sensor_end_byte_offset = Module["_get_sensor_end_byte_offset"] = wasmExports["Ka"];
-  _get_joint_events_byte_offset = Module["_get_joint_events_byte_offset"] = wasmExports["La"];
-  _get_joint_event_capacity = Module["_get_joint_event_capacity"] = wasmExports["Ma"];
-  _get_mover_planes_byte_offset = Module["_get_mover_planes_byte_offset"] = wasmExports["Na"];
-  _get_query_capacity = Module["_get_query_capacity"] = wasmExports["Oa"];
-  _get_ray_hit_capacity = Module["_get_ray_hit_capacity"] = wasmExports["Pa"];
-  _get_query_hit_float_stride = Module["_get_query_hit_float_stride"] = wasmExports["Qa"];
-  _get_contact_event_capacity = Module["_get_contact_event_capacity"] = wasmExports["Ra"];
-  _get_sensor_event_capacity = Module["_get_sensor_event_capacity"] = wasmExports["Sa"];
-  _get_contact_hit_capacity = Module["_get_contact_hit_capacity"] = wasmExports["Ta"];
-  _get_mover_plane_capacity = Module["_get_mover_plane_capacity"] = wasmExports["Ua"];
-  _get_mover_plane_float_stride = Module["_get_mover_plane_float_stride"] = wasmExports["Va"];
-  _get_event_header_int_count = Module["_get_event_header_int_count"] = wasmExports["Wa"];
-  _get_contact_pair_int_stride = Module["_get_contact_pair_int_stride"] = wasmExports["Xa"];
-  _get_body_move_count = Module["_get_body_move_count"] = wasmExports["Ya"];
-  _get_body_move_byte_offset = Module["_get_body_move_byte_offset"] = wasmExports["Za"];
-  _get_body_fell_asleep_byte_offset = Module["_get_body_fell_asleep_byte_offset"] = wasmExports["_a"];
-  _get_body_move_capacity = Module["_get_body_move_capacity"] = wasmExports["$a"];
-  _get_awake_body_count = Module["_get_awake_body_count"] = wasmExports["ab"];
-  _get_profile_byte_offset = Module["_get_profile_byte_offset"] = wasmExports["bb"];
-  _get_profile_float_count = Module["_get_profile_float_count"] = wasmExports["cb"];
-  _get_counters_byte_offset = Module["_get_counters_byte_offset"] = wasmExports["db"];
-  _get_counters_int_count = Module["_get_counters_int_count"] = wasmExports["eb"];
-  _weedjs_heap_bytes_used = Module["_weedjs_heap_bytes_used"] = wasmExports["fb"];
-  __emscripten_tls_init = wasmExports["hb"];
-  _pthread_self = wasmExports["ib"];
-  __emscripten_thread_init = wasmExports["jb"];
-  ___set_thread_state = wasmExports["kb"];
-  __emscripten_thread_crashed = wasmExports["lb"];
-  __emscripten_run_js_on_main_thread_done = wasmExports["mb"];
-  __emscripten_run_js_on_main_thread = wasmExports["nb"];
-  __emscripten_thread_free_data = wasmExports["ob"];
-  __emscripten_thread_exit = wasmExports["pb"];
-  __emscripten_check_mailbox = wasmExports["qb"];
-  _emscripten_stack_set_limits = wasmExports["rb"];
-  __emscripten_stack_restore = wasmExports["sb"];
-  __emscripten_stack_alloc = wasmExports["tb"];
-  _emscripten_stack_get_current = wasmExports["ub"];
-  __indirect_function_table = wasmTable = wasmExports["gb"];
+  _create_world = Module["_create_world"] = wasmExports["u"];
+  _world_enable_sleeping = Module["_world_enable_sleeping"] = wasmExports["v"];
+  _bind_game_buffers = Module["_bind_game_buffers"] = wasmExports["w"];
+  _free = Module["_free"] = wasmExports["x"];
+  _malloc = Module["_malloc"] = wasmExports["y"];
+  _create_body_box = Module["_create_body_box"] = wasmExports["z"];
+  _create_body_circle = Module["_create_body_circle"] = wasmExports["A"];
+  _create_body_polygon = Module["_create_body_polygon"] = wasmExports["B"];
+  _destroy_body = Module["_destroy_body"] = wasmExports["C"];
+  _body_set_transform = Module["_body_set_transform"] = wasmExports["D"];
+  _body_set_linear_velocity = Module["_body_set_linear_velocity"] = wasmExports["E"];
+  _body_set_angular_velocity = Module["_body_set_angular_velocity"] = wasmExports["F"];
+  _body_set_fixed_rotation = Module["_body_set_fixed_rotation"] = wasmExports["G"];
+  _body_set_type = Module["_body_set_type"] = wasmExports["H"];
+  _body_apply_force = Module["_body_apply_force"] = wasmExports["I"];
+  _body_apply_force_center = Module["_body_apply_force_center"] = wasmExports["J"];
+  _body_set_linear_damping = Module["_body_set_linear_damping"] = wasmExports["K"];
+  _body_set_angular_damping = Module["_body_set_angular_damping"] = wasmExports["L"];
+  _body_set_gravity_scale = Module["_body_set_gravity_scale"] = wasmExports["M"];
+  _body_apply_linear_impulse = Module["_body_apply_linear_impulse"] = wasmExports["N"];
+  _body_apply_linear_impulse_center = Module["_body_apply_linear_impulse_center"] = wasmExports["O"];
+  _body_apply_angular_impulse = Module["_body_apply_angular_impulse"] = wasmExports["P"];
+  _body_apply_torque = Module["_body_apply_torque"] = wasmExports["Q"];
+  _body_set_awake = Module["_body_set_awake"] = wasmExports["R"];
+  _body_set_filter = Module["_body_set_filter"] = wasmExports["S"];
+  _body_set_friction = Module["_body_set_friction"] = wasmExports["T"];
+  _body_set_restitution = Module["_body_set_restitution"] = wasmExports["U"];
+  _body_set_sleep_threshold = Module["_body_set_sleep_threshold"] = wasmExports["V"];
+  _world_set_hit_event_threshold = Module["_world_set_hit_event_threshold"] = wasmExports["W"];
+  _world_explode = Module["_world_explode"] = wasmExports["X"];
+  _joint_configure = Module["_joint_configure"] = wasmExports["Y"];
+  _body_set_density = Module["_body_set_density"] = wasmExports["Z"];
+  _body_set_shape_box = Module["_body_set_shape_box"] = wasmExports["_"];
+  _body_set_shape_circle = Module["_body_set_shape_circle"] = wasmExports["$"];
+  _body_set_shape_polygon = Module["_body_set_shape_polygon"] = wasmExports["aa"];
+  _overlap_aabb_into = Module["_overlap_aabb_into"] = wasmExports["ba"];
+  _overlap_aabb = Module["_overlap_aabb"] = wasmExports["ca"];
+  _overlap_circle = Module["_overlap_circle"] = wasmExports["da"];
+  _overlap_box = Module["_overlap_box"] = wasmExports["ea"];
+  _cast_ray_closest = Module["_cast_ray_closest"] = wasmExports["fa"];
+  _cast_ray_all = Module["_cast_ray_all"] = wasmExports["ga"];
+  _cast_mover = Module["_cast_mover"] = wasmExports["ha"];
+  _collide_mover = Module["_collide_mover"] = wasmExports["ia"];
+  _create_revolute_joint = Module["_create_revolute_joint"] = wasmExports["ja"];
+  _create_distance_joint = Module["_create_distance_joint"] = wasmExports["ka"];
+  _create_prismatic_joint = Module["_create_prismatic_joint"] = wasmExports["la"];
+  _create_weld_joint = Module["_create_weld_joint"] = wasmExports["ma"];
+  _create_distance_joint_local = Module["_create_distance_joint_local"] = wasmExports["na"];
+  _create_revolute_joint_local = Module["_create_revolute_joint_local"] = wasmExports["oa"];
+  _create_weld_joint_local = Module["_create_weld_joint_local"] = wasmExports["pa"];
+  _destroy_joint = Module["_destroy_joint"] = wasmExports["qa"];
+  _get_joint_count = Module["_get_joint_count"] = wasmExports["ra"];
+  _step_world = Module["_step_world"] = wasmExports["sa"];
+  _get_state_byte_offset = Module["_get_state_byte_offset"] = wasmExports["ta"];
+  _get_sleeping_byte_offset = Module["_get_sleeping_byte_offset"] = wasmExports["ua"];
+  _get_meta_byte_offset = Module["_get_meta_byte_offset"] = wasmExports["va"];
+  _get_body_capacity = Module["_get_body_capacity"] = wasmExports["wa"];
+  _get_max_body_slots = Module["_get_max_body_slots"] = wasmExports["xa"];
+  _get_slot_count = Module["_get_slot_count"] = wasmExports["ya"];
+  _get_state_channel_offset = Module["_get_state_channel_offset"] = wasmExports["za"];
+  _get_meta_float_stride = Module["_get_meta_float_stride"] = wasmExports["Aa"];
+  _get_state_region_bytes = Module["_get_state_region_bytes"] = wasmExports["Ba"];
+  _get_meta_region_bytes = Module["_get_meta_region_bytes"] = wasmExports["Ca"];
+  _get_joint_byte_offset = Module["_get_joint_byte_offset"] = wasmExports["Da"];
+  _get_joint_float_stride = Module["_get_joint_float_stride"] = wasmExports["Ea"];
+  _get_joint_region_bytes = Module["_get_joint_region_bytes"] = wasmExports["Fa"];
+  _get_joint_capacity = Module["_get_joint_capacity"] = wasmExports["Ga"];
+  _get_query_slots_byte_offset = Module["_get_query_slots_byte_offset"] = wasmExports["Ha"];
+  _get_query_hits_byte_offset = Module["_get_query_hits_byte_offset"] = wasmExports["Ia"];
+  _get_event_header_byte_offset = Module["_get_event_header_byte_offset"] = wasmExports["Ja"];
+  _get_contact_begin_byte_offset = Module["_get_contact_begin_byte_offset"] = wasmExports["Ka"];
+  _get_contact_end_byte_offset = Module["_get_contact_end_byte_offset"] = wasmExports["La"];
+  _get_contact_hit_byte_offset = Module["_get_contact_hit_byte_offset"] = wasmExports["Ma"];
+  _get_sensor_begin_byte_offset = Module["_get_sensor_begin_byte_offset"] = wasmExports["Na"];
+  _get_sensor_end_byte_offset = Module["_get_sensor_end_byte_offset"] = wasmExports["Oa"];
+  _get_joint_events_byte_offset = Module["_get_joint_events_byte_offset"] = wasmExports["Pa"];
+  _get_joint_event_capacity = Module["_get_joint_event_capacity"] = wasmExports["Qa"];
+  _get_mover_planes_byte_offset = Module["_get_mover_planes_byte_offset"] = wasmExports["Ra"];
+  _get_query_capacity = Module["_get_query_capacity"] = wasmExports["Sa"];
+  _get_ray_hit_capacity = Module["_get_ray_hit_capacity"] = wasmExports["Ta"];
+  _get_query_hit_float_stride = Module["_get_query_hit_float_stride"] = wasmExports["Ua"];
+  _get_contact_event_capacity = Module["_get_contact_event_capacity"] = wasmExports["Va"];
+  _get_sensor_event_capacity = Module["_get_sensor_event_capacity"] = wasmExports["Wa"];
+  _get_contact_hit_capacity = Module["_get_contact_hit_capacity"] = wasmExports["Xa"];
+  _get_mover_plane_capacity = Module["_get_mover_plane_capacity"] = wasmExports["Ya"];
+  _get_mover_plane_float_stride = Module["_get_mover_plane_float_stride"] = wasmExports["Za"];
+  _get_event_header_int_count = Module["_get_event_header_int_count"] = wasmExports["_a"];
+  _get_contact_pair_int_stride = Module["_get_contact_pair_int_stride"] = wasmExports["$a"];
+  _get_body_move_count = Module["_get_body_move_count"] = wasmExports["ab"];
+  _get_body_move_byte_offset = Module["_get_body_move_byte_offset"] = wasmExports["bb"];
+  _get_body_fell_asleep_byte_offset = Module["_get_body_fell_asleep_byte_offset"] = wasmExports["cb"];
+  _get_body_move_capacity = Module["_get_body_move_capacity"] = wasmExports["db"];
+  _get_awake_body_count = Module["_get_awake_body_count"] = wasmExports["eb"];
+  _get_profile_byte_offset = Module["_get_profile_byte_offset"] = wasmExports["fb"];
+  _get_profile_float_count = Module["_get_profile_float_count"] = wasmExports["gb"];
+  _get_counters_byte_offset = Module["_get_counters_byte_offset"] = wasmExports["hb"];
+  _get_counters_int_count = Module["_get_counters_int_count"] = wasmExports["ib"];
+  _weedjs_heap_bytes_used = Module["_weedjs_heap_bytes_used"] = wasmExports["jb"];
+  __emscripten_tls_init = wasmExports["kb"];
+  _pthread_self = wasmExports["lb"];
+  __emscripten_thread_init = wasmExports["nb"];
+  ___set_thread_state = wasmExports["ob"];
+  __emscripten_thread_crashed = wasmExports["pb"];
+  __emscripten_run_js_on_main_thread_done = wasmExports["qb"];
+  __emscripten_run_js_on_main_thread = wasmExports["rb"];
+  __emscripten_thread_free_data = wasmExports["sb"];
+  __emscripten_thread_exit = wasmExports["tb"];
+  __emscripten_timeout = wasmExports["ub"];
+  __emscripten_check_mailbox = wasmExports["vb"];
+  _emscripten_stack_set_limits = wasmExports["wb"];
+  __emscripten_stack_restore = wasmExports["xb"];
+  __emscripten_stack_alloc = wasmExports["yb"];
+  _emscripten_stack_get_current = wasmExports["zb"];
+  __indirect_function_table = wasmTable = wasmExports["mb"];
 }
 
 var wasmImports;
 
 function assignWasmImports() {
   wasmImports = {
-    /** @export */ e: ___pthread_create_js,
-    /** @export */ h: __emscripten_init_main_thread_js,
-    /** @export */ k: __emscripten_notify_mailbox_postmessage,
+    /** @export */ d: ___pthread_create_js,
+    /** @export */ m: __abort_js,
+    /** @export */ g: __emscripten_init_main_thread_js,
+    /** @export */ o: __emscripten_notify_mailbox_postmessage,
     /** @export */ c: __emscripten_receive_on_main_thread_js,
-    /** @export */ m: __emscripten_thread_cleanup,
-    /** @export */ g: __emscripten_thread_mailbox_await,
-    /** @export */ n: __emscripten_thread_set_strongref,
-    /** @export */ o: _clock_time_get,
-    /** @export */ f: _emscripten_check_blocking_allowed,
+    /** @export */ k: __emscripten_runtime_keepalive_clear,
+    /** @export */ p: __emscripten_thread_cleanup,
+    /** @export */ f: __emscripten_thread_mailbox_await,
+    /** @export */ r: __emscripten_thread_set_strongref,
+    /** @export */ l: __setitimer_js,
+    /** @export */ s: _clock_time_get,
+    /** @export */ e: _emscripten_check_blocking_allowed,
     /** @export */ i: _emscripten_exit_with_live_runtime,
     /** @export */ b: _emscripten_get_now,
-    /** @export */ j: _emscripten_resize_heap,
-    /** @export */ l: _exit,
-    /** @export */ d: _fd_write,
-    /** @export */ a: wasmMemory
+    /** @export */ n: _emscripten_resize_heap,
+    /** @export */ q: _exit,
+    /** @export */ h: _fd_write,
+    /** @export */ a: wasmMemory,
+    /** @export */ j: _proc_exit
   };
 }
 
