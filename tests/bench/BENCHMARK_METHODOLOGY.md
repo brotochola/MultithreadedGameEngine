@@ -14,10 +14,21 @@ BallsScene starts with a **dense spawn**; the first seconds are not representati
 
 1. **Hypothesis** — e.g. “change X reduces step cost without changing behavior.”
 2. **Constants** — same branch, same `pnpm`/Node, same headed flags, **don’t minimize** the browser, avoid heavy background load.
-3. **Primary response variables** — physics `averageFPS`, `statsSamplesAverage.BODY_COUNT`, `STEP_MS`. Diagnose `STEP_MS` with `BODY_SYNC_MS`, `JOINT_SYNC_MS`, `COMMAND_MS`, `FORCE_MS`, `BOX2D_MS`, and `POST_MS`; also compare `BODY_SYNC_VISITED` / `BODY_SYNC_CHANGES` so workload remains equivalent.
-4. **Equivalence check** — if `BODY_COUNT` shifts a lot between A and B, the runs are **not comparable** (different simulation state). Do **not** attribute FPS delta to the code change.
-5. **Replication** — `pnpm bench:headed:median` (or `run-headed-median.mjs`): use **≥5 runs**, report **median** and **CV** (coefficient of variation). Lower CV on body counts usually means more comparable load. Prints **spatial** `NEIGHBOR_MS` / `GRID_CELLS_CHECKED` medians when present. Keep `COMMAND_OVERFLOW_TOTAL`, `CONTACT_DROPPED`, and `SENSOR_DROPPED` at zero. Optional JSON: `pnpm bench:headed:spatial-confirm` (writes `tests/results/research-spatial-headed.json`).
-6. **A/B design** — same machine, back-to-back: **revert → N runs → patch → N runs** (or alternating if you script it). Prefer conclusions only when **BODY_COUNT medians** agree within a few percent **and** FPS moves consistently.
+3. **Primary response variables** — physics `statsSamplesAverage.STEP_MS` and derived **Load%** (`STEP_MS / (1000/60) * 100`, or `1000/fixedFps` when `fixedFps > 0`). Equivalence: `BODY_COUNT`. FPS is **secondary** (with capped `noLimitFPS: false`, FPS ≈ 60 is expected and uninformative). Diagnose `STEP_MS` with `BODY_SYNC_MS`, `JOINT_SYNC_MS`, `COMMAND_MS`, `FORCE_MS`, `BOX2D_MS`, and `POST_MS`; also compare `BODY_SYNC_VISITED` / `BODY_SYNC_CHANGES`, `BODY_MOVED_COUNT`, `AWAKE_COUNT` so workload remains equivalent.
+4. **Equivalence check** — if `BODY_COUNT` shifts a lot between A and B, the runs are **not comparable** (different simulation state). Do **not** attribute STEP_MS/Load% delta to the code change.
+5. **Replication** — `pnpm bench:headed:median` (or `run-headed-median.mjs`): use **≥5 runs**, report **median** and **CV** (coefficient of variation). Lower CV on body counts usually means more comparable load. Prints **spatial** `STEP_MS` / Load% / `NEIGHBOR_MS` / `GRID_CELLS_CHECKED` medians when present. Keep `COMMAND_OVERFLOW_TOTAL`, `CONTACT_DROPPED`, and `SENSOR_DROPPED` at zero. Optional JSON: `pnpm bench:headed:spatial-confirm` (writes `tests/results/research-spatial-headed.json`).
+6. **A/B design** — same machine, back-to-back: **revert → N runs → patch → N runs** (or alternating if you script it). Prefer conclusions only when **BODY_COUNT medians** agree within a few percent **and** STEP_MS / Load% move consistently.
+
+## Worker Load%
+
+`STEP_MS` is wall time of worker `update()` only (`AbstractWorker`). Frame budget for comparison:
+
+```text
+frameBudgetMs = 1000 / 60 ≈ 16.667   // or 1000/fixedFps when fixedFps > 0
+loadPct       = (STEP_MS / frameBudgetMs) * 100
+```
+
+Always compare against **60 Hz** unless that worker has `fixedFps > 0`. Do **not** use measured FPS as denominator (circular). Uncapped workers can report >100% — intentional (“busy vs real-time budget”). Helper: `workerLoadPct` in `src/workers/workers-utils.js`. JSON reports stay unchanged; Load% is derived when printing.
 
 ## Scene configuration
 

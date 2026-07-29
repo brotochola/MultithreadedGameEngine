@@ -52,7 +52,7 @@ export class BichosScene extends WEED.Scene {
     },
 
     particle: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxParticles: 20000,
       decals: true,
       decalsTileSize: 256,
@@ -65,7 +65,7 @@ export class BichosScene extends WEED.Scene {
 
     // Logic configuration
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       numberOfLogicWorkers: 1,
       numberOfEntitiesPerJob: 250,
       staggeredUpdates: false, // Enable tick decimation (entities tick based on their tickInterval)
@@ -74,12 +74,9 @@ export class BichosScene extends WEED.Scene {
     // Physics configuration
     physics: {
       subStepCount: 3,
-      noLimitFPS: true,
+      noLimitFPS: false,
       collisionResponseStrength: 0.66,
       gravity: { x: 0, y: 0 },
-      sleepThreshold: 15,
-      wakeUpThreshold: 18,
-      sleepDuration: 20,
     },
 
     renderer: {
@@ -105,7 +102,7 @@ export class BichosScene extends WEED.Scene {
     },
 
     navigation: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       enabled: true,
       cellSize: 48,
       maxFlowfields: 16,

@@ -22,16 +22,16 @@ export class BallsScene extends Scene {
       numberOfSpatialWorkers: 1,
       cellSize: 100,
       maxNeighbors: 512,
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
 
     // Logic configuration
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
 
     particle: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxParticles: 0,
       decals: false,
       decalsTileSize: 256,
@@ -44,13 +44,10 @@ export class BallsScene extends Scene {
       subStepCount: 4,
       noLimitFPS: false,
       gravity: { x: 0, y: 1800 },
-      sleepThreshold: 30,
-      wakeUpThreshold: 30,
-      sleepDuration: 10,
     },
 
     renderer: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxVisibleRenderables: 11000,
     },
 

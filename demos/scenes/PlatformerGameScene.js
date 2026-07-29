@@ -33,7 +33,7 @@ export class PlatformerGameScene extends Scene {
       maxVisibleRenderables: 10000,
     },
     preRender: {
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     lighting: {
       enabled: true,

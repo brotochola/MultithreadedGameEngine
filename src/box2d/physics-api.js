@@ -372,6 +372,19 @@ function createPhysicsApi(Module) {
   const getMoverPlaneFloatStride = wrap("get_mover_plane_float_stride", "number", []);
   const getEventHeaderIntCount = wrap("get_event_header_int_count", "number", []);
   const getContactPairIntStride = wrap("get_contact_pair_int_stride", "number", []);
+  const getBodyMoveCount = wrap("get_body_move_count", "number", []);
+  const getBodyMoveByteOffset = wrap("get_body_move_byte_offset", "number", []);
+  const getBodyFellAsleepByteOffset = wrap(
+    "get_body_fell_asleep_byte_offset",
+    "number",
+    [],
+  );
+  const getBodyMoveCapacity = wrap("get_body_move_capacity", "number", []);
+  const getAwakeBodyCount = wrap("get_awake_body_count", "number", ["number"]);
+  const getProfileByteOffset = wrap("get_profile_byte_offset", "number", []);
+  const getProfileFloatCount = wrap("get_profile_float_count", "number", []);
+  const getCountersByteOffset = wrap("get_counters_byte_offset", "number", []);
+  const getCountersIntCount = wrap("get_counters_int_count", "number", []);
 
   const DEFAULT_MATERIAL = Object.freeze({
     density: 1.0,
@@ -464,6 +477,31 @@ function createPhysicsApi(Module) {
       sab,
       getMoverPlanesByteOffset(),
       moverPlaneCapacity * moverPlaneStride,
+    );
+    const bodyMoveCapacity = getBodyMoveCapacity();
+    world._bodyMoved = new Int32Array(
+      sab,
+      getBodyMoveByteOffset(),
+      bodyMoveCapacity,
+    );
+    world._bodyFellAsleep = new Uint8Array(
+      sab,
+      getBodyFellAsleepByteOffset(),
+      bodyMoveCapacity,
+    );
+    world._getBodyMoveCount = getBodyMoveCount;
+    world._getAwakeBodyCount = getAwakeBodyCount;
+    const profileFloats = getProfileFloatCount();
+    world._profile = new Float32Array(
+      sab,
+      getProfileByteOffset(),
+      profileFloats,
+    );
+    const counterInts = getCountersIntCount();
+    world._counters = new Int32Array(
+      sab,
+      getCountersByteOffset(),
+      counterInts,
     );
   }
 
@@ -1072,6 +1110,9 @@ function createPhysicsApi(Module) {
         moverPlaneStride: getMoverPlaneFloatStride(),
         eventHeaderIntCount: getEventHeaderIntCount(),
         contactPairIntStride: getContactPairIntStride(),
+        bodyMoveBaseIndex: getBodyMoveByteOffset() >> 2,
+        bodyFellAsleepByteOffset: getBodyFellAsleepByteOffset(),
+        bodyMoveCapacity: getBodyMoveCapacity(),
       };
     }
   }

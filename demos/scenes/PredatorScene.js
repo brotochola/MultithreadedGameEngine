@@ -76,11 +76,11 @@ export class PredatorScene extends WEED.Scene {
       maxNeighbors: 1024,
       maxEntitiesPerCell: 128, //this is very important!!
       numberOfSpatialWorkers: 2, // Multiple workers for parallel neighbor detection
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
 
     particle: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxParticles: 10000,
       decals: true,
       decalsTileSize: 256,
@@ -102,7 +102,7 @@ export class PredatorScene extends WEED.Scene {
 
     // Logic configuration
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       numberOfLogicWorkers: 2,
       staggeredUpdates: true, // Enable tick decimation (entities tick based on their tickInterval)
     },
@@ -110,17 +110,14 @@ export class PredatorScene extends WEED.Scene {
     // Physics configuration
     physics: {
       subStepCount: 0,
-      noLimitFPS: true,
+      noLimitFPS: false,
       boundaryElasticity: 0,
       collisionResponseStrength: 0.9,
       gravity: { x: 0, y: 0 },
-      sleepThreshold: 15,
-      wakeUpThreshold: 18,
-      sleepDuration: 30,
     },
 
     renderer: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       ySorting: true,
       interpolation: false,
       cullingRatio: 0.33,
@@ -129,7 +126,7 @@ export class PredatorScene extends WEED.Scene {
       maxVisibleRenderables: 100000
     },
     preRender: {
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
 
     lighting: {
@@ -162,7 +159,7 @@ export class PredatorScene extends WEED.Scene {
     },
 
     navigation: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       enabled: true,
       cellSize: 48,
       maxFlowfields: 16,

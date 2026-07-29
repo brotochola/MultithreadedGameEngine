@@ -5,12 +5,33 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
 
+import { workerLoadPct } from '../../src/workers/workers-utils.js';
 import { createStaticBenchmarkServer } from '../helpers/createStaticBenchmarkServer.mjs';
 import {
   DEFAULT_DURATION_MS,
   DEFAULT_SAMPLE_INTERVAL_MS,
   DEFAULT_WARMUP_MS,
 } from './benchmarkDefaults.mjs';
+
+function formatLoadPct(stepMs) {
+  return `${workerLoadPct(stepMs).toFixed(0)}%`;
+}
+
+/** Console line: STEP_MS + Load% primary; FPS secondary. */
+function formatWorkerConsoleLine(worker) {
+  const avg = worker.statsSamplesAverage || {};
+  const step = avg.STEP_MS || 0;
+  let line =
+    `${worker.id}: STEP_MS ${step.toFixed(3)} | Load ${formatLoadPct(step)}` +
+    ` | FPS ${worker.averageFPS.toFixed(2)} (inst ${worker.instantaneousFPS.toFixed(2)})`;
+  if (worker.type === 'physics' || worker.id === 'physics') {
+    if (avg.BOX2D_MS != null) line += ` | BOX2D_MS ${Number(avg.BOX2D_MS).toFixed(3)}`;
+    if (avg.BODY_MOVED_COUNT != null) line += ` | Moved ${Number(avg.BODY_MOVED_COUNT).toFixed(0)}`;
+    if (avg.AWAKE_COUNT != null) line += ` | Awake ${Number(avg.AWAKE_COUNT).toFixed(0)}`;
+    if (avg.BODY_COUNT != null) line += ` | BODY_COUNT ${Number(avg.BODY_COUNT).toFixed(0)}`;
+  }
+  return line;
+}
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const defaultOutputPath = path.join(repoRoot, 'tests', 'results', 'integrated-worker-benchmark.json');
@@ -252,7 +273,7 @@ async function main() {
     );
     console.log(`Main thread average FPS: ${result.mainThread.averageFPS.toFixed(2)}`);
     for (const worker of result.workers) {
-      console.log(`${worker.id}: avg ${worker.averageFPS.toFixed(2)} FPS, current ${worker.instantaneousFPS.toFixed(2)} FPS`);
+      console.log(formatWorkerConsoleLine(worker));
     }
   } finally {
     if (browser) {

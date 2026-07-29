@@ -17,7 +17,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { workerLoadPct } from '../../src/workers/workers-utils.js';
 import { DEFAULT_DURATION_MS, DEFAULT_WARMUP_MS } from './benchmarkDefaults.mjs';
+
+function formatLoadPct(stepMs) {
+  return `${workerLoadPct(stepMs).toFixed(0)}%`;
+}
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const runner = path.join(repoRoot, 'tests/bench/run-integrated-worker-benchmark.mjs');
@@ -88,11 +93,12 @@ function recordSpatialFromReport(j, spatialAcc) {
   for (const w of j.workers || []) {
     if (!w.id.startsWith('spatial')) continue;
     if (!spatialAcc[w.id]) {
-      spatialAcc[w.id] = { fps: [], neighborMs: [], gridCells: [] };
+      spatialAcc[w.id] = { fps: [], stepMs: [], neighborMs: [], gridCells: [] };
     }
     spatialAcc[w.id].fps.push(w.averageFPS || 0);
     const s = w.statsSamplesAverage;
     if (s) {
+      spatialAcc[w.id].stepMs.push(s.STEP_MS || 0);
       spatialAcc[w.id].neighborMs.push(s.NEIGHBOR_MS || 0);
       spatialAcc[w.id].gridCells.push(s.GRID_CELLS_CHECKED || 0);
     }
@@ -105,9 +111,16 @@ function printSpatialSummary(spatialAcc, runs) {
   console.log('\n--- Summary (spatial workers) ---');
   for (const id of ids) {
     const a = spatialAcc[id];
+    const stepS = summaryForSeries(a.stepMs, a.stepMs.length);
     const fpsS = summaryForSeries(a.fps, runs);
     const nmS = summaryForSeries(a.neighborMs, a.neighborMs.length);
     const gcS = summaryForSeries(a.gridCells, a.gridCells.length);
+    if (stepS) {
+      console.log(
+        `${id} STEP_MS: median ${stepS.median.toFixed(3)} | mean ${stepS.mean.toFixed(3)} | CV ${fmtPct(stepS.cv)}` +
+          ` | Load ${formatLoadPct(stepS.median)} (vs 60 Hz)`
+      );
+    }
     if (fpsS) {
       console.log(
         `${id} averageFPS: median ${fpsS.median.toFixed(2)} | mean ${fpsS.mean.toFixed(2)} | CV ${fmtPct(fpsS.cv)}`
@@ -127,8 +140,19 @@ function printSpatialSummary(spatialAcc, runs) {
 }
 
 function printPhysicsSummary(physicsFps, bodyCounts, stepMs, runs) {
-  const mm = minMax(physicsFps);
   console.log('\n--- Summary (physics worker) ---');
+  if (stepMs.length === runs) {
+    const mmm = minMax(stepMs);
+    const stepMed = median(stepMs);
+    console.log(
+      `STEP_MS: median ${stepMed.toFixed(3)} | mean ${mean(stepMs).toFixed(3)} | ` +
+        `stdev ${stdevSample(stepMs).toFixed(3)} | CV ${fmtPct(cv(stepMs))} | min ${mmm.min.toFixed(3)} | max ${mmm.max.toFixed(3)}`
+    );
+    console.log(
+      `Load%: ${formatLoadPct(stepMed)} (STEP_MS / 16.667 ms @ 60 Hz; >100% = over budget)`
+    );
+  }
+  const mm = minMax(physicsFps);
   console.log(
     `averageFPS: median ${median(physicsFps).toFixed(2)} | mean ${mean(physicsFps).toFixed(2)} | ` +
       `stdev ${stdevSample(physicsFps).toFixed(2)} | CV ${fmtPct(cv(physicsFps))} | min ${mm.min.toFixed(2)} | max ${mm.max.toFixed(2)}`
@@ -143,13 +167,6 @@ function printPhysicsSummary(physicsFps, bodyCounts, stepMs, runs) {
       'Interpretation: compare builds only when BODY_COUNT mean/median are similar (same workload). High CV ⇒ noisy phase; more runs or longer duration.'
     );
   }
-  if (stepMs.length === runs) {
-    const mmm = minMax(stepMs);
-    console.log(
-      `STEP_MS: median ${median(stepMs).toFixed(3)} | mean ${mean(stepMs).toFixed(3)} | ` +
-        `stdev ${stdevSample(stepMs).toFixed(3)} | CV ${fmtPct(cv(stepMs))} | min ${mmm.min.toFixed(3)} | max ${mmm.max.toFixed(3)}`
-    );
-  }
 }
 
 const PHYSICS_DIAGNOSTIC_FIELDS = [
@@ -159,6 +176,8 @@ const PHYSICS_DIAGNOSTIC_FIELDS = [
   'FORCE_MS',
   'BOX2D_MS',
   'POST_MS',
+  'BODY_MOVED_COUNT',
+  'AWAKE_COUNT',
   'BODY_SYNC_CHANGES',
   'BODY_SYNC_VISITED',
   'JOINT_SYNC_CHANGES',
@@ -238,16 +257,24 @@ function runMedianBlock(runs, warmupMs, durationMs, tmpDir, runPrefix, scene, sc
       recordPhysicsStats(ph.statsSamplesAverage, physicsStats);
     }
     runsCompleted++;
+    const step = ph.statsSamplesAverage?.STEP_MS || 0;
+    const avg = ph.statsSamplesAverage;
     let line =
-      `  [${runsCompleted}/${runs}] physics avg FPS ${ph.averageFPS.toFixed(2)}` +
-      (ph.statsSamplesAverage
-        ? ` | BODY_COUNT ${(ph.statsSamplesAverage.BODY_COUNT || 0).toFixed(0)} | STEP_MS ${(ph.statsSamplesAverage.STEP_MS || 0).toFixed(3)}`
+      `  [${runsCompleted}/${runs}] physics STEP_MS ${step.toFixed(3)} | Load ${formatLoadPct(step)}` +
+      ` | FPS ${ph.averageFPS.toFixed(2)}` +
+      (avg
+        ? ` | BODY_COUNT ${(avg.BODY_COUNT || 0).toFixed(0)}` +
+          (avg.BOX2D_MS != null ? ` | BOX2D_MS ${Number(avg.BOX2D_MS).toFixed(3)}` : '') +
+          (avg.BODY_MOVED_COUNT != null ? ` | Moved ${Number(avg.BODY_MOVED_COUNT).toFixed(0)}` : '') +
+          (avg.AWAKE_COUNT != null ? ` | Awake ${Number(avg.AWAKE_COUNT).toFixed(0)}` : '')
         : '');
     for (const id of Object.keys(spatialAcc).sort()) {
-      const lastFps = spatialAcc[id].fps[spatialAcc[id].fps.length - 1];
+      const lastStep = spatialAcc[id].stepMs[spatialAcc[id].stepMs.length - 1];
       const lastNm = spatialAcc[id].neighborMs[spatialAcc[id].neighborMs.length - 1];
-      if (lastNm !== undefined) {
-        line += ` | ${id} FPS ${lastFps.toFixed(1)} NEIGHBOR_MS ${lastNm.toFixed(3)}`;
+      if (lastStep !== undefined) {
+        line +=
+          ` | ${id} STEP_MS ${lastStep.toFixed(3)} Load ${formatLoadPct(lastStep)}` +
+          (lastNm !== undefined ? ` NEIGHBOR_MS ${lastNm.toFixed(3)}` : '');
       }
     }
     console.log(line);

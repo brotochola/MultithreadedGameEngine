@@ -15,16 +15,16 @@ export class QueryChurnScene extends Scene {
       cellSize: 128,
       maxNeighbors: 256,
       maxEntitiesPerCell: 96,
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       numberOfLogicWorkers: 1,
       staggeredUpdates: true,
     },
     physics: {
       subStepCount: 1,
-      noLimitFPS: true,
+      noLimitFPS: false,
       gravity: { x: 0, y: 0 },
     },
     particle: {
@@ -32,7 +32,7 @@ export class QueryChurnScene extends Scene {
       decals: false,
     },
     renderer: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxVisibleRenderables: 10000,
     },
     lighting: {

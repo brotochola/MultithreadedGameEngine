@@ -13,15 +13,15 @@ export class RenderQueueStressScene extends Scene {
       cellSize: 256,
       maxNeighbors: 32,
       maxEntitiesPerCell: 128,
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       staggeredUpdates: true,
     },
     physics: {
       subStepCount: 1,
-      noLimitFPS: true,
+      noLimitFPS: false,
       gravity: { x: 0, y: 0 },
     },
     particle: {
@@ -29,12 +29,12 @@ export class RenderQueueStressScene extends Scene {
       decals: false,
     },
     renderer: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       ySorting: true,
       maxVisibleRenderables: 18000,
     },
     preRender: {
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     lighting: {
       enabled: false,

@@ -11,23 +11,23 @@ export class AdobeAnimateScene extends Scene {
       numberOfSpatialWorkers: 1,
       cellSize: 128,
       maxNeighbors: 64,
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     physics: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       gravity: { x: 0, y: 0 },
       sleeping: false,
     },
     particle: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxParticles: 0,
       decals: false,
     },
     renderer: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxVisibleRenderables: 100000,
       ySorting: true,
     },

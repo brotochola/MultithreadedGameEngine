@@ -85,8 +85,19 @@ export const PHYSICS_STATS = Object.freeze({
   HEAP_USED_KB: 23,
   /** Max HEAP_USED_KB seen this session. */
   HEAP_HIGH_WATER_KB: 24,
-  STRIDE_FLOATS: 32,
-  BUFFER_SIZE: 32 * 4,
+  BODY_MOVED_COUNT: 25,
+  AWAKE_COUNT: 26,
+  PROFILE_STEP_MS: 27,
+  PROFILE_COLLIDE_MS: 28,
+  PROFILE_SOLVE_MS: 29,
+  PROFILE_SLEEP_MS: 30,
+  PROFILE_SENSORS_MS: 31,
+  COUNTER_CONTACTS: 32,
+  COUNTER_ISLANDS: 33,
+  COUNTER_AWAKE_CONTACTS: 34,
+  COUNTER_TREE_HEIGHT: 35,
+  STRIDE_FLOATS: 48,
+  BUFFER_SIZE: 48 * 4,
 });
 
 /**
@@ -158,10 +169,27 @@ export const WORKER_ROW_ORDER = Object.freeze([
 const fmtMs = (v) => (v == null || Number.isNaN(v) ? '—' : v.toFixed(2) + ' ms');
 const fmtFps = (v) => (v == null || Number.isNaN(v) ? '—' : v.toFixed(1));
 const fmtNum = (v) => formatNumber(v);
+const fmtLoad = (v) => (v == null || Number.isNaN(v) ? '—' : Math.round(v) + '%');
+
+/**
+ * Real-time busyness: STEP_MS as % of frame budget (60 Hz ≈ 16.67 ms, or 1000/fixedFps).
+ * @param {number} stepMs
+ * @param {{ fixedFps?: number, budgetHz?: number }} [opts]
+ * @returns {number}
+ */
+export function workerLoadPct(stepMs, { fixedFps = 0, budgetHz = 60 } = {}) {
+  if (!(stepMs >= 0) || Number.isNaN(stepMs)) return 0;
+  const hz = fixedFps > 0 ? fixedFps : budgetHz;
+  const budgetMs = 1000 / (hz > 0 ? hz : 60);
+  return (stepMs / budgetMs) * 100;
+}
+
+/** Synthetic Load column (derived from STEP_MS; not a SAB field). */
+const LOAD_STAT = Object.freeze({ key: 'LOAD', label: 'Load', format: fmtLoad });
 
 /**
  * Display configuration for worker stats.
- * First three keys (Step / Fps / Msg) are common columns for alignment.
+ * First four keys (Step / Load / Fps / Msg) are common columns for alignment.
  * Remaining stats go in the Details column.
  */
 export const WORKER_DISPLAY_CONFIG = Object.freeze({
@@ -170,6 +198,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'renderer',
     stats: [
       { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      LOAD_STAT,
       { key: 'FPS', label: 'Fps', format: fmtFps },
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'DRAW_CALLS', label: 'Draws', format: fmtNum },
@@ -182,6 +211,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'particle',
     stats: [
       { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      LOAD_STAT,
       { key: 'FPS', label: 'Fps', format: fmtFps },
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'ACTIVE_PARTICLES', label: 'Active', format: fmtNum },
@@ -195,11 +225,19 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'physics',
     stats: [
       { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      LOAD_STAT,
       { key: 'FPS', label: 'Fps', format: fmtFps },
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'BODY_COUNT', label: 'Bodies', format: fmtNum },
+      { key: 'AWAKE_COUNT', label: 'Awake', format: fmtNum },
+      { key: 'BODY_MOVED_COUNT', label: 'Moved', format: fmtNum },
       { key: 'BOX2D_MS', label: 'Box2d', format: fmtMs },
+      { key: 'PROFILE_COLLIDE_MS', label: 'Collide', format: fmtMs },
+      { key: 'PROFILE_SOLVE_MS', label: 'Solve', format: fmtMs },
+      { key: 'PROFILE_SLEEP_MS', label: 'Sleep', format: fmtMs },
       { key: 'CONTACT_BEGIN', label: 'Contacts', format: fmtNum },
+      { key: 'COUNTER_ISLANDS', label: 'Islands', format: fmtNum },
+      { key: 'COUNTER_AWAKE_CONTACTS', label: 'AwakeC', format: fmtNum },
       { key: 'WEED_JOINTS', label: 'Joints', format: fmtNum },
     ],
   },
@@ -208,6 +246,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'spatial',
     stats: [
       { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      LOAD_STAT,
       { key: 'FPS', label: 'Fps', format: fmtFps },
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'ENTITIES_PROCESSED', label: 'Entities', format: fmtNum },
@@ -221,6 +260,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'logic',
     stats: [
       { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      LOAD_STAT,
       { key: 'FPS', label: 'Fps', format: fmtFps },
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'ENTITIES_PROCESSED', label: 'Entities', format: fmtNum },
@@ -231,6 +271,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
     color: 'preRender',
     stats: [
       { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      LOAD_STAT,
       { key: 'FPS', label: 'Fps', format: fmtFps },
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'RENDER_QUEUE_SIZE', label: 'Queue', format: fmtNum },

@@ -412,7 +412,7 @@ async function createWasm() {
   // performing other necessary setup
   function receiveInstance(instance, module) {
     wasmExports = instance.exports;
-    registerTLSInit(wasmExports["Ta"]);
+    registerTLSInit(wasmExports["ab"]);
     assignWasmExports(wasmExports);
     // We now have the Wasm module loaded up, keep a reference to the compiled module so we can post it to the workers.
     wasmModule = module;
@@ -1422,7 +1422,7 @@ Module["cwrap"] = cwrap;
 var proxiedFunctionTable = [ _proc_exit, exitOnMainThread, pthreadCreateProxied, _fd_write ];
 
 // Imports from the Wasm binary.
-var _create_world, _world_enable_sleeping, _bind_game_buffers, _free, _malloc, _create_body_box, _create_body_circle, _create_body_polygon, _destroy_body, _body_set_transform, _body_set_linear_velocity, _body_set_angular_velocity, _body_set_fixed_rotation, _body_set_type, _body_apply_force, _body_apply_force_center, _body_set_linear_damping, _body_set_angular_damping, _body_set_gravity_scale, _body_apply_linear_impulse, _body_apply_linear_impulse_center, _body_apply_angular_impulse, _body_apply_torque, _body_set_awake, _body_set_filter, _body_set_friction, _body_set_density, _body_set_shape_box, _body_set_shape_circle, _body_set_shape_polygon, _overlap_aabb_into, _overlap_aabb, _overlap_circle, _overlap_box, _cast_ray_closest, _cast_ray_all, _cast_mover, _collide_mover, _create_revolute_joint, _create_distance_joint, _create_prismatic_joint, _create_weld_joint, _create_distance_joint_local, _create_revolute_joint_local, _create_weld_joint_local, _destroy_joint, _get_joint_count, _step_world, _get_state_byte_offset, _get_sleeping_byte_offset, _get_meta_byte_offset, _get_body_capacity, _get_max_body_slots, _get_slot_count, _get_state_channel_offset, _get_meta_float_stride, _get_state_region_bytes, _get_meta_region_bytes, _get_joint_byte_offset, _get_joint_float_stride, _get_joint_region_bytes, _get_joint_capacity, _get_query_slots_byte_offset, _get_query_hits_byte_offset, _get_event_header_byte_offset, _get_contact_begin_byte_offset, _get_contact_end_byte_offset, _get_contact_hit_byte_offset, _get_sensor_begin_byte_offset, _get_sensor_end_byte_offset, _get_mover_planes_byte_offset, _get_query_capacity, _get_ray_hit_capacity, _get_query_hit_float_stride, _get_contact_event_capacity, _get_sensor_event_capacity, _get_contact_hit_capacity, _get_mover_plane_capacity, _get_mover_plane_float_stride, _get_event_header_int_count, _get_contact_pair_int_stride, _weedjs_heap_bytes_used, __emscripten_tls_init, _pthread_self, __emscripten_thread_init, ___set_thread_state, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread_done, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, __emscripten_check_mailbox, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, __indirect_function_table, wasmTable;
+var _create_world, _world_enable_sleeping, _bind_game_buffers, _free, _malloc, _create_body_box, _create_body_circle, _create_body_polygon, _destroy_body, _body_set_transform, _body_set_linear_velocity, _body_set_angular_velocity, _body_set_fixed_rotation, _body_set_type, _body_apply_force, _body_apply_force_center, _body_set_linear_damping, _body_set_angular_damping, _body_set_gravity_scale, _body_apply_linear_impulse, _body_apply_linear_impulse_center, _body_apply_angular_impulse, _body_apply_torque, _body_set_awake, _body_set_filter, _body_set_friction, _body_set_density, _body_set_shape_box, _body_set_shape_circle, _body_set_shape_polygon, _overlap_aabb_into, _overlap_aabb, _overlap_circle, _overlap_box, _cast_ray_closest, _cast_ray_all, _cast_mover, _collide_mover, _create_revolute_joint, _create_distance_joint, _create_prismatic_joint, _create_weld_joint, _create_distance_joint_local, _create_revolute_joint_local, _create_weld_joint_local, _destroy_joint, _get_joint_count, _step_world, _get_state_byte_offset, _get_sleeping_byte_offset, _get_meta_byte_offset, _get_body_capacity, _get_max_body_slots, _get_slot_count, _get_state_channel_offset, _get_meta_float_stride, _get_state_region_bytes, _get_meta_region_bytes, _get_joint_byte_offset, _get_joint_float_stride, _get_joint_region_bytes, _get_joint_capacity, _get_query_slots_byte_offset, _get_query_hits_byte_offset, _get_event_header_byte_offset, _get_contact_begin_byte_offset, _get_contact_end_byte_offset, _get_contact_hit_byte_offset, _get_sensor_begin_byte_offset, _get_sensor_end_byte_offset, _get_mover_planes_byte_offset, _get_query_capacity, _get_ray_hit_capacity, _get_query_hit_float_stride, _get_contact_event_capacity, _get_sensor_event_capacity, _get_contact_hit_capacity, _get_mover_plane_capacity, _get_mover_plane_float_stride, _get_event_header_int_count, _get_contact_pair_int_stride, _get_body_move_count, _get_body_move_byte_offset, _get_body_fell_asleep_byte_offset, _get_body_move_capacity, _get_awake_body_count, _get_profile_byte_offset, _get_profile_float_count, _get_counters_byte_offset, _get_counters_int_count, _weedjs_heap_bytes_used, __emscripten_tls_init, _pthread_self, __emscripten_thread_init, ___set_thread_state, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread_done, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, __emscripten_check_mailbox, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, __indirect_function_table, wasmTable;
 
 function assignWasmExports(wasmExports) {
   _create_world = Module["_create_world"] = wasmExports["q"];
@@ -1506,22 +1506,31 @@ function assignWasmExports(wasmExports) {
   _get_mover_plane_float_stride = Module["_get_mover_plane_float_stride"] = wasmExports["Oa"];
   _get_event_header_int_count = Module["_get_event_header_int_count"] = wasmExports["Pa"];
   _get_contact_pair_int_stride = Module["_get_contact_pair_int_stride"] = wasmExports["Qa"];
-  _weedjs_heap_bytes_used = Module["_weedjs_heap_bytes_used"] = wasmExports["Ra"];
-  __emscripten_tls_init = wasmExports["Ta"];
-  _pthread_self = wasmExports["Ua"];
-  __emscripten_thread_init = wasmExports["Va"];
-  ___set_thread_state = wasmExports["Wa"];
-  __emscripten_thread_crashed = wasmExports["Xa"];
-  __emscripten_run_js_on_main_thread_done = wasmExports["Ya"];
-  __emscripten_run_js_on_main_thread = wasmExports["Za"];
-  __emscripten_thread_free_data = wasmExports["_a"];
-  __emscripten_thread_exit = wasmExports["$a"];
-  __emscripten_check_mailbox = wasmExports["ab"];
-  _emscripten_stack_set_limits = wasmExports["bb"];
-  __emscripten_stack_restore = wasmExports["cb"];
-  __emscripten_stack_alloc = wasmExports["db"];
-  _emscripten_stack_get_current = wasmExports["eb"];
-  __indirect_function_table = wasmTable = wasmExports["Sa"];
+  _get_body_move_count = Module["_get_body_move_count"] = wasmExports["Ra"];
+  _get_body_move_byte_offset = Module["_get_body_move_byte_offset"] = wasmExports["Sa"];
+  _get_body_fell_asleep_byte_offset = Module["_get_body_fell_asleep_byte_offset"] = wasmExports["Ta"];
+  _get_body_move_capacity = Module["_get_body_move_capacity"] = wasmExports["Ua"];
+  _get_awake_body_count = Module["_get_awake_body_count"] = wasmExports["Va"];
+  _get_profile_byte_offset = Module["_get_profile_byte_offset"] = wasmExports["Wa"];
+  _get_profile_float_count = Module["_get_profile_float_count"] = wasmExports["Xa"];
+  _get_counters_byte_offset = Module["_get_counters_byte_offset"] = wasmExports["Ya"];
+  _get_counters_int_count = Module["_get_counters_int_count"] = wasmExports["Za"];
+  _weedjs_heap_bytes_used = Module["_weedjs_heap_bytes_used"] = wasmExports["_a"];
+  __emscripten_tls_init = wasmExports["ab"];
+  _pthread_self = wasmExports["bb"];
+  __emscripten_thread_init = wasmExports["cb"];
+  ___set_thread_state = wasmExports["db"];
+  __emscripten_thread_crashed = wasmExports["eb"];
+  __emscripten_run_js_on_main_thread_done = wasmExports["fb"];
+  __emscripten_run_js_on_main_thread = wasmExports["gb"];
+  __emscripten_thread_free_data = wasmExports["hb"];
+  __emscripten_thread_exit = wasmExports["ib"];
+  __emscripten_check_mailbox = wasmExports["jb"];
+  _emscripten_stack_set_limits = wasmExports["kb"];
+  __emscripten_stack_restore = wasmExports["lb"];
+  __emscripten_stack_alloc = wasmExports["mb"];
+  _emscripten_stack_get_current = wasmExports["nb"];
+  __indirect_function_table = wasmTable = wasmExports["$a"];
 }
 
 var wasmImports;

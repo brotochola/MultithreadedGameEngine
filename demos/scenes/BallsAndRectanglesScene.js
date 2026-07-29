@@ -19,7 +19,7 @@ export class BallsAndRectanglesScene extends WEED.Scene {
     spatial: {
       cellSize: 100, // Larger cells for boxes
       maxNeighbors: 900,
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
 
     // Logic configuration
@@ -28,7 +28,7 @@ export class BallsAndRectanglesScene extends WEED.Scene {
     },
 
     particle: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxParticles: 0,
       decals: false,
       decalsTileSize: 256,

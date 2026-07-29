@@ -83,6 +83,11 @@ export { BulletComponent } from './components/BulletComponent.js';
 // Distance constraints for position-based dynamics (ropes, springs, rigid connections)
 export { Joint } from './core/Joint.js';
 export { SharedAtomicPool } from './core/SharedAtomicPool.js';
+export {
+  getMovedBodiesViews,
+  bindMovedBodies,
+  isMovedBodiesBound,
+} from './box2d/box2dMovedBodies.js';
 
 // ============================================================================
 // FLASHES
@@ -183,6 +188,11 @@ import { CollisionListener } from './components/CollisionListener.js';
 import { Joint } from './core/Joint.js';
 import { AbstractWorker } from './workers/AbstractWorker.js';
 import {
+  getMovedBodiesViews,
+  bindMovedBodies,
+  isMovedBodiesBound,
+} from './box2d/box2dMovedBodies.js';
+import {
   ShapeType,
   MAX_POLYGON_VERTICES,
   Box2dBodyType,
@@ -264,6 +274,11 @@ const WEED = Object.freeze({
 
   // Pool base class
   SharedAtomicPool,
+
+  // Box2D movers SAB (last physics step)
+  getMovedBodiesViews,
+  bindMovedBodies,
+  isMovedBodiesBound,
 
   // Flashes
   Flash,

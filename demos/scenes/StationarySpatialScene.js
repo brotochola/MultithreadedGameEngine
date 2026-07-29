@@ -13,14 +13,14 @@ export class StationarySpatialScene extends Scene {
       cellSize: 128,
       maxNeighbors: 512,
       maxEntitiesPerCell: 128,
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     logic: {
-      noLimitFPS: true,
+      noLimitFPS: false,
     },
     physics: {
       subStepCount: 1,
-      noLimitFPS: true,
+      noLimitFPS: false,
       gravity: { x: 0, y: 0 },
     },
     particle: {
@@ -28,7 +28,7 @@ export class StationarySpatialScene extends Scene {
       decals: false,
     },
     renderer: {
-      noLimitFPS: true,
+      noLimitFPS: false,
       maxVisibleRenderables: 20000,
     },
     lighting: {

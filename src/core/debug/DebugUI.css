@@ -127,6 +127,9 @@
 .debug-ui-stat.audio {
   color: #38bdf8;
 }
+.debug-ui-stat.preRender {
+  color: #c084fc;
+}
 .debug-ui-stat.navigation {
   color: #14b8a6; /* teal for navigation */
 }
@@ -134,72 +137,248 @@
   color: #818cf8;
 }
 
-.debug-ui-worker-table {
+.debug-ui-performance-body {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 10px;
+}
+
+.debug-ui-performance-summary {
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 6px;
+}
+
+.debug-ui-pool-row {
+  justify-content: flex-start;
+  gap: 16px;
+}
+
+.debug-ui-pool-title {
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Full-width worker rows; click expandable rows for detail chips */
+.debug-ui-worker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   width: 100%;
   font-variant-numeric: tabular-nums;
 }
 
 .debug-ui-worker-row {
-  display: grid;
-  grid-template-columns: 7.5rem 5.5rem 3.25rem 5.5rem minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 10px;
-  padding: 4px 6px;
-  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 3px solid rgba(255, 255, 255, 0.2);
+  min-width: 0;
+  overflow: hidden;
 }
 
-.debug-ui-worker-row.header {
+.debug-ui-worker-row.main {
+  border-left-color: #4ade80;
+}
+.debug-ui-worker-row.logic {
+  border-left-color: #f87171;
+}
+.debug-ui-worker-row.physics {
+  border-left-color: #22d3d3;
+}
+.debug-ui-worker-row.preRender {
+  border-left-color: #c084fc;
+}
+.debug-ui-worker-row.renderer {
+  border-left-color: #fbbf24;
+}
+.debug-ui-worker-row.spatial {
+  border-left-color: #a78bfa;
+}
+.debug-ui-worker-row.particle {
+  border-left-color: #fb923c;
+}
+.debug-ui-worker-row.audio {
+  border-left-color: #38bdf8;
+}
+
+.debug-ui-worker-row-head {
+  display: grid;
+  /* chevron | label | Step | Load | Fps | Msg | load-bar */
+  grid-template-columns: 1.1rem 7.5rem 7rem 7rem 7rem 7rem 160px;
+  align-items: center;
+  justify-content: start;
+  column-gap: 8px;
+  padding: 6px 10px;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+.debug-ui-worker-row.expandable .debug-ui-worker-row-head {
+  cursor: pointer;
+}
+
+.debug-ui-worker-row.expandable .debug-ui-worker-row-head:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.debug-ui-worker-chevron {
   color: rgba(255, 255, 255, 0.45);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 2px;
-  padding-bottom: 6px;
+  line-height: 1;
+  text-align: center;
+  user-select: none;
 }
 
-.debug-ui-worker-row:not(.header):hover {
-  background: rgba(255, 255, 255, 0.03);
+.debug-ui-worker-chevron.hidden {
+  visibility: hidden;
 }
 
-.debug-ui-worker-cell {
-  text-align: left;
-  min-width: 0;
-}
-
-.debug-ui-worker-cell.label {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.debug-ui-worker-cell.stat {
-  color: rgba(255, 255, 255, 0.82);
+.debug-ui-worker-row-label {
+  font-weight: 700;
   font-size: 12px;
-}
-
-.debug-ui-worker-cell.stat.common {
   white-space: nowrap;
 }
 
-.debug-ui-worker-cell.stat.empty {
-  color: rgba(255, 255, 255, 0.25);
+/* Promote metric spans into the parent grid so columns align across rows */
+.debug-ui-worker-row-metrics {
+  display: contents;
 }
 
-.debug-ui-worker-cell.stat.extras,
-.debug-ui-worker-cell.extras-wrap {
-  display: flex;
+.debug-ui-worker-metric {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.debug-ui-worker-metric.empty {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.debug-ui-worker-metric[data-key='STEP_MS']::before {
+  content: 'Step ';
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
+.debug-ui-worker-metric[data-key='LOAD']::before {
+  content: 'Load ';
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
+.debug-ui-worker-metric[data-key='FPS']::before {
+  content: 'Fps ';
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
+.debug-ui-worker-metric[data-key='MSG_MS']::before {
+  content: 'Msg ';
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
+.debug-ui-worker-metric.empty::before {
+  opacity: 0.5;
+}
+
+.debug-ui-worker-load-track {
+  width: 160px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  justify-self: start;
+}
+
+.debug-ui-worker-load-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.75;
+  transition: width 0.12s ease;
+}
+
+.debug-ui-worker-row.main .debug-ui-worker-load-fill {
+  color: #4ade80;
+}
+.debug-ui-worker-row.logic .debug-ui-worker-load-fill {
+  color: #f87171;
+}
+.debug-ui-worker-row.physics .debug-ui-worker-load-fill {
+  color: #22d3d3;
+}
+.debug-ui-worker-row.preRender .debug-ui-worker-load-fill {
+  color: #c084fc;
+}
+.debug-ui-worker-row.renderer .debug-ui-worker-load-fill {
+  color: #fbbf24;
+}
+.debug-ui-worker-row.spatial .debug-ui-worker-load-fill {
+  color: #a78bfa;
+}
+.debug-ui-worker-row.particle .debug-ui-worker-load-fill {
+  color: #fb923c;
+}
+.debug-ui-worker-row.audio .debug-ui-worker-load-fill {
+  color: #38bdf8;
+}
+
+.debug-ui-worker-load-fill.over {
+  width: 100% !important;
+  background: repeating-linear-gradient(
+    -45deg,
+    currentColor,
+    currentColor 4px,
+    rgba(255, 80, 80, 0.85) 4px,
+    rgba(255, 80, 80, 0.85) 8px
+  );
+}
+
+.debug-ui-worker-row-details {
+  display: none;
   flex-wrap: wrap;
-  gap: 2px 14px;
+  gap: 4px 14px;
+  padding: 0 10px 8px 2.2rem;
   color: rgba(255, 255, 255, 0.72);
-  font-size: 12px;
+  font-size: 11px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.debug-ui-worker-row.expanded .debug-ui-worker-row-details {
+  display: flex;
+  padding-top: 6px;
+}
+
+.debug-ui-worker-row-details:empty,
+.debug-ui-worker-row-details.empty {
+  display: none !important;
+  border-top: none;
+  padding: 0;
 }
 
 .debug-ui-worker-detail {
   white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .debug-ui-worker-row-head {
+    grid-template-columns: 1.1rem 6rem 6.25rem 6.25rem 6.25rem 6.25rem 120px;
+    column-gap: 6px;
+  }
+
+  .debug-ui-worker-load-track {
+    width: 120px;
+  }
 }
 
 .debug-ui-btn {

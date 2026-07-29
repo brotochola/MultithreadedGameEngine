@@ -9,6 +9,7 @@ import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
+import { bindMovedBodies, getMovedBodiesViews } from '../box2d/box2dMovedBodies.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
 import { ParticleComponent } from '../components/ParticleComponent.js';
@@ -662,6 +663,42 @@ class Scene {
   /** @returns {number} Number of logic workers */
   get numberOfLogicWorkers() {
     return this.config.logic.numberOfLogicWorkers;
+  }
+
+  /**
+   * Entity indices that moved in the last physics step (live SAB subarray).
+   * @returns {Uint32Array}
+   */
+  get bodiesThatMoved() {
+    const v = getMovedBodiesViews();
+    if (!v || !v.movedList) return new Uint32Array(0);
+    const count = v.count | 0;
+    return count > 0 ? v.movedList.subarray(0, count) : new Uint32Array(0);
+  }
+
+  /**
+   * Full moved-body views for the last physics step.
+   * @returns {{ list: Uint32Array, count: number, bits: Uint8Array|null, generation: number, fellAsleep: Uint8Array|null }}
+   */
+  getBodiesThatMoved() {
+    const v = getMovedBodiesViews();
+    if (!v || !v.movedList) {
+      return {
+        list: new Uint32Array(0),
+        count: 0,
+        bits: null,
+        generation: 0,
+        fellAsleep: null,
+      };
+    }
+    const count = v.count | 0;
+    return {
+      list: count > 0 ? v.movedList.subarray(0, count) : new Uint32Array(0),
+      count,
+      bits: v.movedBits,
+      generation: v.generation | 0,
+      fellAsleep: v.fellAsleep,
+    };
   }
 
   /** @returns {boolean} Whether particles are enabled */
@@ -1528,6 +1565,7 @@ class Scene {
         sleepingByteOffset: e.data.sleepingByteOffset,
         commandSab: e.data.commandSab,
         contactSab: e.data.contactSab,
+        movedSab: e.data.movedSab || null,
         eventHeaderBaseIndex: e.data.eventHeaderBaseIndex,
         contactBeginBaseIndex: e.data.contactBeginBaseIndex,
         contactEndBaseIndex: e.data.contactEndBaseIndex,
@@ -1542,6 +1580,9 @@ class Scene {
       this.box2dHotFields = payload;
       if (payload.commandSab) {
         bindCommandRing(payload.commandSab);
+      }
+      if (payload.movedSab) {
+        bindMovedBodies(payload.movedSab);
       }
       for (const worker of this.getAllWorkers()) {
         if (worker && worker !== e.currentTarget) {

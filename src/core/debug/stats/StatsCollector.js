@@ -11,6 +11,7 @@ import {
   WORKER_ROW_ORDER,
   createStatsReader,
   createMultiWorkerStatsReaderArray,
+  workerLoadPct,
 } from '../../../workers/workers-utils.js';
 
 /**
@@ -158,4 +159,5 @@ export {
   PRE_RENDER_STATS,
   WORKER_DISPLAY_CONFIG,
   WORKER_ROW_ORDER,
+  workerLoadPct,
 };

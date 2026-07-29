@@ -19,7 +19,7 @@ export class ConstraintBoxScene extends WEED.Scene {
         spatial: {
             cellSize: 100,
             maxNeighbors: 512,
-            noLimitFPS: true,
+            noLimitFPS: false,
         },
 
         logic: {
@@ -27,14 +27,14 @@ export class ConstraintBoxScene extends WEED.Scene {
         },
 
         particle: {
-            noLimitFPS: true,
+            noLimitFPS: false,
             maxParticles: 0,
             decals: false,
         },
 
         physics: {
             subStepCount: 5,
-            noLimitFPS: true,
+            noLimitFPS: false,
             maxJoints: 4096,
             sleeping: false,
             gravity: { x: 0, y: 1800 },

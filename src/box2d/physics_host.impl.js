@@ -261,6 +261,7 @@
     frameRateStride: 1,
     commandSab: null,
     contactSab: null,
+    movedSab: null,
     bodySyncViews: null,
     transform: null,
     rigidBody: null,
@@ -316,6 +317,7 @@
       sleepingByteOffset: ready.sleepingByteOffset,
       commandSab: state.commandSab,
       contactSab: state.contactSab,
+      movedSab: state.movedSab,
       eventHeaderBaseIndex: ready.eventHeaderBaseIndex,
       contactBeginBaseIndex: ready.contactBeginBaseIndex,
       contactEndBaseIndex: ready.contactEndBaseIndex,
@@ -345,6 +347,8 @@
     state.contactSab = Box2dContactRing.createContactRingSab(
       state.settings.contactRingCapacity,
     );
+    state.movedSab = Box2dMovedBodies.createMovedBodiesSab(entityCount);
+    Box2dMovedBodies.bindMovedBodies(state.movedSab);
 
     var s = state.settings;
     var T = state.transform;
@@ -366,6 +370,7 @@
       sleeping: state.sleepingEnabled !== false,
       commandSab: state.commandSab,
       contactSab: state.contactSab,
+      movedSab: state.movedSab,
       stats: state.stats ? packView(state.stats) : null,
       posePublish: state.posePublish
         ? {

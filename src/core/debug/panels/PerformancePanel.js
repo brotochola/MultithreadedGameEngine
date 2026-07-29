@@ -1,4 +1,4 @@
-// PerformancePanel.js — Worker stats table, FPS, entity counts, audio metrics
+// PerformancePanel.js — Full-width worker rows (expandable details), pools, audio
 
 import { createPanel, createStat } from '../ui/DebugDOM.js';
 import { formatNumber } from '../../utils.js';
@@ -12,9 +12,10 @@ import {
   PRE_RENDER_STATS,
   WORKER_DISPLAY_CONFIG,
   WORKER_ROW_ORDER,
+  workerLoadPct,
 } from '../stats/StatsCollector.js';
 
-const COMMON_KEYS = ['STEP_MS', 'FPS', 'MSG_MS'];
+const COMMON_KEYS = ['STEP_MS', 'LOAD', 'FPS', 'MSG_MS'];
 const SCHEMA_BY_TYPE = {
   renderer: RENDERER_STATS,
   particle: PARTICLE_STATS,
@@ -24,6 +25,9 @@ const SCHEMA_BY_TYPE = {
   preRender: PRE_RENDER_STATS,
 };
 
+/** Start expanded — these carry the hot diagnostics. */
+const DEFAULT_EXPANDED = new Set(['physics', 'spatial']);
+
 function fmtMs(v) {
   return v == null || Number.isNaN(v) ? '—' : v.toFixed(2) + ' ms';
 }
@@ -32,34 +36,37 @@ function fmtFps(v) {
   return v == null || Number.isNaN(v) ? '—' : v.toFixed(1);
 }
 
+function fmtLoad(v) {
+  return v == null || Number.isNaN(v) ? '—' : Math.round(v) + '%';
+}
+
 export class PerformancePanel {
   constructor(debugUI) {
     this.debugUI = debugUI;
     this.elements = {};
     this.panel = null;
+    /** @type {Map<string, boolean>} */
+    this._expandedById = new Map();
   }
 
   // ------- DOM creation -------
 
   create() {
     this.panel = createPanel();
+    this.panel.classList.add('debug-ui-performance-panel');
 
     const container = document.createElement('div');
-    container.style.cssText = 'display:flex;flex-direction:column;gap:12px';
+    container.className = 'debug-ui-performance-body';
 
-    // Summary section
     const summary = document.createElement('div');
     summary.className = 'debug-ui-performance-summary';
-    summary.style.cssText = 'display:flex;flex-direction:column;gap:4px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px';
 
     const poolRow = document.createElement('div');
-    poolRow.className = 'debug-ui-row';
-    poolRow.style.cssText = 'justify-content:flex-start;gap:16px;flex-wrap:wrap';
+    poolRow.className = 'debug-ui-row debug-ui-pool-row';
 
     const poolTitle = document.createElement('span');
-    poolTitle.className = 'debug-ui-stat';
-    poolTitle.style.cssText = 'font-weight:bold;color:rgba(255,255,255,0.9)';
-    poolTitle.textContent = 'Pools:';
+    poolTitle.className = 'debug-ui-stat debug-ui-pool-title';
+    poolTitle.textContent = 'Pools';
     poolRow.appendChild(poolTitle);
 
     this.elements.perfGameObjects = this._colorStat('#4ade80', 'Game objects: -- / -- (👁 --)');
@@ -77,7 +84,6 @@ export class PerformancePanel {
     summary.appendChild(poolRow);
     container.appendChild(summary);
 
-    // Job stealing row (hidden by default)
     const jobRow = document.createElement('div');
     jobRow.className = 'debug-ui-row';
     this.elements.jobStealing = createStat('Jobs: --', 'jobs');
@@ -86,14 +92,8 @@ export class PerformancePanel {
     this.elements.jobStealingRow = jobRow;
     container.appendChild(jobRow);
 
-    const workerTitle = document.createElement('div');
-    workerTitle.className = 'debug-ui-stat';
-    workerTitle.style.cssText = 'font-weight:bold;font-size:12px;margin-top:8px;margin-bottom:4px;color:rgba(255,255,255,0.9)';
-    workerTitle.textContent = 'Workers';
-    container.appendChild(workerTitle);
-
     this.elements.workerStatsContainer = document.createElement('div');
-    this.elements.workerStatsContainer.style.cssText = 'display:flex;flex-direction:column;gap:4px';
+    this.elements.workerStatsContainer.className = 'debug-ui-worker-list';
     container.appendChild(this.elements.workerStatsContainer);
 
     this.panel.appendChild(container);
@@ -116,32 +116,19 @@ export class PerformancePanel {
     const stats = this.debugUI.stats;
     if (!stats.workerStatViews) return;
 
-    const container = this.elements.workerStatsContainer;
-    container.innerHTML = '';
-
-    const table = document.createElement('div');
-    table.className = 'debug-ui-worker-table';
-
-    // Column headers (aligned common columns)
-    const header = document.createElement('div');
-    header.className = 'debug-ui-worker-row header';
-    header.appendChild(this._cell('label', ''));
-    header.appendChild(this._cell('stat common', 'Step'));
-    header.appendChild(this._cell('stat common', 'Fps'));
-    header.appendChild(this._cell('stat common', 'Msg'));
-    header.appendChild(this._cell('stat extras', 'Details'));
-    table.appendChild(header);
-
+    const list = this.elements.workerStatsContainer;
+    list.innerHTML = '';
     this.elements.workerStats = {};
 
-    // Main
-    table.appendChild(this._createFixedRow('main', 'Main', 'main', {
-      STEP_MS: true,
-      FPS: true,
-      MSG_MS: false,
-    }));
+    list.appendChild(
+      this._createFixedRow('main', 'Main', 'main', {
+        STEP_MS: true,
+        LOAD: true,
+        FPS: true,
+        MSG_MS: false,
+      }),
+    );
 
-    // Workers in requested order
     for (const type of WORKER_ROW_ORDER) {
       if (type === 'spatial' || type === 'logic') {
         const views = stats.workerStatViews[type];
@@ -149,78 +136,147 @@ export class PerformancePanel {
         this.elements.workerStats[type] = [];
         for (let i = 0; i < views.length; i++) {
           const built = this._createWorkerStatRow(type, i);
-          table.appendChild(built.row);
+          list.appendChild(built.row);
           this.elements.workerStats[type].push(built.elements);
         }
       } else if (stats.workerStatViews[type]) {
         const built = this._createWorkerStatRow(type, 0);
-        table.appendChild(built.row);
+        list.appendChild(built.row);
         if (!this.elements.workerStats[type]) this.elements.workerStats[type] = [];
         this.elements.workerStats[type].push(built.elements);
       }
     }
 
-    // Audio last
-    table.appendChild(this._createAudioRow());
-
-    container.appendChild(table);
+    list.appendChild(this._createAudioRow());
   }
 
-  _cell(className, text) {
-    const el = document.createElement('div');
-    el.className = `debug-ui-worker-cell ${className}`;
-    el.textContent = text;
-    return el;
+  _isExpanded(rowId, expandable, detailCount = 0) {
+    if (!expandable) return false;
+    if (this._expandedById.has(rowId)) return this._expandedById.get(rowId);
+    const type = rowId.split(':')[0];
+    if (DEFAULT_EXPANDED.has(type)) return true;
+    // Light rows: keep details visible without a click.
+    return detailCount > 0 && detailCount <= 3;
+  }
+
+  _setExpanded(rowId, row, expanded) {
+    this._expandedById.set(rowId, expanded);
+    row.classList.toggle('expanded', expanded);
+    row.classList.toggle('collapsed', !expanded);
+    const chevron = row.querySelector('.debug-ui-worker-chevron');
+    if (chevron) chevron.textContent = expanded ? '▾' : '▸';
+    row.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+
+  _createRowShell(rowId, colorClass, title, { expandable = false, detailCount = 0 } = {}) {
+    const row = document.createElement('div');
+    row.className = `debug-ui-worker-row ${colorClass}`;
+    row.dataset.rowId = rowId;
+
+    const head = document.createElement('div');
+    head.className = 'debug-ui-worker-row-head';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'debug-ui-worker-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    if (!expandable) {
+      chevron.classList.add('hidden');
+      chevron.textContent = '';
+    }
+    head.appendChild(chevron);
+
+    const label = document.createElement('span');
+    label.className = `debug-ui-worker-row-label debug-ui-stat ${colorClass}`;
+    label.textContent = title;
+    head.appendChild(label);
+
+    const metrics = document.createElement('div');
+    metrics.className = 'debug-ui-worker-row-metrics';
+    head.appendChild(metrics);
+
+    const loadTrack = document.createElement('div');
+    loadTrack.className = 'debug-ui-worker-load-track';
+    const loadFill = document.createElement('div');
+    loadFill.className = 'debug-ui-worker-load-fill';
+    loadTrack.appendChild(loadFill);
+    head.appendChild(loadTrack);
+
+    row.appendChild(head);
+
+    const details = document.createElement('div');
+    details.className = 'debug-ui-worker-row-details';
+    row.appendChild(details);
+
+    if (expandable) {
+      row.classList.add('expandable');
+      const expanded = this._isExpanded(rowId, true, detailCount);
+      this._setExpanded(rowId, row, expanded);
+      head.addEventListener('click', () => {
+        this._setExpanded(rowId, row, !row.classList.contains('expanded'));
+      });
+      head.title = 'Click to expand / collapse details';
+    } else {
+      row.classList.add('collapsed');
+      details.classList.add('empty');
+    }
+
+    return { row, metrics, loadFill, details };
+  }
+
+  _metricCell(colorClass, key, empty = false) {
+    const cell = document.createElement('span');
+    cell.className = `debug-ui-worker-metric debug-ui-stat ${colorClass}`;
+    cell.dataset.key = key;
+    if (empty) cell.classList.add('empty');
+    cell.textContent = '—';
+    return cell;
+  }
+
+  _setLoadBar(loadFill, loadPct) {
+    if (!loadFill) return;
+    const pct = Math.max(0, Number(loadPct) || 0);
+    loadFill.style.width = `${Math.min(pct, 100)}%`;
+    loadFill.classList.toggle('over', pct > 100);
   }
 
   _createFixedRow(id, label, colorClass, commonFlags) {
-    const row = document.createElement('div');
-    row.className = 'debug-ui-worker-row';
+    const { row, metrics, loadFill, details } = this._createRowShell(id, colorClass, label, {
+      expandable: false,
+    });
+    const elements = { _loadFill: loadFill, _extras: details };
 
-    const labelCell = this._cell(`label debug-ui-stat ${colorClass}`, label);
-    row.appendChild(labelCell);
-
-    const elements = {};
     for (const key of COMMON_KEYS) {
-      const cell = this._cell(`stat common debug-ui-stat ${colorClass}`, '—');
-      row.appendChild(cell);
+      const cell = this._metricCell(colorClass, key, !commonFlags[key]);
+      metrics.appendChild(cell);
       if (commonFlags[key]) elements[key] = cell;
-      else cell.classList.add('empty');
     }
-
-    const extras = this._cell(`stat extras debug-ui-stat ${colorClass}`, '');
-    row.appendChild(extras);
-    elements._extras = extras;
 
     if (id === 'main') {
       this.elements.mainStep = elements.STEP_MS;
+      this.elements.mainLoad = elements.LOAD;
       this.elements.mainFPS = elements.FPS;
-      this.elements.mainExtras = extras;
+      this.elements.mainLoadFill = loadFill;
+      this.elements.mainExtras = details;
     }
 
     return row;
   }
 
   _createAudioRow() {
-    const row = document.createElement('div');
-    row.className = 'debug-ui-worker-row';
-    row.appendChild(this._cell('label debug-ui-stat audio', 'Audio'));
+    const rowId = 'audio';
+    const { row, metrics, loadFill, details } = this._createRowShell(rowId, 'audio', 'Audio', {
+      expandable: true,
+      detailCount: 6,
+    });
+    this.elements.audioStats = { _loadFill: loadFill, _extras: details };
 
-    this.elements.audioStats = {};
-    const step = this._cell('stat common debug-ui-stat audio', '—');
-    row.appendChild(step);
+    const step = this._metricCell('audio', 'STEP_MS');
+    metrics.appendChild(step);
     this.elements.audioStats.STEP_MS = step;
 
-    const fps = this._cell('stat common empty debug-ui-stat audio', '—');
-    row.appendChild(fps);
-
-    const msg = this._cell('stat common empty debug-ui-stat audio', '—');
-    row.appendChild(msg);
-
-    const extras = this._cell('stat extras debug-ui-stat audio', '');
-    row.appendChild(extras);
-    this.elements.audioStats._extras = extras;
-    this.elements.audioStats.Slots = null; // filled as text in extras
+    for (const key of ['LOAD', 'FPS', 'MSG_MS']) {
+      metrics.appendChild(this._metricCell('audio', key, true));
+    }
 
     return row;
   }
@@ -228,32 +284,32 @@ export class PerformancePanel {
   _createWorkerStatRow(workerType, workerIndex) {
     const stats = this.debugUI.stats;
     const config = WORKER_DISPLAY_CONFIG[workerType];
-    const row = document.createElement('div');
-    row.className = 'debug-ui-worker-row';
-    const elements = {};
-
-    const count = (workerType === 'spatial' || workerType === 'logic')
-      ? stats.workerStatViews[workerType].length
-      : 1;
+    const count =
+      workerType === 'spatial' || workerType === 'logic'
+        ? stats.workerStatViews[workerType].length
+        : 1;
     const title = count > 1 ? `${config.label} #${workerIndex}` : config.label;
-    row.appendChild(this._cell(`label debug-ui-stat ${config.color}`, title));
+    const detailCount = Math.max(0, config.stats.length - COMMON_KEYS.length);
+    const rowId = `${workerType}:${workerIndex}`;
+    const { row, metrics, loadFill, details } = this._createRowShell(rowId, config.color, title, {
+      expandable: detailCount > 0,
+      detailCount,
+    });
+
+    const elements = { _loadFill: loadFill, _extras: details };
 
     for (const key of COMMON_KEYS) {
-      const cell = this._cell(`stat common debug-ui-stat ${config.color}`, '—');
-      row.appendChild(cell);
+      const cell = this._metricCell(config.color, key);
+      metrics.appendChild(cell);
       elements[key] = cell;
     }
-
-    const extrasWrap = this._cell(`stat extras debug-ui-stat ${config.color}`, '');
-    extrasWrap.classList.add('extras-wrap');
-    row.appendChild(extrasWrap);
 
     for (let s = COMMON_KEYS.length; s < config.stats.length; s++) {
       const stat = config.stats[s];
       const chip = document.createElement('span');
       chip.className = 'debug-ui-worker-detail';
       chip.textContent = `${stat.label}: —`;
-      extrasWrap.appendChild(chip);
+      details.appendChild(chip);
       elements[stat.key] = chip;
     }
 
@@ -272,7 +328,11 @@ export class PerformancePanel {
     const mainStepRounded = (scene.mainStepMs * 100) | 0;
     if (this.elements.mainStep && mainStepRounded !== stats.prev.mainStepMs) {
       stats.prev.mainStepMs = mainStepRounded;
-      this.elements.mainStep.textContent = fmtMs(mainStepRounded / 100);
+      const stepMs = mainStepRounded / 100;
+      this.elements.mainStep.textContent = fmtMs(stepMs);
+      const load = workerLoadPct(stepMs);
+      if (this.elements.mainLoad) this.elements.mainLoad.textContent = fmtLoad(load);
+      this._setLoadBar(this.elements.mainLoadFill, load);
     }
     const mainFPSRounded = (scene.mainFPS * 100) | 0;
     if (this.elements.mainFPS && mainFPSRounded !== stats.prev.mainFPS) {
@@ -303,8 +363,17 @@ export class PerformancePanel {
       const tGO = (particleView[PARTICLE_STATS.TOTAL_ENTITIES] || 0) | 0;
       const vGO = rendererView ? (rendererView[RENDERER_STATS.VISIBLE_ENTITIES] || 0) | 0 : 0;
       if (aGO !== pv.activeGO || tGO !== pv.totalGO || vGO !== pv.visibleGO) {
-        pv.activeGO = aGO; pv.totalGO = tGO; pv.visibleGO = vGO;
-        this.elements.perfGameObjects.textContent = 'Game objects: ' + formatNumber(aGO) + ' / ' + formatNumber(tGO) + ' (👁 ' + formatNumber(vGO) + ')';
+        pv.activeGO = aGO;
+        pv.totalGO = tGO;
+        pv.visibleGO = vGO;
+        this.elements.perfGameObjects.textContent =
+          'Game objects: ' +
+          formatNumber(aGO) +
+          ' / ' +
+          formatNumber(tGO) +
+          ' (👁 ' +
+          formatNumber(vGO) +
+          ')';
       }
     }
 
@@ -313,8 +382,17 @@ export class PerformancePanel {
       const tP = (particleView[PARTICLE_STATS.TOTAL_PARTICLES] || 0) | 0;
       const vP = rendererView ? (rendererView[RENDERER_STATS.VISIBLE_PARTICLES] || 0) | 0 : 0;
       if (aP !== pv.activeP || tP !== pv.totalP || vP !== pv.visibleP) {
-        pv.activeP = aP; pv.totalP = tP; pv.visibleP = vP;
-        this.elements.perfParticles.textContent = 'Particles: ' + formatNumber(aP) + ' / ' + formatNumber(tP) + ' (👁 ' + formatNumber(vP) + ')';
+        pv.activeP = aP;
+        pv.totalP = tP;
+        pv.visibleP = vP;
+        this.elements.perfParticles.textContent =
+          'Particles: ' +
+          formatNumber(aP) +
+          ' / ' +
+          formatNumber(tP) +
+          ' (👁 ' +
+          formatNumber(vP) +
+          ')';
       }
     }
 
@@ -323,8 +401,17 @@ export class PerformancePanel {
       const vD = (rendererView[RENDERER_STATS.VISIBLE_DECORATIONS] || 0) | 0;
       const tD = (DecorationPool.maxDecorations || 0) | 0;
       if (aD !== pv.activeD || tD !== pv.totalD || vD !== pv.visibleD) {
-        pv.activeD = aD; pv.totalD = tD; pv.visibleD = vD;
-        this.elements.perfDecorations.textContent = 'Decorations: ' + formatNumber(aD) + ' / ' + formatNumber(tD) + ' (👁 ' + formatNumber(vD) + ')';
+        pv.activeD = aD;
+        pv.totalD = tD;
+        pv.visibleD = vD;
+        this.elements.perfDecorations.textContent =
+          'Decorations: ' +
+          formatNumber(aD) +
+          ' / ' +
+          formatNumber(tD) +
+          ' (👁 ' +
+          formatNumber(vD) +
+          ')';
       }
     }
 
@@ -347,6 +434,7 @@ export class PerformancePanel {
     if (processRounded !== pv.audioProcessMs) {
       pv.audioProcessMs = processRounded;
       if (els.STEP_MS) els.STEP_MS.textContent = fmtMs(processRounded / 100);
+      this._setLoadBar(els._loadFill, workerLoadPct(processRounded / 100));
     }
 
     const active = (audioMetrics.activeSlots || 0) | 0;
@@ -379,7 +467,7 @@ export class PerformancePanel {
       pv.audioRate = rate;
       pv.audioLatency = latencyMs;
 
-      const rateStr = rate >= 1000 ? (rate / 1000) + ' kHz' : rate ? rate + ' Hz' : '—';
+      const rateStr = rate >= 1000 ? rate / 1000 + ' kHz' : rate ? rate + ' Hz' : '—';
       const parts = [
         `Slots ${active}/${max}`,
         `Loaded ${loaded}`,
@@ -388,7 +476,15 @@ export class PerformancePanel {
         `Lat ${(latencyMs / 100).toFixed(2)} ms`,
         rateStr,
       ];
-      if (els._extras) els._extras.textContent = parts.join(' · ');
+      if (els._extras) {
+        els._extras.textContent = '';
+        for (const part of parts) {
+          const chip = document.createElement('span');
+          chip.className = 'debug-ui-worker-detail';
+          chip.textContent = part;
+          els._extras.appendChild(chip);
+        }
+      }
     }
   }
 
@@ -429,9 +525,14 @@ export class PerformancePanel {
       const el = elements[stat.key];
       if (!el) continue;
 
-      let rawValue = view[statsSchema[stat.key]];
-      if (stat.key === 'FPS' && smoother) {
-        rawValue = stats.smoothFPS(rawValue, smoother);
+      let rawValue;
+      if (stat.key === 'LOAD') {
+        rawValue = workerLoadPct(view[statsSchema.STEP_MS] || 0);
+      } else {
+        rawValue = view[statsSchema[stat.key]];
+        if (stat.key === 'FPS' && smoother) {
+          rawValue = stats.smoothFPS(rawValue, smoother);
+        }
       }
       const rounded = (rawValue * 100) | 0;
       if (prevCache[stat.key] === rounded) continue;
@@ -440,6 +541,7 @@ export class PerformancePanel {
       const formatted = stat.format(rawValue);
       if (COMMON_KEYS.includes(stat.key)) {
         el.textContent = formatted;
+        if (stat.key === 'LOAD') this._setLoadBar(elements._loadFill, rawValue);
       } else {
         el.textContent = `${stat.label}: ${formatted}`;
       }

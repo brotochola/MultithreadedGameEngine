@@ -335,7 +335,7 @@ export const LAYER_DEFAULTS = Object.freeze({
 // ============================================================================
 
 export const PRE_RENDER_DEFAULTS = Object.freeze({
-  noLimitFPS: true,
+  noLimitFPS: false,
   fixedFps: 0,
   /** When true, skip packing if >1 frame ahead of pixi (Atomics sync). */
   backpressure: true,
@@ -352,7 +352,7 @@ export const NAVIGATION_DEFAULTS = Object.freeze({
   maxPaths: 64,
   maxPathLength: 128,
   maxProcessingMsPerFrame: 2,
-  noLimitFPS: true,
+  noLimitFPS: false,
   fixedFps: 0,
 });
 

@@ -362,28 +362,20 @@ class SpatialWorker extends AbstractWorker {
     const spriteRendererActive = SpriteRenderer.active;
 
     const gridWidth = this.gridWidth;
-    const gridHeight = this.gridHeight;
     const invCellSize = this.invCellSize;
     const workerId = this.workerId;
 
-    // Interleaved position data: [x, y, halfExtent, pad] per entity (stride 4)
     const entityPosData = this.entityPosData;
-
-    // Direct buffer access for grid (avoid Grid.addEntityToCell overhead in hot loop)
     const gridCounts = Grid._gridCounts;
     const gridEntities = Grid._gridEntities;
 
     const maxCol = gridWidth - 1;
-    const maxRow = gridHeight - 1;
+    const maxRow = this.gridHeight - 1;
 
     const ownedRows = this.ownedRows;
     const ownedRowCount = this.ownedRowCount;
     const rowOwnership = this.rowOwnership;
 
-    // =========================================================================
-    // PHASE 1: Clear LOCAL counts only (not grid counts!)
-    // Grid counts remain unchanged - other workers can safely read them
-    // =========================================================================
     const localCounts = this._localCellCounts;
     const localHashes = this._localCellHashes;
 
@@ -398,23 +390,14 @@ class SpatialWorker extends AbstractWorker {
       }
     }
 
-    // =========================================================================
-    // PHASE 2: Insert all active entities into owned cells
-    // Use local counts for indexing, write entity data directly to grid
-    // =========================================================================
     const activeEntitiesData = this.activeEntitiesData;
     const totalActiveEntities = activeEntitiesData ? activeEntitiesData[0] : 0;
 
     for (let activeIdx = 0; activeIdx < totalActiveEntities; activeIdx++) {
       const i = activeEntitiesData[1 + activeIdx];
 
-      // Insert entities that need to be in the grid for:
-      // - Collider: physics, neighbor queries
-      // - SpriteRenderer: visibility culling (particle_worker / camera frustum)
-      // Flash has neither, so it is skipped.
       if (!colliderActive[i] && !spriteRendererActive[i]) continue;
 
-      // Calculate collider position + half-extents based on shape
       let posX;
       let posY;
       let halfW = 0;
@@ -430,7 +413,6 @@ class SpatialWorker extends AbstractWorker {
         posY = y[i] + offsetY[i];
       }
 
-      // Skip invalid positions (NaN check via self-comparison)
       if (posX !== posX || posY !== posY) continue;
 
       const maxHalfExtent = halfW > halfH ? halfW : halfH;
@@ -441,15 +423,11 @@ class SpatialWorker extends AbstractWorker {
       const minRow = _cellRangeResult.minRow;
       const maxRowBB = _cellRangeResult.maxRow;
 
-      // Insert entity into ALL cells it overlaps, but only if we own that row
       let wroteEntityPos = false;
       for (let row = minRow; row <= maxRowBB; row++) {
-        // ROW OWNERSHIP CHECK: O(1) lookup replaces division + modulo
         if (rowOwnership[row] !== workerId) continue;
 
         if (!wroteEntityPos) {
-          // Only publish shared position data if this worker actually touches one of the
-          // entity's rows. This avoids redundant SAB writes in workers that will skip it.
           const baseIdx = i * 4;
           entityPosData[baseIdx] = posX;
           entityPosData[baseIdx + 1] = posY;
@@ -463,10 +441,7 @@ class SpatialWorker extends AbstractWorker {
           const cellIndex = rowBase + col;
           const localCount = localCounts[cellIndex];
 
-          // Add entity if cell not full
           if (localCount < Grid.maxEntitiesPerCell) {
-            // Write entity data to grid immediately (overwrites old data)
-            const byteOffset = cellIndex * Grid.cellByteSize;
             gridEntities[Grid.getCellBase(cellIndex) + localCount] = i;
             localCounts[cellIndex] = localCount + 1;
             localHashes[cellIndex] = Math.imul(localHashes[cellIndex] ^ (i + 1), 16777619) >>> 0;
@@ -475,11 +450,6 @@ class SpatialWorker extends AbstractWorker {
       }
     }
 
-    // =========================================================================
-    // PHASE 3: Copy local counts to grid (single write per cell)
-    // This is the ONLY time we modify gridCounts - with final values
-    // Readers see either old count or new count, never 0 mid-clear
-    // =========================================================================
     for (let r = 0; r < ownedRowCount; r++) {
       const row = ownedRows[r];
       const rowBase = row * gridWidth;

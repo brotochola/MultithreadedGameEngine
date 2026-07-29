@@ -40,6 +40,7 @@ const BOX2D_SIBLING_NAMES = [
     'box2dConstants.impl.js',
     'box2dCommandRing.impl.js',
     'box2dContactRing.impl.js',
+    'box2dMovedBodies.impl.js',
 ];
 
 const KEEP_DIST_FILES = new Set([

@@ -12,10 +12,13 @@
     'physics-api.js',
     'box2dCommandRing.impl.js',
     'box2dContactRing.impl.js',
+    'box2dMovedBodies.impl.js',
   );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
   const publishBox2dContactEvent = Box2dContactRing.publishContactEvent;
   const CONTACT_KIND = Box2dContactRing.BOX2D_CONTACT_KIND;
+  const publishMovedBodies = Box2dMovedBodies.publishMovedBodies;
+  const bindMovedBodies = Box2dMovedBodies.bindMovedBodies;
 
   const MAX_POLY_VERTS = 8;
   const BODY_DIRTY = {
@@ -99,6 +102,17 @@
     SENSOR_DROPPED: 22,
     HEAP_USED_KB: 23,
     HEAP_HIGH_WATER_KB: 24,
+    BODY_MOVED_COUNT: 25,
+    AWAKE_COUNT: 26,
+    PROFILE_STEP_MS: 27,
+    PROFILE_COLLIDE_MS: 28,
+    PROFILE_SOLVE_MS: 29,
+    PROFILE_SLEEP_MS: 30,
+    PROFILE_SENSORS_MS: 31,
+    COUNTER_CONTACTS: 32,
+    COUNTER_ISLANDS: 33,
+    COUNTER_AWAKE_CONTACTS: 34,
+    COUNTER_TREE_HEIGHT: 35,
   };
 
   let heapHighWaterKb = 0;
@@ -729,6 +743,7 @@
   let bodyApplyTorqueFn = null;
   let bodySetLinearVelocityFn = null;
   let bodySetTransformFn = null;
+  let bodySetAwakeFn = null;
   let bodySetAngularVelocityFn = null;
   let bodySetFixedRotationFn = null;
   let bodySetTypeFn = null;
@@ -741,12 +756,27 @@
   let bodySetShapeCircleFn = null;
   let bodySetShapePolygonFn = null;
 
+  // Teleports skip b2BodyMoveEvent — accumulate and merge into moved SAB after step
+  let pendingTeleportBits = null;
+  let pendingTeleportList = null;
+  let pendingTeleportCount = 0;
+
+  function markTeleportMoved(entity) {
+    const e = entity | 0;
+    if (!pendingTeleportBits || e < 0 || e >= pendingTeleportBits.length) return;
+    if (pendingTeleportBits[e]) return;
+    pendingTeleportBits[e] = 1;
+    pendingTeleportList[pendingTeleportCount++] = e >>> 0;
+  }
+
   // Hoisted once — drainCommands must not allocate a fresh handlers object every step
   const cmdHandlers = {
     setTransform(entity, x, y, angle) {
       if (!hasBody[entity]) return;
       const a = isFixedRotation(entity) ? 0 : angle;
       bodySetTransformFn(entity, x, y, a);
+      if (bodySetAwakeFn) bodySetAwakeFn(entity, 1);
+      markTeleportMoved(entity);
     },
     setVelocity(entity, vx, vy) {
       if (!hasBody[entity]) return;
@@ -758,6 +788,8 @@
       const y = pyChan[entity];
       const a = isFixedRotation(entity) ? 0 : angle;
       bodySetTransformFn(entity, x, y, a);
+      if (bodySetAwakeFn) bodySetAwakeFn(entity, 1);
+      markTeleportMoved(entity);
     },
     setAngularVelocity(entity, w) {
       if (!hasBody[entity]) return;
@@ -836,6 +868,29 @@
 
   function afterStep() {
     publishContactRingFromWasm();
+    publishMovedSabFromStep();
+  }
+
+  function publishMovedSabFromStep() {
+    if (!world || typeof publishMovedBodies !== 'function') return;
+    const wasmCount =
+      typeof world._getBodyMoveCount === 'function'
+        ? world._getBodyMoveCount() | 0
+        : 0;
+    publishMovedBodies(
+      world._bodyMoved,
+      world._bodyFellAsleep,
+      wasmCount,
+      pendingTeleportList,
+      pendingTeleportCount,
+      pendingTeleportBits,
+    );
+    if (pendingTeleportCount > 0 && pendingTeleportBits) {
+      for (let i = 0; i < pendingTeleportCount; i++) {
+        pendingTeleportBits[pendingTeleportList[i]] = 0;
+      }
+      pendingTeleportCount = 0;
+    }
   }
 
   function writePhysicsStats(
@@ -899,6 +954,46 @@
     } else {
       statsF32[PS.HEAP_USED_KB] = 0;
       statsF32[PS.HEAP_HIGH_WATER_KB] = heapHighWaterKb;
+    }
+
+    const movedViews =
+      typeof Box2dMovedBodies !== 'undefined' && Box2dMovedBodies.getMovedBodiesViews
+        ? Box2dMovedBodies.getMovedBodiesViews()
+        : null;
+    statsF32[PS.BODY_MOVED_COUNT] = movedViews ? movedViews.count | 0 : 0;
+
+    if (world && typeof world._getAwakeBodyCount === 'function') {
+      statsF32[PS.AWAKE_COUNT] = world._getAwakeBodyCount(world.worldId) | 0;
+    } else {
+      statsF32[PS.AWAKE_COUNT] = 0;
+    }
+
+    const profile = world && world._profile;
+    if (profile && profile.length >= 5) {
+      statsF32[PS.PROFILE_STEP_MS] = profile[0];
+      statsF32[PS.PROFILE_COLLIDE_MS] = profile[1];
+      statsF32[PS.PROFILE_SOLVE_MS] = profile[2];
+      statsF32[PS.PROFILE_SLEEP_MS] = profile[3];
+      statsF32[PS.PROFILE_SENSORS_MS] = profile[4];
+    } else {
+      statsF32[PS.PROFILE_STEP_MS] = 0;
+      statsF32[PS.PROFILE_COLLIDE_MS] = 0;
+      statsF32[PS.PROFILE_SOLVE_MS] = 0;
+      statsF32[PS.PROFILE_SLEEP_MS] = 0;
+      statsF32[PS.PROFILE_SENSORS_MS] = 0;
+    }
+
+    const counters = world && world._counters;
+    if (counters && counters.length >= 7) {
+      statsF32[PS.COUNTER_CONTACTS] = counters[2] | 0;
+      statsF32[PS.COUNTER_ISLANDS] = counters[4] | 0;
+      statsF32[PS.COUNTER_AWAKE_CONTACTS] = counters[5] | 0;
+      statsF32[PS.COUNTER_TREE_HEIGHT] = counters[6] | 0;
+    } else {
+      statsF32[PS.COUNTER_CONTACTS] = 0;
+      statsF32[PS.COUNTER_ISLANDS] = 0;
+      statsF32[PS.COUNTER_AWAKE_CONTACTS] = 0;
+      statsF32[PS.COUNTER_TREE_HEIGHT] = 0;
     }
   }
 
@@ -982,6 +1077,7 @@
       'number',
       'number',
     ]);
+    bodySetAwakeFn = Module.cwrap('body_set_awake', null, ['number', 'number']);
     bodySetAngularVelocityFn = Module.cwrap(
       'body_set_angular_velocity',
       null,
@@ -1051,6 +1147,9 @@
     } else {
       contactRingI32 = null;
     }
+    if (data.movedSab) {
+      bindMovedBodies(data.movedSab);
+    }
 
     bindWeedViews(data.views);
     bindPosePublish(data.posePublish);
@@ -1071,6 +1170,9 @@
     densePositions = new Int32Array(entityCount);
     densePositions.fill(-1);
     seenBodyGeneration = new Int32Array(entityCount);
+    pendingTeleportBits = new Uint8Array(entityCount);
+    pendingTeleportList = new Uint32Array(entityCount);
+    pendingTeleportCount = 0;
 
     const ready = world.getReadyPayload();
     bindStateChannels(ready, entityCount);
@@ -1090,6 +1192,7 @@
       sensorEventCapacity: ready.sensorEventCapacity,
       contactPairIntStride: ready.contactPairIntStride,
       eventHeaderIntCount: ready.eventHeaderIntCount,
+      movedSab: data.movedSab || null,
     };
     if (typeof globalThis.weedjsOnReady === 'function') {
       globalThis.weedjsOnReady(readyMsg);
