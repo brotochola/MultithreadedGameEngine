@@ -135,52 +135,71 @@
 }
 
 .debug-ui-worker-table {
-  display: table;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
 
 .debug-ui-worker-row {
-  display: table-row;
+  display: grid;
+  grid-template-columns: 7.5rem 5.5rem 3.25rem 5.5rem minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
+  padding: 4px 6px;
+  border-radius: 3px;
 }
 
-.debug-ui-worker-row:hover {
+.debug-ui-worker-row.header {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 2px;
+  padding-bottom: 6px;
+}
+
+.debug-ui-worker-row:not(.header):hover {
   background: rgba(255, 255, 255, 0.03);
 }
 
 .debug-ui-worker-cell {
-  display: table-cell;
-  padding: 3px 12px;
   text-align: left;
-  vertical-align: middle;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  min-width: 0;
 }
 
 .debug-ui-worker-cell.label {
   font-weight: 600;
-  width: 15%;
-  padding-right: 16px;
+  white-space: nowrap;
 }
 
 .debug-ui-worker-cell.stat {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
-  opacity: 0.85;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
 }
 
-/* Dynamic column widths based on number of stats */
-.debug-ui-worker-table[data-stat-count='3'] .debug-ui-worker-cell.stat {
-  width: 28.33%;
+.debug-ui-worker-cell.stat.common {
+  white-space: nowrap;
 }
 
-.debug-ui-worker-table[data-stat-count='4'] .debug-ui-worker-cell.stat {
-  width: 21.25%;
+.debug-ui-worker-cell.stat.empty {
+  color: rgba(255, 255, 255, 0.25);
 }
 
-.debug-ui-worker-table[data-stat-count='5'] .debug-ui-worker-cell.stat {
-  width: 17%;
+.debug-ui-worker-cell.stat.extras,
+.debug-ui-worker-cell.extras-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.debug-ui-worker-detail {
+  white-space: nowrap;
 }
 
 .debug-ui-btn {

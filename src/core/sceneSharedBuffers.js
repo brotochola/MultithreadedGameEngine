@@ -744,5 +744,6 @@ export function teardownSceneSharedState(scene) {
     sampleRate: 0,
     baseLatency: 0,
     outputLatency: 0,
+    processMs: 0,
   };
 }

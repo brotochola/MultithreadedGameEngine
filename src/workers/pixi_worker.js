@@ -662,6 +662,7 @@ class PixiRenderer extends AbstractWorker {
     // Write stats to SharedArrayBuffer every frame (no throttling needed - it's just memory writes)
     if (this.stats) {
       this.stats[RENDERER_STATS.FPS] = this.currentFPS;
+      this.stats[RENDERER_STATS.STEP_MS] = this.stepTimeThisFrame;
       this.stats[RENDERER_STATS.DRAW_CALLS] = this.drawCallCount;
 
       // Total visible sprites = entities + particles + decorations

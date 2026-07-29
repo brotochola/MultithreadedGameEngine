@@ -158,13 +158,18 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 
 ## Worker stats
 
-Written to `physicsStats` via indices in `src/workers/workers-utils.js` (`PHYSICS_STATS`):
+Written to per-worker stats SABs via indices in `src/workers/workers-utils.js`. DebugUI Performance tab shows **Step** (`STEP_MS`) first after the worker name, then **FPS**.
 
 | Key | Meaning |
 | --- | --- |
 | `FPS` | Instantaneous FPS slot (via frame timing) |
-| `STEP_MS` | Outer physics worker: wall time for Box2D Atomics step roundtrip (ms) |
+| `STEP_MS` | Wall ms for that frame’s work only (not idle to next rAF/`fixedFps`). Physics: around `weedjsDoStep`. Other workers: around `AbstractWorker.update()`. Main: around `Scene.updateInternal()` (`Scene.mainStepMs`). Audio: worklet `process()` wall ms (`SoundManager` process SAB). |
 | `MSG_MS` | Time spent handling incoming messages this frame (ms); see `AbstractWorker` |
+
+Physics-only fields on `physicsStats` (`PHYSICS_STATS`):
+
+| Key | Meaning |
+| --- | --- |
 | `BODY_COUNT` | Nested weedjs: dense Box2D bodies after `syncBodies` |
 | `JOINT_COUNT` | Nested weedjs: `world.getJointCount()` (WASM joint table high-water) |
 | `CONTACT_BEGIN` / `CONTACT_END` | Box2D contact begin/end event counts this step (`EVENT_HEADER`) |
@@ -174,7 +179,7 @@ Written to `physicsStats` via indices in `src/workers/workers-utils.js` (`PHYSIC
 | `CONTACT_DROPPED` / `SENSOR_DROPPED` | WASM export drops + contact-ring overrun counter |
 | `BODY_SYNC_*` / `JOINT_SYNC_*` / `COMMAND_*` | Nested subphase timings and change counts |
 
-Other workers expose `MSG_MS` similarly for comparable overhead profiling.
+With capped FPS (~60), prefer **Step** over FPS to compare worker load.
 
 ---
 

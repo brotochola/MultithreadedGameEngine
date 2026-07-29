@@ -8,6 +8,7 @@ import {
   LOGIC_STATS,
   PRE_RENDER_STATS,
   WORKER_DISPLAY_CONFIG,
+  WORKER_ROW_ORDER,
   createStatsReader,
   createMultiWorkerStatsReaderArray,
 } from '../../../workers/workers-utils.js';
@@ -34,6 +35,8 @@ export class StatsCollector {
     // Previous-value caches (shared across panels to avoid duplicate DOM writes)
     this._prevValues = {
       mainFPS: -1,
+      mainStepMs: -1,
+      audioProcessMs: -1,
       audioActive: -1,
       audioMax: -1,
       audioLoaded: -1,
@@ -104,6 +107,8 @@ export class StatsCollector {
 
     const pv = this._prevValues;
     pv.mainFPS = -1;
+    pv.mainStepMs = -1;
+    pv.audioProcessMs = -1;
     pv.audioActive = -1; pv.audioMax = -1; pv.audioLoaded = -1;
     pv.audioDropped = -1; pv.audioMixGain = -1; pv.audioMasterVol = -1;
     pv.audioMuted = false; pv.audioRate = -1; pv.audioLatency = -1;
@@ -152,4 +157,5 @@ export {
   LOGIC_STATS,
   PRE_RENDER_STATS,
   WORKER_DISPLAY_CONFIG,
+  WORKER_ROW_ORDER,
 };

@@ -40,6 +40,9 @@ export class SoundManager {
   // AudioWorklet (main thread only)
   static _audioCtx = null;
   static _workletNode = null;
+  /** SharedArrayBuffer: Float32[1] = last process() wall ms (worklet → main). */
+  static _processMsSab = null;
+  static _processMsF32 = null;
 
   // Volume state (main thread tracks these for mute/unmute restore)
   static _muted = false;
@@ -133,13 +136,22 @@ export class SoundManager {
     this._savedMasterVolume = this._f32[this.HEADER_MASTER_VOL];
     this._muted = false;
 
+    this._processMsSab = new SharedArrayBuffer(4);
+    this._processMsF32 = new Float32Array(this._processMsSab);
+    this._processMsF32[0] = 0;
+
     this._workletNode = new AudioWorkletNode(this._audioCtx, 'weed-audio-mixer', {
       numberOfOutputs: 1,
       outputChannelCount: [2],
     });
     this._workletNode.connect(this._audioCtx.destination);
 
-    this._workletNode.port.postMessage({ type: 'init', sab: this._sab, maxSlots });
+    this._workletNode.port.postMessage({
+      type: 'init',
+      sab: this._sab,
+      maxSlots,
+      processMsSab: this._processMsSab,
+    });
 
     console.log(
       `[SoundManager] AudioWorklet mixer initialized (${maxSlots} slots, mixGain=${mixGain}, masterVol=${masterVolume})`
@@ -181,7 +193,12 @@ export class SoundManager {
       Atomics.store(this._i32, 0, maxSlots);
 
       if (this._workletNode) {
-        this._workletNode.port.postMessage({ type: 'init', sab: this._sab, maxSlots });
+        this._workletNode.port.postMessage({
+          type: 'init',
+          sab: this._sab,
+          maxSlots,
+          processMsSab: this._processMsSab,
+        });
       }
     }
 
@@ -369,6 +386,8 @@ export class SoundManager {
     this._sab = null;
     this._i32 = null;
     this._f32 = null;
+    this._processMsSab = null;
+    this._processMsF32 = null;
     this._maxSlots = 0;
     this._audioUnlocked = false;
   }
@@ -398,6 +417,7 @@ export class SoundManager {
       sampleRate: ctx ? ctx.sampleRate : 0,
       baseLatency: ctx ? (ctx.baseLatency || 0) : 0,
       outputLatency: ctx ? (ctx.outputLatency || 0) : 0,
+      processMs: this._processMsF32 ? this._processMsF32[0] : 0,
     };
   }
 

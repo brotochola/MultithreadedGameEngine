@@ -83,6 +83,7 @@ export class AbstractWorker {
     this.lastFrameTime = performance.now();
     this.accumulatedTime = 0; // Total time elapsed since start (in milliseconds)
     this.currentFPS = 0;
+    this.stepTimeThisFrame = 0; // Wall ms for update() this frame (STEP_MS)
 
     // Stats buffer for writing detailed metrics (set during initialization)
     this.stats = null; // Float32Array view into worker's stat buffer
@@ -250,8 +251,10 @@ export class AbstractWorker {
     Keyboard.updateEdgeFlags();
     Gamepad.updateEdgeFlags();
 
-    // Call the worker-specific update logic
+    // Call the worker-specific update logic; STEP_MS = wall time of that work only
+    const t0 = performance.now();
     this.update(timing.deltaTime, timing.dtRatio, resuming);
+    this.stepTimeThisFrame = performance.now() - t0;
 
     // Report FPS
     this.reportFPS();

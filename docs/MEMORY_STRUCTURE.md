@@ -463,18 +463,22 @@ Pops and pushes retry a `compareExchange` on the packed head; the 16-bit tag is 
 
 ## 11. Stats Buffers
 
-Every worker family writes its own stats SAB. Main thread reads them for DebugUI.
+Every worker family writes its own stats SAB. Main thread reads them for DebugUI. Main itself does not use a stats SAB: `Scene.mainStepMs` / `Scene.mainFPS` feed the Performance tab. Audio worklet writes `processMs` into a tiny SAB (`SoundManager._processMsSab`).
 
-All use a strided `Float32Array` layout: **16 floats (64 bytes) per worker slot**.
+Performance rows (aligned columns **Step · Fps · Msg · Details**): Main → Logic → Physics → PreRender → Render → Spatial → Particles → Audio.
+
+All use a strided `Float32Array` layout: **16 floats (64 bytes) per worker slot** (physics uses **32 floats**).
+
+Every worker exposes **`STEP_MS`** (wall ms for that frame’s work) and **`FPS`**. DebugUI Performance tab shows **Step**, then **FPS**, then worker-specific fields. With capped FPS (~60), Step is the load signal.
 
 | Buffer            | Slots                    | Fields                                                                                                                                              |
 | ----------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rendererStats`   | 1                        | FPS, DRAW_CALLS, VISIBLE_SPRITES, SPRITES_CREATED, DECORATION_SPRITES, VISIBLE_DECORATIONS, VISIBLE_ENTITIES, VISIBLE_PARTICLES, ACTIVE_DECORATIONS |
-| `particleStats`   | 1                        | FPS, ACTIVE_PARTICLES, TOTAL_PARTICLES, PARTICLES_STAMPED, FLASHES_UPDATED, (unused slot 5), ACTIVE_ENTITIES, TOTAL_ENTITIES                        |
-| `physicsStats`    | 1                        | FPS, STEP_MS, MSG_MS, BODY_COUNT, JOINT_COUNT, CONTACT_*, SENSOR_*, WEED_JOINTS                                                                      |
-| `spatialStats`    | N (1 per spatial worker) | FPS, NEIGHBOR_CHECKS, GRID_CELLS_CHECKED, ENTITIES_PROCESSED                                                                                        |
-| `logicStats`      | N (1 per logic worker)   | FPS, ENTITIES_PROCESSED, SYSTEMS_EXECUTED                                                                                                           |
-| `preRenderStats`  | 1                        | FPS, VISIBLE_ENTITIES, VISIBLE_PARTICLES, VISIBLE_DECORATIONS, SHADOWS_UPDATED, RENDER_QUEUE_SIZE                                                   |
+| `rendererStats`   | 1                        | FPS, …, MSG_MS, **STEP_MS**; DRAW_CALLS, VISIBLE_*, SPRITES_CREATED, ACTIVE_DECORATIONS                                                             |
+| `particleStats`   | 1                        | FPS, …, MSG_MS, BUILD_ACTIVE_VISIBLE_MS, PARTICLE_PHYSICS_MS, **STEP_MS**; ACTIVE/TOTAL particles & entities                                        |
+| `physicsStats`    | 1                        | FPS, **STEP_MS**, MSG_MS, BODY_COUNT, JOINT_COUNT, CONTACT_*, SENSOR_*, WEED_JOINTS, subphase timings, HEAP_*                                       |
+| `spatialStats`    | N (1 per spatial worker) | FPS, …, MSG_MS, NEIGHBORS_REUSED, **STEP_MS**; NEIGHBOR_CHECKS, GRID_CELLS_CHECKED, ENTITIES_PROCESSED, REBUILD_MS, NEIGHBOR_MS                    |
+| `logicStats`      | N (1 per logic worker)   | FPS, ENTITIES_PROCESSED, SYSTEMS_EXECUTED, MSG_MS, **STEP_MS**                                                                                      |
+| `preRenderStats`  | 1                        | FPS, …, MSG_MS, SKIPPED_FRAMES, **STEP_MS**; VISIBLE_*, SHADOWS_UPDATED, RENDER_QUEUE_SIZE                                                          |
 | `frameRateData`   | `maxWorkers`             | 1 `Float32` per worker (aggregate FPS)                                                                                                              |
 
 | Writer                          | Reader                |

@@ -27,6 +27,7 @@ export const RENDERER_STATS = Object.freeze({
   VISIBLE_PARTICLES: 7,
   ACTIVE_DECORATIONS: 8,
   MSG_MS: 9,
+  STEP_MS: 10,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE: 16 * 4,
 });
@@ -47,6 +48,7 @@ export const PARTICLE_STATS = Object.freeze({
   MSG_MS: 8,
   BUILD_ACTIVE_VISIBLE_MS: 9,
   PARTICLE_PHYSICS_MS: 10,
+  STEP_MS: 11,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE: 16 * 4,
 });
@@ -100,6 +102,7 @@ export const SPATIAL_STATS = Object.freeze({
   NEIGHBOR_MS: 5,
   MSG_MS: 6,
   NEIGHBORS_REUSED: 7,
+  STEP_MS: 8,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE_PER_WORKER: 16 * 4,
 });
@@ -113,6 +116,7 @@ export const LOGIC_STATS = Object.freeze({
   ENTITIES_PROCESSED: 1,
   SYSTEMS_EXECUTED: 2,
   MSG_MS: 3,
+  STEP_MS: 4,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE_PER_WORKER: 16 * 4,
 });
@@ -130,6 +134,7 @@ export const PRE_RENDER_STATS = Object.freeze({
   RENDER_QUEUE_SIZE: 5,
   MSG_MS: 6,
   SKIPPED_FRAMES: 7,
+  STEP_MS: 8,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE: 16 * 4,
 });
@@ -138,155 +143,100 @@ export const PRE_RENDER_STATS = Object.freeze({
  * Display configuration for worker stats
  * Defines which stats to show in DebugUI and how to format them
  */
+/**
+ * Display order for Performance tab worker rows (after Main, before Audio).
+ */
+export const WORKER_ROW_ORDER = Object.freeze([
+  'logic',
+  'physics',
+  'preRender',
+  'renderer',
+  'spatial',
+  'particle',
+]);
+
+const fmtMs = (v) => (v == null || Number.isNaN(v) ? '—' : v.toFixed(2) + ' ms');
+const fmtFps = (v) => (v == null || Number.isNaN(v) ? '—' : v.toFixed(1));
+const fmtNum = (v) => formatNumber(v);
+
+/**
+ * Display configuration for worker stats.
+ * First three keys (Step / Fps / Msg) are common columns for alignment.
+ * Remaining stats go in the Details column.
+ */
 export const WORKER_DISPLAY_CONFIG = Object.freeze({
   renderer: {
     label: 'Render',
     color: 'renderer',
     stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      { key: 'DRAW_CALLS', format: (v) => formatNumber(v) },
-      {
-        key: 'SPRITES_CREATED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'VISIBLE_SPRITES',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'MSG_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
+      { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      { key: 'FPS', label: 'Fps', format: fmtFps },
+      { key: 'MSG_MS', label: 'Msg', format: fmtMs },
+      { key: 'DRAW_CALLS', label: 'Draws', format: fmtNum },
+      { key: 'VISIBLE_SPRITES', label: 'Sprites', format: fmtNum },
+      { key: 'VISIBLE_ENTITIES', label: 'Visible', format: fmtNum },
     ],
   },
   particle: {
-    label: 'Particle',
+    label: 'Particles',
     color: 'particle',
     stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      {
-        key: 'PARTICLES_STAMPED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'FLASHES_UPDATED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'MSG_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'BUILD_ACTIVE_VISIBLE_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'PARTICLE_PHYSICS_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
+      { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      { key: 'FPS', label: 'Fps', format: fmtFps },
+      { key: 'MSG_MS', label: 'Msg', format: fmtMs },
+      { key: 'ACTIVE_PARTICLES', label: 'Active', format: fmtNum },
+      { key: 'PARTICLES_STAMPED', label: 'Stamped', format: fmtNum },
+      { key: 'PARTICLE_PHYSICS_MS', label: 'Sim', format: fmtMs },
+      { key: 'BUILD_ACTIVE_VISIBLE_MS', label: 'Lists', format: fmtMs },
     ],
   },
   physics: {
     label: 'Physics',
     color: 'physics',
     stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      { key: 'STEP_MS', format: (v) => v.toFixed(2) + 'ms' },
-      { key: 'MSG_MS', format: (v) => v.toFixed(2) + 'ms' },
-      { key: 'BODY_COUNT', format: (v) => formatNumber(v), label: 'Bodies' },
-      { key: 'JOINT_COUNT', format: (v) => formatNumber(v), label: 'B2Joints' },
-      { key: 'CONTACT_BEGIN', format: (v) => formatNumber(v), label: 'Contact+' },
-      { key: 'CONTACT_END', format: (v) => formatNumber(v), label: 'Contact-' },
-      { key: 'SENSOR_BEGIN', format: (v) => formatNumber(v), label: 'Sensor+' },
-      { key: 'SENSOR_END', format: (v) => formatNumber(v), label: 'Sensor-' },
-      { key: 'WEED_JOINTS', format: (v) => formatNumber(v), label: 'WeedJoints' },
+      { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      { key: 'FPS', label: 'Fps', format: fmtFps },
+      { key: 'MSG_MS', label: 'Msg', format: fmtMs },
+      { key: 'BODY_COUNT', label: 'Bodies', format: fmtNum },
+      { key: 'BOX2D_MS', label: 'Box2d', format: fmtMs },
+      { key: 'CONTACT_BEGIN', label: 'Contacts', format: fmtNum },
+      { key: 'WEED_JOINTS', label: 'Joints', format: fmtNum },
     ],
   },
   spatial: {
     label: 'Spatial',
     color: 'spatial',
     stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      {
-        key: 'NEIGHBOR_CHECKS',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'GRID_CELLS_CHECKED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'NEIGHBORS_REUSED',
-        format: (v) => formatNumber(v),
-        label: 'Reused',
-      },
-      {
-        key: 'ENTITIES_PROCESSED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'REBUILD_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'NEIGHBOR_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
-      {
-        key: 'MSG_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
+      { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      { key: 'FPS', label: 'Fps', format: fmtFps },
+      { key: 'MSG_MS', label: 'Msg', format: fmtMs },
+      { key: 'ENTITIES_PROCESSED', label: 'Entities', format: fmtNum },
+      { key: 'NEIGHBOR_CHECKS', label: 'Neighbors', format: fmtNum },
+      { key: 'REBUILD_MS', label: 'Rebuild', format: fmtMs },
+      { key: 'NEIGHBOR_MS', label: 'Search', format: fmtMs },
     ],
   },
   logic: {
     label: 'Logic',
     color: 'logic',
     stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      {
-        key: 'ENTITIES_PROCESSED',
-        format: (v) => formatNumber(v),
-      },
-      {
-        key: 'MSG_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
+      { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      { key: 'FPS', label: 'Fps', format: fmtFps },
+      { key: 'MSG_MS', label: 'Msg', format: fmtMs },
+      { key: 'ENTITIES_PROCESSED', label: 'Entities', format: fmtNum },
     ],
   },
   preRender: {
     label: 'PreRender',
     color: 'preRender',
     stats: [
-      { key: 'FPS', format: (v) => v.toFixed(2) },
-      {
-        key: 'VISIBLE_ENTITIES',
-        format: (v) => formatNumber(v),
-        label: 'Vis Entities',
-      },
-      {
-        key: 'VISIBLE_PARTICLES',
-        format: (v) => formatNumber(v),
-        label: 'Vis Particles',
-      },
-      {
-        key: 'SHADOWS_UPDATED',
-        format: (v) => formatNumber(v),
-        label: 'Shadows',
-      },
-      {
-        key: 'RENDER_QUEUE_SIZE',
-        format: (v) => formatNumber(v),
-        label: 'Queue Size',
-      },
-      {
-        key: 'SKIPPED_FRAMES',
-        format: (v) => formatNumber(v),
-        label: 'Skipped',
-      },
-      {
-        key: 'MSG_MS',
-        format: (v) => v.toFixed(2) + 'ms',
-      },
+      { key: 'STEP_MS', label: 'Step', format: fmtMs },
+      { key: 'FPS', label: 'Fps', format: fmtFps },
+      { key: 'MSG_MS', label: 'Msg', format: fmtMs },
+      { key: 'RENDER_QUEUE_SIZE', label: 'Queue', format: fmtNum },
+      { key: 'SKIPPED_FRAMES', label: 'Skipped', format: fmtNum },
+      { key: 'VISIBLE_ENTITIES', label: 'Visible', format: fmtNum },
+      { key: 'SHADOWS_UPDATED', label: 'Shadows', format: fmtNum },
     ],
   },
 });

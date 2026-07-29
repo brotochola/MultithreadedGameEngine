@@ -275,6 +275,7 @@ class Scene {
 
     // Main thread FPS tracking
     this.mainFPS = 0;
+    this.mainStepMs = 0; // Wall ms for updateInternal this frame (same role as worker STEP_MS)
     this.mainFPSFrameCount = 60;
     this.mainFrameTimes = new Array(this.mainFPSFrameCount).fill(16.67);
     this.mainFrameTimeIndex = 0;
@@ -293,6 +294,7 @@ class Scene {
       sampleRate: 0,
       baseLatency: 0,
       outputLatency: 0,
+      processMs: 0,
     };
 
     // Worker stats (populated by worker messages, read by DebugUI)
@@ -1752,7 +1754,9 @@ class Scene {
       const deltaTime = currentTime - this.lastFrameTime;
       this.lastFrameTime = currentTime;
 
+      const t0 = performance.now();
       this.updateInternal(deltaTime);
+      this.mainStepMs = performance.now() - t0;
 
       this.mainFrameNumber++;
       this.mainFrameTimesSum -= this.mainFrameTimes[this.mainFrameTimeIndex];
@@ -1789,6 +1793,7 @@ class Scene {
     audioMetrics.sampleRate = am.sampleRate;
     audioMetrics.baseLatency = am.baseLatency;
     audioMetrics.outputLatency = am.outputLatency;
+    audioMetrics.processMs = am.processMs || 0;
 
     // Note: Camera following is now handled in Player.tick() which writes directly to cameraData SharedArrayBuffer
     // Main thread reads from cameraData and syncs to this.camera in updateCameraBuffer()

@@ -2064,6 +2064,7 @@ class ParticleWorker extends AbstractWorker {
   reportFPS() {
     if (this.stats) {
       this.stats[PARTICLE_STATS.FPS] = this.currentFPS;
+      this.stats[PARTICLE_STATS.STEP_MS] = this.stepTimeThisFrame;
       this.stats[PARTICLE_STATS.ACTIVE_PARTICLES] = this.activeParticleCount;
       this.stats[PARTICLE_STATS.TOTAL_PARTICLES] = this.maxParticles;
       this.stats[PARTICLE_STATS.PARTICLES_STAMPED] = this.particlesStampedThisFrame;

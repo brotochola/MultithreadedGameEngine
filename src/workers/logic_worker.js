@@ -996,6 +996,7 @@ class LogicWorker extends AbstractWorker {
     // Write stats to SharedArrayBuffer every frame
     if (this.stats) {
       this.stats[LOGIC_STATS.FPS] = this.currentFPS;
+      this.stats[LOGIC_STATS.STEP_MS] = this.stepTimeThisFrame;
       this.stats[LOGIC_STATS.ENTITIES_PROCESSED] = this.entitiesProcessedThisFrame;
       this.stats[LOGIC_STATS.SYSTEMS_EXECUTED] = this.systemsExecutedThisFrame;
       this.stats[LOGIC_STATS.MSG_MS] = this.messageTimeThisFrame;

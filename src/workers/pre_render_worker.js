@@ -2724,6 +2724,7 @@ class PreRenderWorker extends AbstractWorker {
     reportFPS() {
         if (this.stats) {
             this.stats[PRE_RENDER_STATS.FPS] = this.currentFPS;
+            this.stats[PRE_RENDER_STATS.STEP_MS] = this.stepTimeThisFrame;
             this.stats[PRE_RENDER_STATS.VISIBLE_ENTITIES] = this.visibleEntitiesCount;
             this.stats[PRE_RENDER_STATS.VISIBLE_PARTICLES] = this.visibleParticlesCount;
             this.stats[PRE_RENDER_STATS.VISIBLE_DECORATIONS] = this.visibleDecorationsCount;

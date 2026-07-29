@@ -24,6 +24,7 @@ class MixerProcessor extends AudioWorkletProcessor {
     this._ready = false;
     this._i32 = null;
     this._f32 = null;
+    this._processMs = null;
     this._max = 0;
     this._assets = new Map();
 
@@ -33,6 +34,7 @@ class MixerProcessor extends AudioWorkletProcessor {
         this._i32 = new Int32Array(d.sab);
         this._f32 = new Float32Array(d.sab);
         this._max = d.maxSlots;
+        this._processMs = d.processMsSab ? new Float32Array(d.processMsSab) : null;
         this._ready = true;
       } else if (d.type === 'load') {
         this._assets.set(d.id, { ch: d.channels, len: d.length, nCh: d.channels.length });
@@ -44,6 +46,8 @@ class MixerProcessor extends AudioWorkletProcessor {
 
   process(_inputs, outputs) {
     if (!this._ready) return true;
+
+    var t0 = performance.now();
 
     var out = outputs[0];
     var L = out[0];
@@ -122,6 +126,10 @@ class MixerProcessor extends AudioWorkletProcessor {
         if (R[i] > 1) R[i] = 1;
         else if (R[i] < -1) R[i] = -1;
       }
+    }
+
+    if (this._processMs) {
+      this._processMs[0] = performance.now() - t0;
     }
     return true;
   }
