@@ -1,6 +1,6 @@
 {
   "name": "@weed.js/engine",
-  "version": "0.6.28",
+  "version": "0.6.29",
   "description": "A multithreaded 2D web game engine for high-entity-count browser games",
   "type": "module",
   "main": "dist/weed.bundle.min.js",
@@ -64,20 +64,22 @@
     "clean": "rimraf dist"
   },
   "keywords": [
+    "weed.js",
+    "weedjs",
     "game-engine",
     "web-game-engine",
     "html5-game-engine",
+    "2d",
     "webgl",
     "multithreaded",
+    "web-worker",
+    "sharedarraybuffer",
+    "box2d",
+    "wasm",
     "ecs",
     "entity-component-system",
-    "pixijs",
-    "web-worker",
-    "game-development",
-    "2d",
-    "physics",
-    "rendering",
-    "performance"
+    "pixi.js",
+    "physics"
   ],
   "author": "Facundo Saiegh",
   "license": "ISC",
