@@ -1,12 +1,11 @@
-// zenithalParticleTestScene.js - Test zenithal camera view: Z renders as scale, decals on floor
+// zenithalParticleTestScene.js - Test zenithal particles: Z renders as scale, decals on floor
 // Click (button 0) to emit blood particles that stamp decals on the floor
 
 import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
 import { ZenithalCar } from '../gameObjects/zenithalCar.js';
 import { ZenithalLight } from '../gameObjects/zenithalLight.js';
-const { ParticleEmitter, Scene, Camera, Mouse, Transform, RigidBody, enums } = WEED;
-const { CAMERA_TYPES } = enums;
+const { ParticleEmitter, Scene, Camera, Mouse, Transform, RigidBody } = WEED;
 
 const DRAG_PICK_RADIUS_SQ = 50 * 50;
 
@@ -20,7 +19,6 @@ export class ZenithalParticleTestScene extends Scene {
       decals: true,
       decalsTileSize: 256,
       decalsResolution: 0.5,
-      cameraView: CAMERA_TYPES.ZENITHAL,
       zenithalMaxHeight: 100,
       zenithalScaleFactor: 1,
       zenithalAlphaFade: 0.2,
@@ -116,18 +114,19 @@ export class ZenithalParticleTestScene extends Scene {
 
     // --- Blood particles on click (only when not dragging) ---
     if (Mouse.isButton0Down && this._dragIdx == null) {
-      ParticleEmitter.emit({
+      ParticleEmitter.emitZenithal({
         x: Mouse.x,
         y: Mouse.y,
-        z: -100,
+        // Random height / kick — fixed speed was painting a perfect landing ring
+        z: { min: -140, max: -40 },
         texture: 'blood',
         count: 12,
         angleXY: { min: 0, max: 360 },
-        speed: 10,
-        vz: -10,
+        speed: { min: 1, max: 14 },
+        vz: { min: -12, max: 4 },
         gravity: 1,
         stayOnTheFloor: true,
-        scale: 1,
+        scale: { min: 0.7, max: 1.3 },
         lifespan: 10000,
       });
     }

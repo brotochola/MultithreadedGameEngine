@@ -81,8 +81,9 @@ export class PlatformerGameScene extends Scene {
       worldWidth: this.config.worldWidth,
       worldHeight: this.config.worldHeight,
     });
-    this.playerIndex = playerHandle?.index ?? -1;
 
+    this.playerIndex = playerHandle.index
+    console.log("#########################", this.playerIndex);
     const startX = this.playerIndex >= 0 ? Transform.x[this.playerIndex] : 240;
     const startY = this.playerIndex >= 0 ? Transform.y[this.playerIndex] : 1700;
     Camera.centerOn(startX, startY);
@@ -111,7 +112,9 @@ export class PlatformerGameScene extends Scene {
   }
 
   update() {
-    if (this.playerIndex < 0 || !Transform.active[this.playerIndex]) return;
-    Camera.follow(Transform.x[this.playerIndex], Transform.y[this.playerIndex], 0.15);
+    // if (!Transform.active[this.playerIndex]) return;
+    this._playerX = Transform.x[this.playerIndex];
+    this._playerY = Transform.y[this.playerIndex];
+    Camera.follow(this._playerX, this._playerY, 0.15);
   }
 }

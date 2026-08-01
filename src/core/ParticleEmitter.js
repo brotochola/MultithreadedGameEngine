@@ -5,6 +5,17 @@
 // EXTENDS SharedAtomicPool for thread-safe free list management
 //
 // ═══════════════════════════════════════════════════════════════════════════
+// SPAWN MODES
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// emit(config)         — heighted; screenY = y + z (topdown / side / iso)
+// emitZenithal(config) — heighted; XY on floor, scale/alpha from -z
+// emitFlat(config)     — no ground; always integrate XY; screenY = y
+//
+// Zenithal projection curve (zenithalMaxHeight / ScaleFactor / AlphaFade) is
+// scene-level only — not per-emit params.
+//
+// ═══════════════════════════════════════════════════════════════════════════
 // TEXTURE SPECIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 //
@@ -32,6 +43,7 @@
 import { ParticleComponent } from '../components/ParticleComponent.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { SharedAtomicPool } from './SharedAtomicPool.js';
+import { CAMERA_TYPES } from './ConfigDefaults.js';
 import { randomRange, randomColor } from './utils.js';
 
 export const DECAL_STAMPS_BLEND_MODE = Object.freeze({
@@ -61,111 +73,82 @@ export class ParticleEmitter extends SharedAtomicPool {
   }
 
   /**
-   * Emit particles with the given configuration.
-   *
-   * TEXTURE OPTIONS:
-   * - Use `texture` for direct texture/frame names
-   * - Use `spritesheet` + `animation` + `frame` to specify an animation frame
-   *
+   * Heighted particles: screenY = y + z (topdown / side / iso).
    * @param {Object} config - Particle emission configuration
-   * @param {number} [config.count=1] - Number of particles to emit
-   * @param {number|{min,max}} config.x - X position or range
-   * @param {number|{min,max}} config.y - Y position or range
-   * @param {number|{min,max}} [config.z=0] - Z position (height) or range
-   * @param {number|{min,max}} [config.angleXY] - Velocity angle in degrees (0=right, 90=down). Use with speed.
-   * @param {number|{min,max}} [config.speed] - Velocity magnitude. Use with angleXY.
-   * @param {number|{min,max}} [config.vx=0] - X velocity or range (ignored if angleXY/speed provided)
-   * @param {number|{min,max}} [config.vy=0] - Y velocity or range (ignored if angleXY/speed provided)
-   * @param {number|{min,max}} [config.vz=0] - Z velocity or range
-   * @param {number|{min,max}} [config.lifespan=1000] - Lifetime in ms or range
-   * @param {number} [config.gravity=0.15] - Gravity strength
-   * @param {string} [config.texture] - Texture name (from bigAtlas). Can be:
-   *   - Static texture: "blood", "smoke"
-   *   - Prefixed animation: "civil1_hurt" (uses first frame)
-   *   - Specific frame: "civil1_hurt_5"
-   * @param {string} [config.spritesheet] - Spritesheet name for frame resolution (e.g., "civil1")
-   * @param {string} [config.animation] - Animation name for frame resolution (e.g., "hurt")
-   * @param {number} [config.frame=0] - Frame index within animation (0 = first, -1 = last)
-   * @param {number|{min,max}} [config.tint=0xFFFFFF] - Color tint or range (RGB channels interpolated separately)
-   * @param {number|{min,max}} [config.scale=1] - Scale or range
-   * @param {number|{min,max}} [config.alpha=1] - Alpha (opacity) or range
-   * @param {number} [config.fadeOnTheFloor=0] - Time in ms to fade out particles when they hit the floor
-   * @param {boolean} [config.stayOnTheFloor=false] - If true, particle stamps a decal on floor and despawns immediately
-   * @param {boolean} [config.despawnOnGroundContact=false] - If true, particle despawns immediately when touching the ground (no decal stamping)
-   * @param {number} [config.layerId=0] - Layer ID for rendering (0 = default ENTITIES layer, non-zero = custom layer)
    * @returns {number} - Number of particles actually spawned
-   *
-   * @example
-   * // Using direct texture name
-   * ParticleEmitter.emit({
-   *   count: 10,
-   *   x: this.x,
-   *   y: this.y,
-   *   texture: "blood",
-   *   angleXY: { min: 0, max: 360 },
-   *   speed: { min: 1, max: 3 },
-   * });
-   *
-   * @example
-   * // Using spritesheet + animation + frame (for specific animation frame)
-   * ParticleEmitter.emit({
-   *   count: 1,
-   *   x: this.x,
-   *   y: this.y,
-   *   spritesheet: "civil1",
-   *   animation: "hurt",
-   *   frame: -1,  // Last frame of hurt animation
-   *   stayOnTheFloor: true,  // Stamp as decal
-   * });
    */
   static emit(config) {
+    return this._spawn(config, { flat: 0, viewMode: CAMERA_TYPES.TOPDOWN });
+  }
+
+  /**
+   * Heighted particles with zenithal presentation: XY on floor, scale/alpha from -z.
+   * Projection curve comes from scene particle.zenithal* knobs.
+   * @param {Object} config - Same shape as emit()
+   * @returns {number} - Number of particles actually spawned
+   */
+  static emitZenithal(config) {
+    return this._spawn(config, { flat: 0, viewMode: CAMERA_TYPES.ZENITHAL });
+  }
+
+  /**
+   * Flat (screen-plane) particles: no ground plane, always integrate XY.
+   * @param {Object} config - Same shape as emit(); floor flags are ignored by the worker
+   * @returns {number} - Number of particles actually spawned
+   */
+  static emitFlat(config) {
+    return this._spawn(config, {
+      flat: 1,
+      viewMode: CAMERA_TYPES.TOPDOWN,
+      gravity: config.gravity ?? 0,
+      z: 0,
+      vz: 0,
+    });
+  }
+
+  /**
+   * Shared spawn loop. modeOverrides merge over config (flat / viewMode / forced z etc).
+   * @param {Object} config
+   * @param {Object} modeOverrides
+   * @returns {number}
+   */
+  static _spawn(config, modeOverrides) {
     if (!this.initialized) {
-      // console.warn('ParticleEmitter.emit() called before initialization');
       return 0;
     }
 
-    const count = Math.round(randomRange(config.count, 1));
+    const cfg = modeOverrides ? { ...config, ...modeOverrides } : config;
+    const flatMode = cfg.flat ? 1 : 0;
+    const viewMode = cfg.viewMode ?? CAMERA_TYPES.TOPDOWN;
+
+    const count = Math.round(randomRange(cfg.count, 1));
     let spawned = 0;
 
     // ═══════════════════════════════════════════════════════════════════════
     // TEXTURE RESOLUTION
     // ═══════════════════════════════════════════════════════════════════════
-    // Two ways to specify a texture:
-    //
-    // 1. Direct name (config.texture):
-    //    - "blood" → static texture
-    //    - "civil1_hurt" → prefixed animation (first frame)
-    //    - "civil1_hurt_5" → specific frame name
-    //
-    // 2. Helper params (config.spritesheet + config.animation + config.frame):
-    //    - { spritesheet: "civil1", animation: "hurt", frame: -1 }
-    //    - Resolves to "civil1_hurt_5" (last frame)
-    // ═══════════════════════════════════════════════════════════════════════
     let textureId = 0;
-    let textureName = config.texture;
+    let textureName = cfg.texture;
 
-    // If helper params provided, resolve to frame name first
-    if (config.spritesheet && config.animation !== undefined) {
+    if (cfg.spritesheet && cfg.animation !== undefined) {
       textureName = SpriteSheetRegistry.getFrameName(
-        config.spritesheet,
-        config.animation,
-        config.frame ?? 0
+        cfg.spritesheet,
+        cfg.animation,
+        cfg.frame ?? 0
       );
 
       if (!textureName) {
         console.warn(
           `ParticleEmitter.emit: Could not resolve frame for ` +
-          `spritesheet="${config.spritesheet}", animation="${config.animation}", frame=${config.frame ?? 0}`
+          `spritesheet="${cfg.spritesheet}", animation="${cfg.animation}", frame=${cfg.frame ?? 0}`
         );
       }
     }
 
-    // Resolve texture name to numeric ID
     if (textureName) {
       textureId = SpriteSheetRegistry.getTextureId(textureName);
     }
 
-    // Cache array references for performance (zero allocation - just reference copying)
     const active = ParticleComponent.active;
     const x = ParticleComponent.x;
     const y = ParticleComponent.y;
@@ -193,86 +176,78 @@ export class ParticleEmitter extends SharedAtomicPool {
     const flipY = ParticleComponent.flipY;
     const blendMode = ParticleComponent.blendMode;
     const layerId = ParticleComponent.layerId;
+    const flat = ParticleComponent.flat;
+    const viewModeArr = ParticleComponent.viewMode;
+    if (!flat || !viewModeArr) {
+      console.error(
+        'ParticleEmitter._spawn: ParticleComponent.flat/viewMode missing — hard-reload after schema change'
+      );
+      return 0;
+    }
 
     while (spawned < count) {
-      // Acquire free index from pool (inherited from SharedAtomicPool)
       const i = this.acquireIndex();
       if (i < 0) {
-        // Pool exhausted
         break;
       }
 
-      // Position
-      x[i] = randomRange(config.x);
-      y[i] = randomRange(config.y);
-      z[i] = randomRange(config.z, 0);
+      x[i] = randomRange(cfg.x);
+      y[i] = randomRange(cfg.y);
+      z[i] = randomRange(cfg.z, 0);
 
-      // Velocity
       let particleVx, particleVy;
 
-      if (config.angleXY !== undefined && config.speed !== undefined) {
-        // Polar mode: angleXY (degrees) + speed
-        const angleDeg = randomRange(config.angleXY, 0);
+      if (cfg.angleXY !== undefined && cfg.speed !== undefined) {
+        const angleDeg = randomRange(cfg.angleXY, 0);
         const angleRad = (angleDeg * Math.PI) / 180;
-        const speed = randomRange(config.speed, 0);
+        const speed = randomRange(cfg.speed, 0);
 
         particleVx = speed * Math.cos(angleRad);
         particleVy = speed * Math.sin(angleRad);
       } else {
-        // Cartesian mode: vx/vy ranges
-        particleVx = randomRange(config.vx, 0);
-        particleVy = randomRange(config.vy, 0);
+        particleVx = randomRange(cfg.vx, 0);
+        particleVy = randomRange(cfg.vy, 0);
       }
 
       vx[i] = particleVx;
       vy[i] = particleVy;
-      vz[i] = randomRange(config.vz, 0);
+      vz[i] = randomRange(cfg.vz, 0);
 
-      // Lifecycle
-      lifespan[i] = randomRange(config.lifespan, 1000);
+      lifespan[i] = randomRange(cfg.lifespan, 1000);
       currentLife[i] = 0;
 
-      // Physics
-      gravity[i] = config.gravity ?? 0.15;
+      gravity[i] = cfg.gravity ?? 0.15;
 
-      // Visual properties
-      // Support both uniform scale and independent scaleX/scaleY
-      const uniformScale = randomRange(config.scale, 1);
+      const uniformScale = randomRange(cfg.scale, 1);
       scaleX[i] =
-        config.scaleX !== undefined ? randomRange(config.scaleX, uniformScale) : uniformScale;
+        cfg.scaleX !== undefined ? randomRange(cfg.scaleX, uniformScale) : uniformScale;
       scaleY[i] =
-        config.scaleY !== undefined ? randomRange(config.scaleY, uniformScale) : uniformScale;
-      alpha[i] = randomRange(config.alpha, 1);
-      const particleColor = randomColor(config.tint);
+        cfg.scaleY !== undefined ? randomRange(cfg.scaleY, uniformScale) : uniformScale;
+      alpha[i] = randomRange(cfg.alpha, 1);
+      const particleColor = randomColor(cfg.tint);
       tint[i] = particleColor;
-      baseTint[i] = particleColor; // Store original RGB for lighting calculation
+      baseTint[i] = particleColor;
       particleTextureId[i] = textureId;
 
-      // Rotation (convert degrees to radians) and flipping
-      const rotationDeg = randomRange(config.rotation, 0);
+      const rotationDeg = randomRange(cfg.rotation, 0);
       rotation[i] = (rotationDeg * Math.PI) / 180;
-      flipX[i] = config.flipX ? 1 : 0;
-      flipY[i] = config.flipY ? 1 : 0;
-      fadeOnTheFloor[i] = config.fadeOnTheFloor ?? 0;
+      flipX[i] = cfg.flipX ? 1 : 0;
+      flipY[i] = cfg.flipY ? 1 : 0;
+      fadeOnTheFloor[i] = flatMode ? 0 : (cfg.fadeOnTheFloor ?? 0);
       timeOnFloor[i] = 0;
 
-      // Alpha tweening: fade from initial alpha to 0 over lifespan
-      tweenToAlpha0[i] = config.tweenToAlpha0 ? 1 : 0;
-      initialAlpha[i] = config.tweenToAlpha0 ? alpha[i] : 0;
+      tweenToAlpha0[i] = cfg.tweenToAlpha0 ? 1 : 0;
+      initialAlpha[i] = cfg.tweenToAlpha0 ? alpha[i] : 0;
 
-      // Blood decal system: if true, particle stamps decal on floor hit and despawns
-      stayOnTheFloor[i] = config.stayOnTheFloor ? 1 : 0;
+      stayOnTheFloor[i] = flatMode ? 0 : (cfg.stayOnTheFloor ? 1 : 0);
+      despawnOnGroundContact[i] = flatMode ? 0 : (cfg.despawnOnGroundContact ? 1 : 0);
 
-      // Ground despawn: if true, particle despawns immediately on ground contact (no decal)
-      despawnOnGroundContact[i] = config.despawnOnGroundContact ? 1 : 0;
+      blendMode[i] = cfg.blendMode ?? DECAL_STAMPS_BLEND_MODE.normal;
+      layerId[i] = cfg.layerId ?? 0;
 
-      // Decal blend mode: 0 = normal (alpha over), 1 = multiply
-      blendMode[i] = config.blendMode ?? DECAL_STAMPS_BLEND_MODE.normal;
+      flat[i] = flatMode;
+      viewModeArr[i] = viewMode;
 
-      // Layer routing: 0 = default ENTITIES layer
-      layerId[i] = config.layerId ?? 0;
-
-      // Claim this particle (must be last - signals to other workers)
       active[i] = 1;
 
       spawned++;
@@ -293,52 +268,8 @@ export class ParticleEmitter extends SharedAtomicPool {
    * Stamp a decal directly onto the floor tilemap.
    * Convenience wrapper that creates an "instant stamp" particle.
    *
-   * TEXTURE OPTIONS:
-   * - Use `texture` for direct texture/frame names
-   * - Use `spritesheet` + `animation` + `frame` to specify an animation frame
-   *
    * @param {Object} config - Decal configuration
-   * @param {number|{min,max}} config.x - X position or range
-   * @param {number|{min,max}} config.y - Y position or range
-   * @param {string} [config.texture] - Texture name (from bigAtlas). Can be:
-   *   - Static texture: "blood", "burn_mark"
-   *   - Prefixed animation: "civil1_hurt" (uses first frame)
-   *   - Specific frame: "civil1_hurt_5"
-   * @param {string} [config.spritesheet] - Spritesheet name for frame resolution (e.g., "civil1")
-   * @param {string} [config.animation] - Animation name for frame resolution (e.g., "hurt")
-   * @param {number} [config.frame=0] - Frame index within animation (0 = first, -1 = last)
-   * @param {number|{min,max}} [config.scale=1] - Scale or range
-   * @param {number|{min,max}} [config.scaleX] - X scale (overrides scale if provided)
-   * @param {number|{min,max}} [config.scaleY] - Y scale (overrides scale if provided)
-   * @param {number|{min,max}} [config.alpha=1] - Alpha (opacity) or range
-   * @param {number|{min,max}} [config.tint=0xFFFFFF] - Color tint or range
-   * @param {number|{min,max}} [config.rotation=0] - Rotation in degrees or range
-   * @param {number} [config.count=1] - Number of decals to stamp
    * @returns {number} - Number of decals actually spawned
-   *
-   * @example
-   * // Stamp a static texture
-   * ParticleEmitter.stampDecal({
-   *   x: this.x,
-   *   y: this.y,
-   *   texture: "burn_mark",
-   *   scale: { min: 0.8, max: 1.2 },
-   *   rotation: { min: 0, max: 360 },
-   *   alpha: 0.9,
-   * });
-   *
-   * @example
-   * // Stamp the last frame of an animation (e.g., dead body)
-   * ParticleEmitter.stampDecal({
-   *   x: this.x,
-   *   y: this.y,
-   *   spritesheet: "civil1",
-   *   animation: "hurt",
-   *   frame: -1,  // Last frame
-   *   scaleX: this.spriteRenderer.scaleX,
-   *   scaleY: this.spriteRenderer.scaleY,
-   *   tint: this.spriteRenderer.baseTint,
-   * });
    */
   static stampDecal(config) {
     return this.emit({

@@ -1153,6 +1153,7 @@ class ParticleWorker extends AbstractWorker {
     const stayOnTheFloor = ParticleComponent.stayOnTheFloor;
     const despawnOnGroundContact = ParticleComponent.despawnOnGroundContact;
     const tweenToAlpha0 = ParticleComponent.tweenToAlpha0;
+    const flat = ParticleComponent.flat;
 
     let activeCount = 0;
     const activeIndices = this.activeParticleIndices;
@@ -1174,46 +1175,52 @@ class ParticleWorker extends AbstractWorker {
         alpha[i] = initialAlpha[i] * (1 - lifeProgress);
       }
 
-      vz[i] += gravity[i] * dtRatio;
-
-      if (z[i] < 0) {
+      if (flat[i]) {
+        // Screen-plane: no ground — always integrate XY (ignore z / floor flags)
         x[i] += vx[i] * dtRatio;
         y[i] += vy[i] * dtRatio;
-        z[i] += vz[i] * dtRatio;
       } else {
-        z[i] = 0;
-        vx[i] = 0;
-        vy[i] = 0;
-        vz[i] = 0;
+        vz[i] += gravity[i] * dtRatio;
 
-        if (despawnOnGroundContact[i]) {
-          active[i] = 0;
-          ParticleEmitter.returnToPool(i);
-          continue;
-        }
+        if (z[i] < 0) {
+          x[i] += vx[i] * dtRatio;
+          y[i] += vy[i] * dtRatio;
+          z[i] += vz[i] * dtRatio;
+        } else {
+          z[i] = 0;
+          vx[i] = 0;
+          vy[i] = 0;
+          vz[i] = 0;
 
-        if (stayOnTheFloor[i]) {
-          if (this.decalsEnabled) {
-            this.particlesToStamp[this.particlesToStampCount++] = i;
-          }
-          active[i] = 0;
-          ParticleEmitter.returnToPool(i);
-          continue;
-        }
-
-        if (fadeOnTheFloor[i] > 0) {
-          if (timeOnFloor[i] === 0) {
-            initialAlpha[i] = alpha[i];
-          }
-
-          timeOnFloor[i] += deltaTime;
-          const fadeProgress = Math.min(timeOnFloor[i] / fadeOnTheFloor[i], 1);
-          alpha[i] = initialAlpha[i] * (1 - fadeProgress);
-
-          if (alpha[i] <= 0) {
+          if (despawnOnGroundContact[i]) {
             active[i] = 0;
             ParticleEmitter.returnToPool(i);
             continue;
+          }
+
+          if (stayOnTheFloor[i]) {
+            if (this.decalsEnabled) {
+              this.particlesToStamp[this.particlesToStampCount++] = i;
+            }
+            active[i] = 0;
+            ParticleEmitter.returnToPool(i);
+            continue;
+          }
+
+          if (fadeOnTheFloor[i] > 0) {
+            if (timeOnFloor[i] === 0) {
+              initialAlpha[i] = alpha[i];
+            }
+
+            timeOnFloor[i] += deltaTime;
+            const fadeProgress = Math.min(timeOnFloor[i] / fadeOnTheFloor[i], 1);
+            alpha[i] = initialAlpha[i] * (1 - fadeProgress);
+
+            if (alpha[i] <= 0) {
+              active[i] = 0;
+              ParticleEmitter.returnToPool(i);
+              continue;
+            }
           }
         }
       }

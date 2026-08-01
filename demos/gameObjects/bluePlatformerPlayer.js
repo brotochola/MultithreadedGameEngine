@@ -39,23 +39,17 @@ export class BluePlatformerPlayer extends GameObject {
   }
 
   emitPArticles() {
-    ParticleEmitter.emit({
+    ParticleEmitter.emitFlat({
       count: Math.floor(this.rigidBody.speed / 60),
       x: this.x,
       y: this.y,
-      z: -1,
       texture: '_whiteCircle',
       alpha: { min: 0.25, max: 0.5 },
       scale: { min: 0.66, max: 2 },
       lifespan: { min: 100, max: 500 },
       angleXY: { min: -180, max: 180 },
       speed: { min: 3, max: 5 },
-      gravity: 0,
-      vz: 0,
-      despawnOnGroundContact: false,
       tweenToAlpha0: true,
-      // layerId: 5,
-
     });
   }
 
@@ -170,46 +164,34 @@ export class BluePlatformerPlayer extends GameObject {
   emitPArticlesAsIWalk() {
     if (this.platformerCharacterComponent.isItStandingOnPlatform > -1 && Math.abs(this.vx) > 0) {
       const randomOffset = Math.random() * 2 - 1
-      ParticleEmitter.emit({
+      ParticleEmitter.emitFlat({
         count: Math.random() * 3,
         x: this.x,
         y: this.y + randomOffset * 10 + 10,
-        z: -1,
         texture: '_whiteCircle',
         alpha: { min: 0.05, max: 0.15 },
         scale: { min: 1, max: 2.3 },
         lifespan: 300,
         angleXY: randomOffset,
         speed: { min: 0, max: -this.vx * 0.01 },
-        gravity: 0,
-        vz: 0,
-        despawnOnGroundContact: false,
         tweenToAlpha0: true,
-        // layerId: 5,
-
       });
     }
   }
 
   emitPArticlesAsJump() {
 
-    ParticleEmitter.emit({
+    ParticleEmitter.emitFlat({
       count: Math.random() * 3,
       x: this.x,
       y: this.y,
-      z: -1,
       texture: '_whiteCircle',
       alpha: { min: 0.25, max: 0.5 },
       scale: { min: 0.66, max: 2 },
       lifespan: 300,
       angleXY: 0,
       speed: 0,
-      gravity: 0,
-      vz: 0,
-      despawnOnGroundContact: false,
       tweenToAlpha0: true,
-      // layerId: 5,
-
     });
 
   }

@@ -286,9 +286,8 @@ class PreRenderWorker extends AbstractWorker {
         this.maxDecorations = data.maxDecorations || 0;
         this.maxBullets = data.maxBullets || 0;
 
-        // Particle camera view (from PARTICLE_DEFAULTS)
+        // Zenithal projection curve (scene-level). Mode is per-particle (viewMode).
         const particleConfig = this.config.particle || {};
-        this.particleCameraView = particleConfig.cameraView ?? CAMERA_TYPES.TOPDOWN;
         this.zenithalMaxHeight = particleConfig.zenithalMaxHeight ?? 50;
         this.zenithalScaleFactor = particleConfig.zenithalScaleFactor ?? 0.5;
         this.zenithalAlphaFade = particleConfig.zenithalAlphaFade ?? 0;
@@ -823,10 +822,15 @@ class PreRenderWorker extends AbstractWorker {
         const visibleCount = visibleData[0];
         const y = ParticleComponent.y;
         const z = ParticleComponent.z;
-        const isZenithal = this.particleCameraView === CAMERA_TYPES.ZENITHAL;
+        const flat = ParticleComponent.flat;
+        const viewMode = ParticleComponent.viewMode;
 
         for (let idx = 0; idx < visibleCount; idx++) {
             const i = visibleData[1 + idx];
+            const isZenithal =
+                viewMode &&
+                viewMode[i] === CAMERA_TYPES.ZENITHAL &&
+                !(flat && flat[i]);
             const sortKey = isZenithal ? -z[i] : y[i] * Y_SORT_K;
             this.collectRenderable(1, i, sortKey);
             this.visibleParticlesCount++;
@@ -1603,6 +1607,8 @@ class PreRenderWorker extends AbstractWorker {
         const particleAlpha = ParticleComponent.alpha;
         const particleTint = ParticleComponent.tint;
         const particleTextureId = ParticleComponent.textureId;
+        const particleFlat = ParticleComponent.flat;
+        const particleViewMode = ParticleComponent.viewMode;
 
         const lightColor = LightEmitter.lightColor;
         const lightIntensity = LightEmitter.lightIntensity;
@@ -1740,7 +1746,9 @@ class PreRenderWorker extends AbstractWorker {
             } else if (type === 1) {
                 // === PARTICLE ===
                 rqX[out] = particleX[idx];
-                if (this.particleCameraView === CAMERA_TYPES.ZENITHAL) {
+                // Zenithal: height → scale (and alpha). Never fold z into Y.
+                // Flat: y only. Else (topdown/side): screenY = y + z.
+                if (particleViewMode && particleViewMode[idx] === CAMERA_TYPES.ZENITHAL && !(particleFlat && particleFlat[idx])) {
                     rqY[out] = particleY[idx];
                     const height = -particleZ[idx];
                     const heightFactor = 1 + (height / this.zenithalMaxHeight) * this.zenithalScaleFactor;
@@ -1752,6 +1760,11 @@ class PreRenderWorker extends AbstractWorker {
                         a *= Math.max(0, 1 - alphaFade);
                     }
                     rqAlpha[out] = a;
+                } else if (particleFlat && particleFlat[idx]) {
+                    rqY[out] = particleY[idx];
+                    rqScaleX[out] = particleScaleX[idx];
+                    rqScaleY[out] = particleScaleY[idx];
+                    rqAlpha[out] = particleAlpha[idx];
                 } else {
                     rqY[out] = particleY[idx] + particleZ[idx];
                     rqScaleX[out] = particleScaleX[idx];
@@ -1929,6 +1942,8 @@ class PreRenderWorker extends AbstractWorker {
         const particleAlpha = ParticleComponent.alpha;
         const particleTint = ParticleComponent.tint;
         const particleTextureId = ParticleComponent.textureId;
+        const particleFlat = ParticleComponent.flat;
+        const particleViewMode = ParticleComponent.viewMode;
 
         // Decoration arrays
         const decoX = DecorationComponent.x;
@@ -2114,7 +2129,9 @@ class PreRenderWorker extends AbstractWorker {
                 } else if (type === 1) {
                     // === PARTICLE ===
                     rqX[out] = particleX[idx];
-                    if (this.particleCameraView === CAMERA_TYPES.ZENITHAL) {
+                    // Zenithal: height → scale (and alpha). Never fold z into Y.
+                    // Flat: y only. Else (topdown/side): screenY = y + z.
+                    if (particleViewMode && particleViewMode[idx] === CAMERA_TYPES.ZENITHAL && !(particleFlat && particleFlat[idx])) {
                         rqY[out] = particleY[idx];
                         const height = -particleZ[idx];
                         const heightFactor = 1 + (height / this.zenithalMaxHeight) * this.zenithalScaleFactor;
@@ -2126,6 +2143,11 @@ class PreRenderWorker extends AbstractWorker {
                             a *= Math.max(0, 1 - alphaFade);
                         }
                         rqAlpha[out] = a;
+                    } else if (particleFlat && particleFlat[idx]) {
+                        rqY[out] = particleY[idx];
+                        rqScaleX[out] = particleScaleX[idx];
+                        rqScaleY[out] = particleScaleY[idx];
+                        rqAlpha[out] = particleAlpha[idx];
                     } else {
                         rqY[out] = particleY[idx] + particleZ[idx];
                         rqScaleX[out] = particleScaleX[idx];

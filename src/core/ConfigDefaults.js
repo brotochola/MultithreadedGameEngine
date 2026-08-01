@@ -203,7 +203,12 @@ export const PARTICLE_DEFAULTS = Object.freeze({
   decals: false,
   decalsTileSize: 256,
   decalsResolution: 0.5,
+  /**
+   * @deprecated Mode is per-particle via ParticleEmitter.emit / emitFlat / emitZenithal
+   * (ParticleComponent.viewMode). Kept for old scenes; ignored by pre_render.
+   */
   cameraView: CAMERA_TYPES.TOPDOWN,
+  /** Zenithal projection curve (scene-level). Used when viewMode === ZENITHAL. */
   zenithalMaxHeight: 50,
   zenithalScaleFactor: 0.5,
   zenithalAlphaFade: 0,

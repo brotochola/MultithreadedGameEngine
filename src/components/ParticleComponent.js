@@ -67,6 +67,12 @@ export class ParticleComponent extends Component {
     // === Layer Routing ===
     // 0 = default ENTITIES layer, non-zero = custom layer id
     layerId: Uint8Array,
+
+    // === Physics / view mode (set by ParticleEmitter.emit / emitFlat / emitZenithal) ===
+    // flat=1: screen-plane only — always integrate XY, ignore ground / floor flags
+    flat: Uint8Array,
+    // viewMode: CAMERA_TYPES.TOPDOWN | ZENITHAL | SIDE (SIDE == TOPDOWN for particles)
+    viewMode: Uint8Array,
     // Note: Anchor is always 0.5, 0.5 for particles (centered)
     // Note: No animation support - particles are static sprites
   };

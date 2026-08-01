@@ -2238,6 +2238,8 @@ export declare class ParticleComponent extends Component {
     isItOnScreen: typeof Uint8Array;
     blendMode: typeof Uint8Array;
     layerId: typeof Uint8Array;
+    flat: typeof Uint8Array;
+    viewMode: typeof Uint8Array;
   };
   static active: Uint8Array;
   static x: Float32Array;
@@ -2267,6 +2269,8 @@ export declare class ParticleComponent extends Component {
   static isItOnScreen: Uint8Array;
   static blendMode: Uint8Array;
   static layerId: Uint8Array;
+  static flat: Uint8Array;
+  static viewMode: Uint8Array;
   static particleCount: number;
 }
 
@@ -2493,6 +2497,8 @@ export declare class ParticleEmitter extends SharedAtomicPool {
   static _warnedPoolExhausted: boolean;
   static initialize(maxParticles: number): void;
   static emit(config: ParticleEmitConfig): number;
+  static emitFlat(config: ParticleEmitConfig): number;
+  static emitZenithal(config: ParticleEmitConfig): number;
   static stampDecal(config: ParticleEmitConfig): number;
   static reset(): void;
 }
