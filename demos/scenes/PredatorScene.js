@@ -140,7 +140,7 @@ export class PredatorScene extends WEED.Scene {
       maxShadowsPerLight: 512,
       maxShadowsPerEntity: 5,
       maxShadowSprites: 30000,
-      maxFlashes: 2048,
+      maxFlashes: 80,
       resolution: 0.25,
 
       // Sun/directional light configuration
