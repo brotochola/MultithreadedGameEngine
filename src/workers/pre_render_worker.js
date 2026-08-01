@@ -2184,7 +2184,7 @@ class PreRenderWorker extends AbstractWorker {
                 } else if (type === 3) {
                     // === LIGHT GLOW ===
                     const scale = lightGlowScale(sqrtLightIntensity[idx]);
-                    const glowAlpha = lightIntensity[idx] / 50000;
+                    const glowAlpha = lightIntensity[idx] / 20000;
 
                     if (scale < 0.1 || glowAlpha < 0.001) {
                         rqAlpha[out] = 0;

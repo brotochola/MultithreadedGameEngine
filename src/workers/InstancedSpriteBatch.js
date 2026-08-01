@@ -1,6 +1,9 @@
 /**
  * Shared SoA → one instanced Mesh upload for ENTITIES / cast shadows / custom layers.
- * Pixi v8 Geometry + Shader + Mesh; PMA fragment for blendMode 'normal'.
+ * Pixi v8 Geometry + Shader + Mesh.
+ * Atlas is PMA-on-upload (Pixi ImageSource default); fragment must NOT rgb*a again —
+ * that double-premultiplies and turns soft white fades (bullet trails) dark/gray.
+ * blendMode 'normal' expects PMA (ONE, ONE_MINUS_SRC_ALPHA).
  */
 
 import {
@@ -56,6 +59,7 @@ void main() {
 }
 `;
 
+/** Normal: texture already PMA from upload; texture*vColor applies tint + instance alpha. */
 const FRAGMENT_SRC = `
 precision highp float;
 in vec2 vUV;
@@ -64,11 +68,11 @@ uniform sampler2D uTexture;
 
 void main() {
   vec4 c = texture2D(uTexture, vUV) * vColor;
-  gl_FragColor = vec4(c.rgb * c.a, c.a);
+  gl_FragColor = c;
 }
 `;
 
-/** Additive glows: color * alpha only, alpha 0 so ADD (ONE,ONE) never darkens. */
+/** Additive glows: PMA rgb, alpha 0 so ADD (ONE,ONE) never darkens. */
 const FRAGMENT_SRC_ADDITIVE = `
 precision highp float;
 in vec2 vUV;
@@ -77,7 +81,7 @@ uniform sampler2D uTexture;
 
 void main() {
   vec4 c = texture2D(uTexture, vUV) * vColor;
-  gl_FragColor = vec4(c.rgb * c.a, 0.0);
+  gl_FragColor = vec4(c.rgb, 0.0);
 }
 `;
 
@@ -143,7 +147,7 @@ export class InstancedSpriteBatch {
    * @param {string} opts.label
    * @param {import('../lib/pixi_8.16_.min.js').TextureSource} opts.atlasSource
    * @param {boolean} [opts.depthTest=true]
-   * @param {boolean} [opts.premultiplyAlpha=true] - false → additive fragment (glows)
+   * @param {boolean} [opts.premultiplyAlpha=true] - true → normal PMA out; false → additive (glows)
    * @param {string} [opts.blendMode='normal'] - Pixi State blend mode
    */
   constructor({ capacity, label, atlasSource, depthTest = true, premultiplyAlpha = true, blendMode = 'normal' }) {

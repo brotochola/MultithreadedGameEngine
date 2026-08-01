@@ -1650,12 +1650,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           throw new Error(`Missing imageBitmap or json for ${name}`);
         }
 
-        // PixiJS 8: Create ImageSource from ImageBitmap
-        // BigAtlas/canvas content uses premultiplied alpha - required for 'normal' blend mode
+        // PixiJS 8: Create ImageSource from ImageBitmap.
+        // Default alphaMode is premultiply-alpha-on-upload (PMA on GPU). Do not
+        // re-premultiply in InstancedSpriteBatch fragment — that darkens soft alpha.
         const source = new PIXI.ImageSource({
           resource: data.imageBitmap,
           autoGenerateMipmaps: this.autoGenerateMipmaps,
-          // alphaMode: "premultiply-alpha-on-upload",
         });
         const jsonData = data.json;
 
