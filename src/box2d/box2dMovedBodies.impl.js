@@ -27,10 +27,10 @@
     var listBytes = cap * 4;
     var bitsBytes = cap;
     var sleepBytes = cap;
-    var bytes = headerBytes + listBytes + bitsBytes + sleepBytes;
-    // Align to 4 for Uint32 list after header
+    // bits+sleep are 1 byte each; pad so Int32Array views stay valid when cap is odd
+    var bytes = (headerBytes + listBytes + bitsBytes + sleepBytes + 3) & ~3;
     var sab = new SharedArrayBuffer(bytes);
-    var i32 = new Int32Array(sab);
+    var i32 = new Int32Array(sab, 0, HDR_I32);
     Atomics.store(i32, HDR_GEN, 0);
     Atomics.store(i32, HDR_COUNT, 0);
     Atomics.store(i32, HDR_CAP, cap);
@@ -39,7 +39,7 @@
 
   function viewsFromSab(sab) {
     if (!sab) return null;
-    var i32 = new Int32Array(sab);
+    var i32 = new Int32Array(sab, 0, HDR_I32);
     var cap = i32[HDR_CAP] | 0;
     if (cap <= 0) return null;
     var listOffset = HDR_I32 * 4;
