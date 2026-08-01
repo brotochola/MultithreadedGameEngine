@@ -179,6 +179,45 @@ export function lightInfluenceRadius(sqrtIntensity) {
   return (sqrtIntensity || 0) * LIGHT_INFLUENCE_RADIUS_SCALE;
 }
 
+/** Rows in the lighting data texture: 0 = xy+intensity, 1 = rgb. */
+export const LIGHT_DATA_TEX_HEIGHT = 2;
+
+/** Float count for an RGBA32F light-data texture of width `maxLights`. */
+export function lightDataTextureFloatCount(maxLights) {
+  return (maxLights | 0) * LIGHT_DATA_TEX_HEIGHT * 4;
+}
+
+/**
+ * Pack one light into the 2-row RGBA32F layout used by the lighting fragment shader.
+ * Row 0 texel i: x, y, intensity, 0
+ * Row 1 texel i: r, g, b, 0
+ */
+export function packLightDataTexel(data, maxLights, lightIndex, x, y, intensity, r, g, b) {
+  const i0 = lightIndex * 4;
+  data[i0] = x;
+  data[i0 + 1] = y;
+  data[i0 + 2] = intensity;
+  data[i0 + 3] = 0;
+  const i1 = maxLights * 4 + lightIndex * 4;
+  data[i1] = r;
+  data[i1 + 1] = g;
+  data[i1 + 2] = b;
+  data[i1 + 3] = 0;
+}
+
+/** Read back a packed light (for tests / debug). Writes into `out` and returns it. */
+export function readLightDataTexel(data, maxLights, lightIndex, out = {}) {
+  const i0 = lightIndex * 4;
+  const i1 = maxLights * 4 + lightIndex * 4;
+  out.x = data[i0];
+  out.y = data[i0 + 1];
+  out.intensity = data[i0 + 2];
+  out.r = data[i1];
+  out.g = data[i1 + 1];
+  out.b = data[i1 + 2];
+  return out;
+}
+
 /** Instanced sprite scale so cookie world radius == lightInfluenceRadius. */
 export function lightCookieScale(sqrtIntensity) {
   return lightInfluenceRadius(sqrtIntensity) / LIGHT_GRADIENT_TEXTURE_RADIUS;

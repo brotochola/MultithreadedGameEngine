@@ -27,7 +27,15 @@ import { DEFAULT_LAYERS, RENDERER_DEFAULTS } from '../core/ConfigDefaults.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
-import { sortByY, normalizeAngleDifference, extractRGBNormalizedMut, lightInfluenceRadius } from '../core/utils.js';
+import {
+  sortByY,
+  normalizeAngleDifference,
+  extractRGBNormalizedMut,
+  lightInfluenceRadius,
+  lightDataTextureFloatCount,
+  packLightDataTexel,
+  LIGHT_DATA_TEX_HEIGHT,
+} from '../core/utils.js';
 import { InstancedSpriteBatch, buildTextureLut } from './InstancedSpriteBatch.js';
 
 // OPTIMIZED: Pre-defined comparator function for light sorting (avoids closure allocation per frame)
@@ -287,10 +295,12 @@ class PixiRenderer extends AbstractWorker {
     this.lightingMesh = null; // PIXI.Mesh with lighting shader
     this.lightingShader = null; // Shader instance for updating uniforms
     this.baseAmbient = 0.05; // Base ambient light level (0-1), read from config (night/minimum light)
-    this.maxLights = 128; // Maximum number of lights (default: 128), read from config
+    this.maxLights = 128; // Light-data texture width / capacity (config.lighting.maxLights)
     this.lightingResolution = 1.0; // Resolution multiplier for lighting (e.g. 0.5 for half res)
     this.lightingRT = null; // RenderTexture for low-res lighting
     this.lightingDisplaySprite = null; // Sprite to display the lightingRT on stage
+    this._lightDataFloats = null; // Float32Array RGBA32F payload (maxLights x 2)
+    this._lightDataSource = null; // BufferImageSource uploading _lightDataFloats
 
     // ========================================
     // SUN / DIRECTIONAL LIGHT
@@ -1000,17 +1010,28 @@ LIGHTING SYSTEM SETUP
 
     const maxLights = this.maxLights;
 
-    // Pre-allocate Float32Arrays for light uniforms (reused each frame)
-    this._lightX = new Float32Array(maxLights);
-    this._lightY = new Float32Array(maxLights);
-    this._lightIntensity = new Float32Array(maxLights);
-    this._lightR = new Float32Array(maxLights).fill(1);
-    this._lightG = new Float32Array(maxLights).fill(1);
-    this._lightB = new Float32Array(maxLights).fill(1);
+    // RGBA32F light-data texture: width=maxLights, height=2 (row0=xyi, row1=rgb).
+    // TextureSource.from → BufferImageSource (uploadMethodId=buffer). Still force
+    // texImage2D each frame — Pixi buffer upload alone left lighting black here.
+    this._lightDataFloats = new Float32Array(lightDataTextureFloatCount(maxLights));
+    this._lightDataSource = PIXI.TextureSource.from({
+      resource: this._lightDataFloats,
+      width: maxLights,
+      height: LIGHT_DATA_TEX_HEIGHT,
+      format: 'rgba32float',
+      scaleMode: 'nearest',
+      addressMode: 'clamp-to-edge',
+      autoGenerateMipmaps: false,
+    });
+    // Disable Pixi buffer uploader — it was not populating this custom Shader sampler.
+    // We force RGBA32F via _uploadLightDataTexture() each frame instead.
+    this._lightDataSource.uploadMethodId = 'unknown';
 
     this.lightingShader = new PIXI.Shader({
       glProgram,
       resources: {
+        // Same pattern as InstancedSpriteBatch: TextureSource only (no extra sampler key)
+        uLightData: this._lightDataSource,
         uniforms: {
           uCameraPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
           uZoom: { value: 1.0, type: 'f32' },
@@ -1026,17 +1047,7 @@ LIGHTING SYSTEM SETUP
             type: 'vec2<f32>',
           },
           uInvResolution: { value: 1.0 / this.lightingResolution, type: 'f32' },
-
-          uLightX: { value: this._lightX, type: 'f32', size: maxLights },
-          uLightY: { value: this._lightY, type: 'f32', size: maxLights },
-          uLightIntensity: {
-            value: this._lightIntensity,
-            type: 'f32',
-            size: maxLights,
-          },
-          uLightR: { value: this._lightR, type: 'f32', size: maxLights },
-          uLightG: { value: this._lightG, type: 'f32', size: maxLights },
-          uLightB: { value: this._lightB, type: 'f32', size: maxLights },
+          uLightTexWidth: { value: maxLights, type: 'f32' },
           uLightCount: { value: 0, type: 'i32' },
           uBaseAmbient: { value: this.baseAmbient, type: 'f32' },
           // Sun uniforms
@@ -1084,12 +1095,8 @@ LIGHTING SYSTEM SETUP
     uniform vec2 uViewport;
     uniform vec2 uFullCanvasSize;
 
-    uniform float uLightX[${this.maxLights}];
-    uniform float uLightY[${this.maxLights}];
-    uniform float uLightIntensity[${this.maxLights}];
-    uniform float uLightR[${this.maxLights}];
-    uniform float uLightG[${this.maxLights}];
-    uniform float uLightB[${this.maxLights}];
+    uniform sampler2D uLightData;
+    uniform float uLightTexWidth;
     uniform int uLightCount;
     uniform float uBaseAmbient;
     // Sun uniforms
@@ -1117,14 +1124,18 @@ LIGHTING SYSTEM SETUP
       vec3 sunColor = vec3(uSunR, uSunG, uSunB);
       totalLight += sunColor * uSunIntensity;
 
-      // Add point light contributions
+      // Add point light contributions from RGBA32F light-data texture
       // Point lights are suppressed when sun is bright (handled by intensity modulation)
       for (int i = 0; i < ${this.maxLights}; i++) {
         if (i >= uLightCount) break;
 
-        vec2 lightWorld = vec2(uLightX[i], uLightY[i]);
-        float intensity = uLightIntensity[i];
-        vec3 color = vec3(uLightR[i], uLightG[i], uLightB[i]);
+        float u = (float(i) + 0.5) / uLightTexWidth;
+        vec4 posInt = texture2D(uLightData, vec2(u, 0.25));
+        vec4 col = texture2D(uLightData, vec2(u, 0.75));
+
+        vec2 lightWorld = posInt.xy;
+        float intensity = posInt.z;
+        vec3 color = col.rgb;
 
         // Keep attenuation math numerically stable on mobile fragment shaders.
         // Many mobile GPUs run mediump in fragment stage (even when highp is requested),
@@ -1435,6 +1446,58 @@ COMPUTE VISIBLE LIGHTS (used by updateLighting shader)
     this._visibleLightsAll.sort(sortByDistSq);
   }
 
+  /**
+   * Pack path mutates _lightDataFloats in place. Force RGBA32F upload into the
+   * WebGL texture Pixi owns — BufferImageSource.update() alone was not enough
+   * for this custom lighting Shader (scene stayed black / glow-only).
+   */
+  _uploadLightDataTexture() {
+    const renderer = this.pixiApp?.renderer;
+    const gl = renderer?.gl;
+    const source = this._lightDataSource;
+    const data = this._lightDataFloats;
+    if (!gl || !source || !data || !renderer?.texture) return;
+
+    source.update();
+
+    const texSys = renderer.texture;
+    if (typeof texSys.bind === 'function') {
+      texSys.bind(source, 0);
+    } else if (typeof texSys.bindSource === 'function') {
+      texSys.bindSource(source, 0);
+    }
+
+    const glSource = typeof texSys.getGlSource === 'function' ? texSys.getGlSource(source) : null;
+    const target = glSource?.target || gl.TEXTURE_2D;
+    if (glSource?.texture) {
+      gl.bindTexture(target, glSource.texture);
+    }
+
+    // WebGL2: RGBA32F. WebGL1 float tex: format/type RGBA + FLOAT (needs OES_texture_float).
+    const internalFormat = gl.RGBA32F != null ? gl.RGBA32F : gl.RGBA;
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    if (gl.UNPACK_FLIP_Y_WEBGL != null) gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    if (gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL != null) {
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    }
+
+    gl.texImage2D(
+      target,
+      0,
+      internalFormat,
+      this.maxLights,
+      LIGHT_DATA_TEX_HEIGHT,
+      0,
+      gl.RGBA,
+      gl.FLOAT,
+      data
+    );
+    gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
   /* =====================
 UPDATE LIGHTING (NO ZOOM SCALING)
 ===================== */
@@ -1467,17 +1530,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     uniformGroup.uniforms.uFullCanvasSize[0] = this.canvasWidth;
     uniformGroup.uniforms.uFullCanvasSize[1] = this.canvasHeight;
 
-    // Use pre-allocated Float32Arrays for light data
-    const lightX = this._lightX;
-    const lightY = this._lightY;
-    const lightIntensityArr = this._lightIntensity;
-    const lightR = this._lightR;
-    const lightG = this._lightG;
-    const lightB = this._lightB;
+    const lightData = this._lightDataFloats;
+    const maxLights = this.maxLights;
 
     // Use pre-computed visible lights (computed in computeVisibleLights())
     const visibleLights = this._visibleLightsAll;
-    const countToRender = Math.min(this._visibleLightsAllCount, this.maxLights);
+    const countToRender = Math.min(this._visibleLightsAllCount, maxLights);
 
     // OPTIMIZED: Reuse preallocated RGB object to avoid allocation per light
     const rgb = this._rgbResult;
@@ -1487,16 +1545,23 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       const color = lightColor[entityIndex];
 
       // Always use world coordinates for lights (shader converts screen to world)
-      // sprite.x/y are in container space (already transformed), so we use worldX/worldY
       // Apply height offset to position light above the entity
-      lightX[i] = worldX[entityIndex];
-      lightY[i] = worldY[entityIndex] - (lightHeight[entityIndex] || 0);
-      lightIntensityArr[i] = lightIntensity[entityIndex]; // NO ZOOM SCALING
-
       extractRGBNormalizedMut(color, rgb);
-      lightR[i] = rgb.r;
-      lightG[i] = rgb.g;
-      lightB[i] = rgb.b;
+      packLightDataTexel(
+        lightData,
+        maxLights,
+        i,
+        worldX[entityIndex],
+        worldY[entityIndex] - (lightHeight[entityIndex] || 0),
+        lightIntensity[entityIndex],
+        rgb.r,
+        rgb.g,
+        rgb.b
+      );
+    }
+
+    if (this._lightDataSource) {
+      this._uploadLightDataTexture();
     }
 
     // Update light count uniform

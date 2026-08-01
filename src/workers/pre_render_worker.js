@@ -222,6 +222,8 @@ class PreRenderWorker extends AbstractWorker {
 
         // GC OPTIMIZATION: Pre-allocated buffer for Y-sorted light indices
         this._sortedLightEntities = [];
+        this._lightPersistScratch = [];
+        this._lightFlashScratch = [];
         this._lightYComparator = (a, b) => Transform.y[a] - Transform.y[b];
 
         // Stats tracking
@@ -2331,6 +2333,11 @@ class PreRenderWorker extends AbstractWorker {
         const lightEntities = this._sortedLightEntities;
         lightEntities.length = 0;
         if (lightEnabled) {
+            const persistScratch = this._lightPersistScratch;
+            const flashScratch = this._lightFlashScratch;
+            persistScratch.length = 0;
+            flashScratch.length = 0;
+
             const lightEntitiesRaw = this.queryActiveEntities(this._queryLightEmitter);
             for (let i = 0; i < lightEntitiesRaw.length; i++) {
                 const lightIdx = lightEntitiesRaw[i];
@@ -2339,31 +2346,42 @@ class PreRenderWorker extends AbstractWorker {
                 const intensity = lightIntensity[lightIdx];
                 if (intensity <= 0) continue;
 
-                const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
-                if (!isFlash) {
-                    const lightX = worldX[lightIdx];
-                    const lightY = worldY[lightIdx];
-                    const lightInfluenceR = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
-                    if (lightX + lightInfluenceR < viewMinX || lightX - lightInfluenceR > viewMaxX ||
-                        lightY + lightInfluenceR < viewMinY || lightY - lightInfluenceR > viewMaxY) {
-                        continue;
-                    }
+                const lightX = worldX[lightIdx];
+                const lightY = worldY[lightIdx];
+                const lightInfluenceR = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
+                if (lightX + lightInfluenceR < viewMinX || lightX - lightInfluenceR > viewMaxX ||
+                    lightY + lightInfluenceR < viewMinY || lightY - lightInfluenceR > viewMaxY) {
+                    continue;
                 }
 
-                lightEntities.push(lightIdx);
+                const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
+                if (isFlash) flashScratch.push(lightIdx);
+                else persistScratch.push(lightIdx);
             }
-            lightEntities.sort(this._lightYComparator);
-        }
 
-        if (this.visibleLightsData) {
-            const maxWrite = this.visibleLightsData.length - 1;
-            const n = Math.min(lightEntities.length, maxWrite);
-            if (lightEntities.length > maxWrite) {
+            const maxWrite = this.visibleLightsData
+                ? this.visibleLightsData.length - 1
+                : persistScratch.length + flashScratch.length;
+
+            if (persistScratch.length + flashScratch.length > maxWrite) {
                 this._warnOnce(
                     '_warnedVisibleLightsCap',
                     `[PRE_RENDER] visible light list full (${maxWrite}). Increase lighting.maxLights or reduce visible lights.`
                 );
             }
+
+            // Prefer persistent LightEmitters; fill remaining budget with flashes
+            persistScratch.sort(this._lightYComparator);
+            flashScratch.sort(this._lightYComparator);
+            const persistTake = Math.min(persistScratch.length, maxWrite);
+            for (let i = 0; i < persistTake; i++) lightEntities.push(persistScratch[i]);
+            const flashTake = Math.min(flashScratch.length, maxWrite - lightEntities.length);
+            for (let i = 0; i < flashTake; i++) lightEntities.push(flashScratch[i]);
+            lightEntities.sort(this._lightYComparator);
+        }
+
+        if (this.visibleLightsData) {
+            const n = lightEntities.length;
             this.visibleLightsData[0] = n;
             for (let w = 0; w < n; w++) this.visibleLightsData[1 + w] = lightEntities[w];
         }
