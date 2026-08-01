@@ -1,6 +1,7 @@
 // Transform.js - Entity state SoA + HEAP-bound pose views
 // SoA: active / entityType / isItOnScreen
-// Pose (x/y/rotation): placeholders until box2dReady, then WASM HEAP via bindBox2dHotFields
+// Pose (x/y/rotation): Box2D WASM HEAP only — bound via bindBox2dHotFields after box2dReady
+// (logic constructs GameObjects after that bind so setup() can write this.x)
 
 import { Component } from '../core/Component.js';
 
@@ -10,14 +11,6 @@ export class Transform extends Component {
     entityType: Uint8Array, // Entity type ID (auto-assigned during registration)
     isItOnScreen: Uint8Array, // Canonical entity screen visibility, published by pre_render_worker
   };
-
-  static initializeArrays(buffer, count) {
-    super.initializeArrays(buffer, count);
-    // Pre-HEAP placeholders so GameObject.setup() can write this.x during worker init
-    Transform.x = new Float32Array(count);
-    Transform.y = new Float32Array(count);
-    Transform.rotation = new Float32Array(count);
-  }
 
   static clearArrays() {
     super.clearArrays();

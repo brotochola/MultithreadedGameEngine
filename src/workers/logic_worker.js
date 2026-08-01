@@ -218,24 +218,22 @@ class LogicWorker extends AbstractWorker {
     // Pre-allocate gameObjects array to keep V8 in dense/packed mode
     // Without this, sparse indices cause V8 to switch to dictionary mode (hash table lookups)
     this.gameObjects = new Array(this.globalEntityCount).fill(null);
+    this._gameObjectInstancesCreated = false;
 
-    // Create GameObject instances
-    this.createGameObjectInstances();
+    // GameObject construction waits for box2dReady so setup() can write Transform.x on HEAP.
+    // reportReady is deferred until then (shouldReportReadyAfterInit → false).
+  }
 
-    // console.log(
-    //   `LOGIC WORKER ${this.workerIndex}: Total ${this.globalEntityCount} GameObjects ready (job-based processing)`
-    // );
-    // console.log(
-    //   `LOGIC WORKER ${this.workerIndex}: Initialization complete, waiting for start signal...`
-    // );
-    // Note: Game loop will start when "start" message is received from main thread
+  shouldReportReadyAfterInit() {
+    return false;
   }
 
   /**
    * Create GameObject instances for all registered entity classes - dynamically
    * DENSE ALLOCATION: entityIndex === componentIndex for all components
+   * Call only after bindBox2dHotFields (box2dReady).
    */
-    createGameObjectInstances() {
+  createGameObjectInstances() {
     const numTypes = this.registeredClasses.length;
     this.collisionListenerByType = new Uint8Array(numTypes);
     this.jointBreakListenerByType = new Uint8Array(numTypes);
@@ -920,8 +918,7 @@ class LogicWorker extends AbstractWorker {
 
     switch (msg) {
       case 'box2dReady': {
-        // Seed HEAP from this worker's setup() placeholder writes (Destination etc.).
-        bindBox2dHotFields(data, { seedFromPlaceholders: true });
+        bindBox2dHotFields(data);
         if (data.commandSab) {
           bindCommandRing(data.commandSab);
         }
@@ -961,6 +958,16 @@ class LogicWorker extends AbstractWorker {
         } else {
           this.box2dJointBreakRingI32 = null;
           this.useBox2dJointBreaks = false;
+        }
+
+        // HEAP bound — construct pools so setup() writes live Transform.x, then signal ready.
+        if (!this._gameObjectInstancesCreated) {
+          this.createGameObjectInstances();
+          this._gameObjectInstancesCreated = true;
+          this.reportReady();
+          console.log(
+            `LOGIC WORKER ${this.workerIndex}: GameObjects created after box2dReady, workerReady sent`
+          );
         }
         break;
       }

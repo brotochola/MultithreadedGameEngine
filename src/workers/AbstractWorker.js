@@ -895,10 +895,15 @@ export class AbstractWorker {
         this.initializeWorkerPorts(e.data.workerPorts); // Initialize direct worker communication
         console.log(`[${this.constructor.name}] Worker ports initialized, calling worker-specific initialize()...`);
         await this.initialize(e.data);
-        console.log(`[${this.constructor.name}] Worker-specific initialize() completed, calling reportReady()...`);
-        // After initialization, signal ready to main thread
-        this.reportReady();
-        console.log(`[${this.constructor.name}] reportReady() called, waiting for 'start' message...`);
+        console.log(`[${this.constructor.name}] Worker-specific initialize() completed`);
+        // Logic defers reportReady until box2dReady (hot fields bound before setup()).
+        if (this.shouldReportReadyAfterInit()) {
+          console.log(`[${this.constructor.name}] calling reportReady()...`);
+          this.reportReady();
+          console.log(`[${this.constructor.name}] reportReady() called, waiting for 'start' message...`);
+        } else {
+          console.log(`[${this.constructor.name}] deferring reportReady until box2dReady`);
+        }
         break;
 
       case 'start':
@@ -934,8 +939,16 @@ export class AbstractWorker {
   }
 
   /**
+   * Whether to post workerReady at end of init.
+   * LogicWorker returns false — it reports ready after box2dReady + GameObject construction.
+   */
+  shouldReportReadyAfterInit() {
+    return true;
+  }
+
+  /**
    * Report to main thread that this worker is ready
-   * Called automatically after initialization completes
+   * Called automatically after initialization completes (unless deferred)
    */
   reportReady() {
     this.reportLog('initialization complete, signaling ready');

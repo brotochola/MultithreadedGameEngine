@@ -47,14 +47,6 @@ export class RigidBody extends Component {
     sleepThreshold: Float32Array,
   };
 
-  static initializeArrays(buffer, count) {
-    super.initializeArrays(buffer, count);
-    RigidBody.vx = new Float32Array(count);
-    RigidBody.vy = new Float32Array(count);
-    RigidBody.angularVelocity = new Float32Array(count);
-    RigidBody.sleeping = new Uint8Array(count);
-  }
-
   static clearArrays() {
     super.clearArrays();
     RigidBody.vx = null;
