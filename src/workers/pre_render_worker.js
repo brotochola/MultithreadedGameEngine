@@ -40,7 +40,7 @@ const Y_SORT_K = DECORATION_Y_SORT_SCALE;
  * 1. Screen visibility for entities, particles, and decorations
  * 2. Animation frame advancement for entities
  * 3. Building main render queue (Y-sorted, interpolated)
- * 4. Building shadow render queue (light gradients + shadow sprites)
+ * 4. Building shadow render queue (light cookies + black shadow sprites)
  * 5. Computing screenX/screenY for all visible renderables
  *
  * Data Flow:
@@ -1531,7 +1531,8 @@ class PreRenderWorker extends AbstractWorker {
         const entitiesLayer = Layer.getById(Layer.ENTITIES_ID);
         const shouldSortByY = entitiesLayer ? entitiesLayer.ySorting : true;
 
-        // Sort by Y (ENTITIES layer policy)
+        // Sort by Y (ENTITIES layer policy). Skipped when skipCpuYSort is set --
+        // the GPU depth buffer handles Y-ordering instead (see InstancedSpriteBatch worldY depth mode).
         let tSort = performance.now();
         if (shouldSortByY && count > 1) {
             if (count > 256) {
@@ -2502,6 +2503,7 @@ class PreRenderWorker extends AbstractWorker {
             }
 
             // ── Process candidates into shadow sprites ────────────────
+            // Reserve writeIdx for light cookie; shadows follow (interleaved per light)
             const shadowStartIdx = writeIdx + 1;
             let shadowsForThisLight = 0;
 
@@ -2602,25 +2604,25 @@ class PreRenderWorker extends AbstractWorker {
                 }
             }
 
-            if (shadowsForThisLight > 0) {
-                lightsProcessed++;
+            // if (shadowsForThisLight > 0) {
+            lightsProcessed++;
 
-                const gradientScale = 10 * sqrtLightIntensity[lightIdx] * 3 / 100;
-                const gradientAlpha = intensity / 50000;
+            const gradientScale = 10 * sqrtLightIntensity[lightIdx] * 3 / 100;
+            const gradientAlpha = intensity / 50000;
 
-                rqX[writeIdx] = lightX;
-                rqY[writeIdx] = lightY - lightH;
-                rqScaleX[writeIdx] = gradientScale;
-                rqScaleY[writeIdx] = gradientScale;
-                rqRotation[writeIdx] = 0;
-                rqAlpha[writeIdx] = gradientAlpha;
-                rqTint[writeIdx] = 0xFFFFFF;
-                rqTextureId[writeIdx] = lightGradientTextureId;
-                rqAnchorX[writeIdx] = 0.5;
-                rqAnchorY[writeIdx] = 0.5;
+            rqX[writeIdx] = lightX;
+            rqY[writeIdx] = lightY - lightH;
+            rqScaleX[writeIdx] = gradientScale;
+            rqScaleY[writeIdx] = gradientScale;
+            rqRotation[writeIdx] = 0;
+            rqAlpha[writeIdx] = gradientAlpha;
+            rqTint[writeIdx] = 0xFFFFFF;
+            rqTextureId[writeIdx] = lightGradientTextureId;
+            rqAnchorX[writeIdx] = 0.5;
+            rqAnchorY[writeIdx] = 0.5;
 
-                writeIdx = shadowStartIdx + shadowsForThisLight;
-            }
+            writeIdx = shadowStartIdx + shadowsForThisLight;
+            //}
         }
 
         this.shadowRenderQueueCount[0] = writeIdx;

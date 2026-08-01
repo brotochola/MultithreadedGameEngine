@@ -28,19 +28,13 @@ import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
 import { sortByY, normalizeAngleDifference, extractRGBNormalizedMut } from '../core/utils.js';
+import { InstancedSpriteBatch, buildTextureLut } from './InstancedSpriteBatch.js';
 
 // OPTIMIZED: Pre-defined comparator function for light sorting (avoids closure allocation per frame)
 function sortByDistSq(a, b) {
   return a.distSq - b.distSq;
 }
 
-const PARTICLE_PREWARM_POLICY = Object.freeze({
-  BOOT_MAIN_FRACTION: 0.15,
-  BOOT_SHADOW_FRACTION: 0.1,
-  BOOT_CUSTOM_FRACTION: 0.1,
-  FRAME_SAFETY_MARGIN: 32,
-  MAX_PREWARM_COUNT: 12000,
-});
 import { RENDERER_STATS, createStatsWriter } from './workers-utils.js';
 
 // Import PixiJS 8 library (ES6 module with named exports)
@@ -63,8 +57,6 @@ import {
   Mesh,
   Shader,
   GlProgram,
-  Buffer,
-  BufferUsage,
   State,
   extensions,
   RendererType,
@@ -111,16 +103,10 @@ const PIXI = Object.freeze({
   Mesh,
   Shader,
   GlProgram,
-  Buffer,
-  BufferUsage,
   State,
   RendererType,
   RenderTexture,
 });
-
-/** Interleaved floats per instanced sprite (see createInstancedSpriteMesh). */
-const INSTANCED_SPRITE_FLOATS = 22; // +trim xywh for atlas trim (Pixi orig/trim)
-const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 // Note: Core engine classes (GameObject, Mouse, etc.) and components
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker.
@@ -128,186 +114,6 @@ const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 // Make PIXI namespace available globally (renderer-specific)
 self.PIXI = PIXI;
-
-/**
- * Sync ParticleContainer membership only when count changes.
- * Stable count: slot i keeps the same pooled Particle; caller rewrites props only.
- * Avoids addParticle → onViewUpdate per sprite. No alloc, no GC.
- */
-function syncParticleChildren(pc, sprites, count) {
-  const kids = pc.particleChildren;
-  if (kids.length === count) return;
-  for (let i = 0; i < count; i++) {
-    kids[i] = sprites[i];
-  }
-  kids.length = count;
-  pc.update();
-}
-
-// Single ParticleContainer with Y-sorting for depth
-
-/**
- * Centralized pool for PIXI.Particle objects
- * All sprites (entities, decorations, particles) share the same pool for maximum reuse
- */
-class PixiParticlePool {
-  constructor() {
-    this.particles = []; // Array of all created PIXI.Particle objects
-    this.freeIndices = []; // Stack of available particle indices
-    this.createdCount = 0; // Total particles created (for stats)
-    this.defaultTexture = null; // Default texture for new particles
-
-    // Deferred allocation tracking (allocate during idle frames)
-    this.newParticlesThisFrame = 0; // Particles created this frame
-    this.accumulatedNewParticles = 0; // Total demand across frames
-    this.framesSinceLastAcquire = 0; // Idle frame counter
-
-    // PERFORMANCE: Reusable acquire result object to avoid GC pressure
-    this._acquireResult = { particle: null, index: -1 };
-  }
-
-  /**
-   * Set the default texture for newly created particles
-   * Must be from bigAtlas to ensure all particles share the same source
-   */
-  setDefaultTexture(texture) {
-    this.defaultTexture = texture;
-  }
-
-  /**
-   * Get a particle from the pool (reuse free one or create new)
-   * @returns {{ particle: PIXI.Particle, index: number }}
-   */
-  acquire() {
-    let particleIndex;
-    let particle;
-
-    // Try to reuse a freed particle first
-    if (this.freeIndices.length > 0) {
-      particleIndex = this.freeIndices.pop();
-      particle = this.particles[particleIndex];
-
-      // Reset particle to default state (caller will set actual values)
-      // Note: visible=false doesn't work in ParticleContainer - we use x:-99999,y:-99999 to hide
-      particle.visible = false;
-      particle.alpha = 1;
-      particle.scaleX = 1;
-      particle.scaleY = 1;
-      particle.tint = 0xffffff;
-      particle.rotation = 0;
-      particle.anchorX = 0.5;
-      particle.anchorY = 0.5;
-      particle.x = -99999;
-      particle.y = -99999;
-      // CRITICAL: Always reset texture to prevent texture bleeding when slot reused for different entity
-      particle.texture = this.defaultTexture || PIXI.Texture.WHITE;
-    } else {
-      // No free particles available - create a new one
-      const texture = this.defaultTexture || PIXI.Texture.WHITE;
-      particle = new PIXI.Particle({
-        texture,
-        anchorX: 0.5,
-        anchorY: 0.5,
-      });
-
-      particle.visible = false; // Start hidden
-
-      particleIndex = this.particles.length;
-      this.particles.push(particle);
-      this.createdCount++;
-
-      // Track that we created a particle THIS FRAME
-      this.newParticlesThisFrame++;
-      this.framesSinceLastAcquire = 0;
-    }
-
-    // Reuse result object to avoid GC pressure
-    this._acquireResult.particle = particle;
-    this._acquireResult.index = particleIndex;
-    return this._acquireResult;
-  }
-
-  /**
-   * Return a particle to the pool for reuse
-   * @param {number} particleIndex - Index of particle in particles array
-   */
-  release(particleIndex) {
-    if (particleIndex < 0 || particleIndex >= this.particles.length) return;
-
-    const particle = this.particles[particleIndex];
-    if (!particle) return;
-
-    // Hide particle and reset state for reuse (x:-99999 used because visible=false doesn't work in ParticleContainer)
-    particle.visible = false;
-    particle.alpha = 1;
-    particle.scaleX = 0.001;
-    particle.scaleY = 0.001;
-    particle.tint = 0xffffff;
-    particle.x = -99999;
-    particle.y = -99999;
-    particle.rotation = 0;
-    particle.texture = this.defaultTexture || PIXI.Texture.WHITE;
-
-    // Add to free list
-    this.freeIndices.push(particleIndex);
-  }
-
-  /**
-   * Called once per frame after all sprite updates
-   * Detects idle frames and triggers deferred pre-allocation
-   */
-  endFrame() {
-    if (this.newParticlesThisFrame > 0) {
-      // Active frame - accumulate demand
-      this.accumulatedNewParticles += this.newParticlesThisFrame;
-      this.newParticlesThisFrame = 0;
-      this.framesSinceLastAcquire = 0;
-    } else {
-      // Idle frame - no new particles were acquired
-      this.framesSinceLastAcquire++;
-
-      // First idle frame after demand - pre-allocate based on accumulated demand
-      if (this.framesSinceLastAcquire === 1 && this.accumulatedNewParticles > 0) {
-        const extraCount = Math.ceil(this.accumulatedNewParticles * 0.1);
-        this.preallocate(extraCount);
-        this.accumulatedNewParticles = 0; // Reset accumulator
-      }
-    }
-  }
-
-  /**
-   * Pre-allocate particles into the free pool (batch operation during idle frames)
-   * @param {number} count - Number of particles to pre-allocate
-   */
-  preallocate(count) {
-    const texture = this.defaultTexture || PIXI.Texture.WHITE;
-
-    for (let i = 0; i < count; i++) {
-      const particle = new PIXI.Particle({
-        texture,
-        anchorX: 0.5,
-        anchorY: 0.5,
-      });
-      particle.visible = false;
-
-      const index = this.particles.length;
-      this.particles.push(particle);
-      this.freeIndices.push(index); // Add to free pool immediately
-      this.createdCount++;
-    }
-  }
-
-  /**
-   * Get current pool statistics
-   */
-  getStats() {
-    return {
-      created: this.createdCount,
-      free: this.freeIndices.length,
-      inUse: this.createdCount - this.freeIndices.length,
-    };
-  }
-}
 
 /**
  * PixiRenderer - Manages rendering of game objects using PixiJS in a web worker
@@ -329,17 +135,17 @@ class PixiRenderer extends AbstractWorker {
 
     // PIXI application and rendering
     this.pixiApp = null;
-    // Single ParticleContainer with Y-sorting for proper depth ordering
-    // Will be created during initialization with correct entityCount
-    this.particleContainer = null;
-    /** When true, main ENTITIES queue uses instanced Mesh instead of ParticleContainer */
-    this.instancedSprites = false;
-    this.spriteMesh = null;
-    this.spriteShader = null;
-    this._instGeometry = null;
-    this._instBuffer = null;
-    this._instData = null;
-    this._instCapacity = 0;
+    /** @type {InstancedSpriteBatch|null} */
+    this.entitiesBatch = null;
+    /** @type {InstancedSpriteBatch|null} light-glow (type=3) ADD batch */
+    this.entitiesGlowBatch = null;
+    /** @type {InstancedSpriteBatch|null} */
+    this.shadowBatch = null;
+    this.spriteMesh = null; // entitiesBatch.mesh alias for layer refs
+    this.spriteGlowMesh = null; // entitiesGlowBatch.mesh
+    this.instancedSprites = true;
+    this._texLut = null;
+    this._texLutCount = 0;
     this.backgroundSprite = null;
 
     /** From renderer.autoGenerateMipmaps (default false) — applied at ImageSource create */
@@ -351,12 +157,6 @@ class PixiRenderer extends AbstractWorker {
     this.tilemaps = {}; // Store PIXI tileset textures by tilemap name (tile data comes from TileMap SAB)
     this.currentTilemap = null; // Currently active tilemap background
     this.tilemapScale = { x: 1, y: 1 }; // Base scale for tilemap (renders at scan * zoom)
-
-    // ========================================
-    // CENTRALIZED PARTICLE POOL
-    // ========================================
-    // All sprites (entities, decorations, particles) share the same pool
-    this.particlePool = new PixiParticlePool();
 
     // Per-frame subtimers (ms) — written to RENDERER_STATS in reportFPS
     this.lightsTimeThisFrame = 0;
@@ -437,11 +237,8 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueAnchorY = null; // Float32Array
     this.renderQueueCamera = null; // Float32Array[3] -> [zoom, x, y]
 
-    // Render queue sprite pool (separate from entity/particle pools)
-    // Sprites are pooled and reused based on count diff between frames
-    this._rqSprites = [];      // Array of PIXI.Particle references
-    this._rqSpritePoolIndices = []; // Pool indices for release
-    this._rqPrevCount = 0;     // Previous frame's renderable count
+    // Render queue — instanced Mesh (no Particle pool for ENTITIES)
+    this._rqPrevCount = 0;
 
     // Custom layer rendering infrastructure (populated during initialize)
     this._customLayers = {};  // layerId -> { buffers, readRef, sprites, poolIndices, prevCount, pc, rt, displaySprite, filter }
@@ -536,14 +333,8 @@ class PixiRenderer extends AbstractWorker {
     this.shadowRenderQueueAnchorX = null;
     this.shadowRenderQueueAnchorY = null;
 
-    // Shadow sprite pool (uses central PixiParticlePool)
-    this._shadowSprites = [];      // Array of PIXI.Particle references
-    this._shadowSpritePoolIndices = []; // Pool indices for release
-    this._shadowPrevCount = 0;     // Previous frame's shadow count
-
     // RenderTexture-based shadow compositing
     this.shadowRT = null; // RenderTexture for shadow compositing
-    this.shadowParticleContainer = null; // ParticleContainer for lights + shadows
     this.shadowDisplaySprite = null; // Sprite to display shadowRT with multiply blend
     this.shadowResolution = 1.0; // Resolution multiplier for shadow RT
 
@@ -712,14 +503,20 @@ class PixiRenderer extends AbstractWorker {
       const totalVisibleSprites =
         this.visibleEntityCount + this.visibleParticleCount + this.visibleDecorationCount;
 
-      // SPRITES_CREATED = total PIXI.Particle objects created (from centralized pool)
-      this.stats[RENDERER_STATS.SPRITES_CREATED] = this.particlePool.createdCount;
+      // SPRITES_CREATED = number of instanced Mesh batches (entities/shadows/custom layers).
+      // No per-sprite PIXI objects exist anymore -- everything is one instanced draw call per batch.
+      const instancedBatchCount =
+        (this.entitiesBatch ? 1 : 0) +
+        (this.entitiesGlowBatch ? 1 : 0) +
+        (this.shadowBatch ? 1 : 0) +
+        this._customLayerList.length;
+      this.stats[RENDERER_STATS.SPRITES_CREATED] = instancedBatchCount;
 
       // VISIBLE_SPRITES = sprites currently visible on screen
       this.stats[RENDERER_STATS.VISIBLE_SPRITES] = totalVisibleSprites;
 
       // Keep decoration stats for DebugUI (reuse same values)
-      this.stats[RENDERER_STATS.DECORATION_SPRITES] = this.particlePool.createdCount;
+      this.stats[RENDERER_STATS.DECORATION_SPRITES] = instancedBatchCount;
       this.stats[RENDERER_STATS.VISIBLE_DECORATIONS] = this.visibleDecorationCount;
 
       // NEW: Separate counts for entities and particles
@@ -748,18 +545,23 @@ class PixiRenderer extends AbstractWorker {
     const cameraX = this._renderCameraX;
     const cameraY = this._renderCameraY;
 
-    // Apply camera state to particle container
-    this.particleContainer.scale.set(zoom);
-    this.particleContainer.x = -cameraX * zoom;
-    this.particleContainer.y = -cameraY * zoom;
-
+    // Apply camera to ENTITIES instanced mesh + glow ADD mesh
     if (this.spriteMesh) {
       this.spriteMesh.scale.set(zoom);
       this.spriteMesh.x = -cameraX * zoom;
       this.spriteMesh.y = -cameraY * zoom;
     }
+    if (this.spriteGlowMesh) {
+      this.spriteGlowMesh.scale.set(zoom);
+      this.spriteGlowMesh.x = -cameraX * zoom;
+      this.spriteGlowMesh.y = -cameraY * zoom;
+      // Above LIGHTING multiply so soft ADD bloom is not crushed into gray falloff
+      const lightDisp = this._visPolyDisplaySprite || this.lightingDisplaySprite || this.lightingMesh;
+      const lightZ = lightDisp?.zIndex ?? (this.spriteMesh?.zIndex ?? 0) + 1;
+      this.spriteGlowMesh.zIndex = lightZ + 0.001;
+    }
 
-    // Apply camera state to background (since it's not a child of particleContainer)
+    // Apply camera state to background (since it's not a child of the ENTITIES mesh)
     if (this.backgroundSprite) {
       this.backgroundSprite.scale.set(zoom);
       this.backgroundSprite.x = -cameraX * zoom;
@@ -780,16 +582,15 @@ class PixiRenderer extends AbstractWorker {
       this.decalTileContainer.y = -cameraY * zoom;
     }
 
-    // Shadow sprites are now in main particleContainer (get camera transform automatically)
+    // Shadow sprites render in screen space directly to shadowRT (no camera transform needed here)
 
-    // Apply camera to custom layer ParticleContainers (non-shader layers only;
-    // shader layers render to RT in screen space so no container transform needed)
+    // Apply camera to custom layer meshes (non-shader layers only)
     for (let i = 0; i < this._customLayerList.length; i++) {
       const cl = this._customLayerList[i];
-      if (!cl.rt) {
-        cl.pc.scale.set(zoom);
-        cl.pc.x = -cameraX * zoom;
-        cl.pc.y = -cameraY * zoom;
+      if (!cl.rt && cl.batch?.mesh) {
+        cl.batch.mesh.scale.set(zoom);
+        cl.batch.mesh.x = -cameraX * zoom;
+        cl.batch.mesh.y = -cameraY * zoom;
       }
     }
   }
@@ -798,347 +599,101 @@ class PixiRenderer extends AbstractWorker {
   // RENDER QUEUE UPDATE (Optimized Path)
   // ========================================
   /**
-   * Update sprites from the pre-sorted render queue
-   * This bypasses all visibility checks and sorting - particle_worker already did it
-   * Sprite pool is resized based on count diff from previous frame
+   * Upload main render queue SoA into ENTITIES (normal) + glow (add) instanced Meshes.
+   * Type 3 = light glow (_lightGradient) — separate ADD batch avoids gray halos.
    */
   updateSpritesFromRenderQueue() {
-    if (!this.renderQueueEnabled) return;
-
-    if (this.instancedSprites && this.spriteMesh) {
-      this.updateSpritesFromRenderQueueInstanced();
-      return;
-    }
+    if (!this.renderQueueEnabled || !this.entitiesBatch) return;
 
     const count = this.renderQueueCount[0];
-    const prevCount = this._rqPrevCount;
+    const q = {
+      count,
+      x: this.renderQueueX,
+      y: this.renderQueueY,
+      scaleX: this.renderQueueScaleX,
+      scaleY: this.renderQueueScaleY,
+      rotation: this.renderQueueRotation,
+      alpha: this.renderQueueAlpha,
+      tint: this.renderQueueTint,
+      textureId: this.renderQueueTextureId,
+      anchorX: this.renderQueueAnchorX,
+      anchorY: this.renderQueueAnchorY,
+    };
+    const baseOpts = {
+      space: 'world',
+      depthMode: 'index',
+      depthDenom: this.renderQueueMaxItems,
+      texLut: this._texLut,
+      texLutCount: this._texLutCount,
+      textures: this.flatTextures,
+      type: this.renderQueueType,
+    };
 
-    // Resize sprite pool based on count diff
-    if (count > prevCount) {
-      // Need more sprites - acquire the difference
-      for (let i = prevCount; i < count; i++) {
-        const { particle, index } = this.particlePool.acquire();
-        this._rqSprites[i] = particle;
-        this._rqSpritePoolIndices[i] = index;
-      }
-    } else if (count < prevCount) {
-      // Need fewer sprites - release the extras
-      for (let i = count; i < prevCount; i++) {
-        if (this._rqSpritePoolIndices[i] !== -1) {
-          this.particlePool.release(this._rqSpritePoolIndices[i]);
-          this._rqSprites[i] = null;
-          this._rqSpritePoolIndices[i] = -1;
-        }
-      }
+    this.visibleEntityCount = this.entitiesBatch.upload(q, {
+      ...baseOpts,
+      excludeType: 3,
+    });
+
+    if (this.entitiesGlowBatch) {
+      this.entitiesGlowBatch.upload(q, {
+        ...baseOpts,
+        includeType: 3,
+      });
     }
-    this._rqPrevCount = count;
-
-    if (count === 0) {
-      syncParticleChildren(this.particleContainer, this._rqSprites, 0);
-      this.visibleEntityCount = 0;
-      return;
-    }
-
-    // Cache render queue arrays
-    const rqX = this.renderQueueX;
-    const rqY = this.renderQueueY;
-    const rqScaleX = this.renderQueueScaleX;
-    const rqScaleY = this.renderQueueScaleY;
-    const rqRotation = this.renderQueueRotation;
-    const rqAlpha = this.renderQueueAlpha;
-    const rqTint = this.renderQueueTint;
-    const rqTextureId = this.renderQueueTextureId;
-    const rqAnchorX = this.renderQueueAnchorX;
-    const rqAnchorY = this.renderQueueAnchorY;
-
-    // Get flat texture array for O(1) lookup
-    const flatTextures = this.flatTextures;
-
-    // Apply render queue properties; membership synced only when count changes
-    const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
-    for (let i = 0; i < count; i++) {
-      const sprite = this._rqSprites[i];
-      if (!sprite) continue;
-
-      const texId = rqTextureId[i];
-      sprite.texture = (texId < flatTextures.length && texId >= 0) ? flatTextures[texId] : fallbackTexture;
-
-      sprite.x = rqX[i];
-      sprite.y = rqY[i];
-      sprite.scaleX = rqScaleX[i];
-      sprite.scaleY = rqScaleY[i];
-      sprite.rotation = rqRotation[i];
-      sprite.alpha = rqAlpha[i];
-      sprite.tint = rqTint[i];
-      sprite.anchorX = rqAnchorX[i];
-      sprite.anchorY = rqAnchorY[i];
-    }
-
-    syncParticleChildren(this.particleContainer, this._rqSprites, count);
-    this.visibleEntityCount = count;
   }
 
-  /**
-   * Upload render-queue SoA into one instanced Mesh (GPU path).
-   * Queue is already Y-sorted by pre_render; depth = inverse index for Z-buffer.
-   */
-  updateSpritesFromRenderQueueInstanced() {
-    const count = this.renderQueueCount[0];
-    const capacity = this._instCapacity;
-    const drawCount = count > capacity ? capacity : count;
-
-    if (drawCount <= 0) {
-      this._instGeometry.instanceCount = 0;
-      this.spriteMesh.visible = false;
-      this.visibleEntityCount = 0;
-      return;
-    }
-
-    this.spriteMesh.visible = true;
-
-    const data = this._instData;
-    const flatTextures = this.flatTextures;
-    const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
-    const maxItems = this.renderQueueMaxItems || capacity;
-    const depthDenom = maxItems + 1;
-
-    const rqX = this.renderQueueX;
-    const rqY = this.renderQueueY;
-    const rqScaleX = this.renderQueueScaleX;
-    const rqScaleY = this.renderQueueScaleY;
-    const rqRotation = this.renderQueueRotation;
-    const rqAlpha = this.renderQueueAlpha;
-    const rqTint = this.renderQueueTint;
-    const rqTextureId = this.renderQueueTextureId;
-    const rqAnchorX = this.renderQueueAnchorX;
-    const rqAnchorY = this.renderQueueAnchorY;
-
-    let base = 0;
-    for (let i = 0; i < drawCount; i++) {
-      const texId = rqTextureId[i];
-      const tex =
-        texId < flatTextures.length && texId >= 0 ? flatTextures[texId] : fallbackTexture;
-      const uvs = tex.uvs;
-      const tint = rqTint[i] >>> 0;
-      // tex.width/height = orig (logical) size when trim is set — stable across anim frames
-      const origW = tex.width;
-      const origH = tex.height;
-      const trim = tex.trim;
-
-      data[base] = rqX[i];
-      data[base + 1] = rqY[i];
-      data[base + 2] = rqScaleX[i];
-      data[base + 3] = rqScaleY[i];
-      data[base + 4] = origW;
-      data[base + 5] = origH;
-      data[base + 6] = rqAnchorX[i];
-      data[base + 7] = rqAnchorY[i];
-      data[base + 8] = rqRotation[i];
-      // Lower depth = in front. Queue is ascending Y; later index wins.
-      data[base + 9] = 1.0 - (i + 1) / depthDenom;
-      data[base + 10] = uvs.x0;
-      data[base + 11] = uvs.y0;
-      data[base + 12] = uvs.x2;
-      data[base + 13] = uvs.y2;
-      data[base + 14] = ((tint >> 16) & 0xff) / 255;
-      data[base + 15] = ((tint >> 8) & 0xff) / 255;
-      data[base + 16] = (tint & 0xff) / 255;
-      data[base + 17] = rqAlpha[i];
-      // Place trimmed frame inside orig (same as Pixi Particle) — do not stretch UVs to orig
-      if (trim) {
-        data[base + 18] = trim.x;
-        data[base + 19] = trim.y;
-        data[base + 20] = trim.width;
-        data[base + 21] = trim.height;
-      } else {
-        data[base + 18] = 0;
-        data[base + 19] = 0;
-        data[base + 20] = origW;
-        data[base + 21] = origH;
-      }
-      base += INSTANCED_SPRITE_FLOATS;
-    }
-
-    this._instBuffer.update();
-    this._instGeometry.instanceCount = drawCount;
-    this.visibleEntityCount = drawCount;
-  }
-
-  /**
-   * Build unit-quad Geometry + Shader + Mesh for instanced entity sprites.
-   * Call after flatTextures / atlas are available.
-   */
-  createInstancedSpriteMesh(maxItems) {
-    const capacity = Math.max(1, maxItems | 0);
-    this._instCapacity = capacity;
-    this._instData = new Float32Array(capacity * INSTANCED_SPRITE_FLOATS);
-    this._instBuffer = new Buffer({
-      data: this._instData,
-      usage: BufferUsage.VERTEX | BufferUsage.COPY_DST,
-      label: 'instanced-sprites',
-    });
-
-    const quad = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
-    const stride = INSTANCED_SPRITE_STRIDE;
-
-    const geometry = new Geometry({
-      attributes: {
-        aQuad: { buffer: quad, format: 'float32x2' },
-        aInstXY: {
-          buffer: this._instBuffer,
-          format: 'float32x2',
-          stride,
-          offset: 0,
-          instance: true,
-        },
-        aInstScale: {
-          buffer: this._instBuffer,
-          format: 'float32x2',
-          stride,
-          offset: 8,
-          instance: true,
-        },
-        aInstSize: {
-          buffer: this._instBuffer,
-          format: 'float32x2',
-          stride,
-          offset: 16,
-          instance: true,
-        },
-        aInstAnchor: {
-          buffer: this._instBuffer,
-          format: 'float32x2',
-          stride,
-          offset: 24,
-          instance: true,
-        },
-        aInstRot: {
-          buffer: this._instBuffer,
-          format: 'float32',
-          stride,
-          offset: 32,
-          instance: true,
-        },
-        aInstDepth: {
-          buffer: this._instBuffer,
-          format: 'float32',
-          stride,
-          offset: 36,
-          instance: true,
-        },
-        aInstUV: {
-          buffer: this._instBuffer,
-          format: 'float32x4',
-          stride,
-          offset: 40,
-          instance: true,
-        },
-        aInstColor: {
-          buffer: this._instBuffer,
-          format: 'float32x4',
-          stride,
-          offset: 56,
-          instance: true,
-        },
-        aInstTrim: {
-          buffer: this._instBuffer,
-          format: 'float32x4',
-          stride,
-          offset: 72,
-          instance: true,
-        },
-      },
-      indexBuffer: [0, 1, 2, 0, 2, 3],
-    });
-    geometry.instanceCount = 0;
-    this._instGeometry = geometry;
-
-    const vertexSrc = `
-in vec2 aQuad;
-in vec2 aInstXY;
-in vec2 aInstScale;
-in vec2 aInstSize;
-in vec2 aInstAnchor;
-in float aInstRot;
-in float aInstDepth;
-in vec4 aInstUV;
-in vec4 aInstColor;
-in vec4 aInstTrim;
-
-uniform mat3 uProjectionMatrix;
-uniform mat3 uWorldTransformMatrix;
-uniform mat3 uTransformMatrix;
-
-out vec2 vUV;
-out vec4 vColor;
-
-void main() {
-  // Anchor relative to orig size; textured quad = trimmed rect inside orig (Pixi Particle trim)
-  vec2 content = aInstTrim.xy + aQuad * aInstTrim.zw;
-  vec2 local = (content - aInstAnchor * aInstSize) * aInstScale;
-  float c = cos(aInstRot);
-  float s = sin(aInstRot);
-  vec2 rotated = vec2(local.x * c - local.y * s, local.x * s + local.y * c);
-  vec2 world = rotated + aInstXY;
-  mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
-  vec3 clip = mvp * vec3(world, 1.0);
-  gl_Position = vec4(clip.xy, aInstDepth, 1.0);
-  vUV = mix(aInstUV.xy, aInstUV.zw, aQuad);
-  vColor = aInstColor;
-}
-`;
-
-    const fragmentSrc = `
-precision highp float;
-in vec2 vUV;
-in vec4 vColor;
-uniform sampler2D uTexture;
-
-void main() {
-  vec4 c = texture2D(uTexture, vUV) * vColor;
-  // Premultiply for Pixi 'normal' blend (same contract as ParticleContainer)
-  gl_FragColor = vec4(c.rgb * c.a, c.a);
-}
-`;
-
-    const glProgram = GlProgram.from({
-      vertex: vertexSrc,
-      fragment: fragmentSrc,
-      name: 'instanced-sprites',
-    });
-
-    let atlasSource = PIXI.Texture.WHITE.source;
-    if (this.flatTextures && this.flatTextures.length > 0) {
+  /** Resolve atlas ImageSource for instanced batches. */
+  _resolveAtlasSource() {
+    if (this.flatTextures) {
       for (let i = 0; i < this.flatTextures.length; i++) {
         const t = this.flatTextures[i];
-        if (t && t.source) {
-          atlasSource = t.source;
-          break;
-        }
+        if (t?.source) return t.source;
       }
     }
+    return PIXI.Texture.WHITE.source;
+  }
 
-    this.spriteShader = new Shader({
-      glProgram,
-      resources: {
-        uTexture: atlasSource,
-      },
+  /** Rebuild per-textureId UV/trim/orig LUT after atlas load. */
+  rebuildInstancedTextureLut() {
+    const fallback = this.textures?.['_white'] || PIXI.Texture.WHITE;
+    this._texLut = buildTextureLut(this.flatTextures || [], fallback);
+    this._texLutCount = this.flatTextures?.length || 0;
+    const src = this._resolveAtlasSource();
+    if (this.entitiesBatch) this.entitiesBatch.setAtlasSource(src);
+    if (this.entitiesGlowBatch) this.entitiesGlowBatch.setAtlasSource(src);
+    if (this.shadowBatch) this.shadowBatch.setAtlasSource(src);
+    for (let i = 0; i < this._customLayerList.length; i++) {
+      const cl = this._customLayerList[i];
+      if (cl.batch) cl.batch.setAtlasSource(src);
+    }
+  }
+
+  createEntitiesInstancedBatch(maxItems) {
+    // Alpha atlas quads must not depth-test/write: transparent texels still write Z
+    // and punch the horde down to 1px speckles. Y-order stays CPU sort / draw order.
+    this.entitiesBatch = new InstancedSpriteBatch({
+      capacity: maxItems,
+      label: 'entities-instanced',
+      atlasSource: this._resolveAtlasSource(),
+      depthTest: false,
+      premultiplyAlpha: true,
     });
+    this.spriteMesh = this.entitiesBatch.mesh;
 
-    const state = new State();
-    state.blend = true;
-    state.depthTest = true;
-    state.culling = false;
-
-    this.spriteMesh = new Mesh({
-      geometry,
-      shader: this.spriteShader,
-      state,
-      label: 'instanced-sprites',
+    // Soft light glows (type=3) on ADD batch — normal+PMA made gray doughnuts around TallLights
+    this.entitiesGlowBatch = new InstancedSpriteBatch({
+      capacity: maxItems,
+      label: 'entities-glow-instanced',
+      atlasSource: this._resolveAtlasSource(),
+      depthTest: false,
+      premultiplyAlpha: false,
+      blendMode: 'add',
     });
-    this.spriteMesh.visible = false;
+    this.spriteGlowMesh = this.entitiesGlowBatch.mesh;
 
-    console.log(`PIXI WORKER: Instanced sprite mesh ready (capacity ${capacity})`);
+    // Atlas may have loaded before batch existed — bind LUT/source now
+    if (this.flatTextures?.length) this.rebuildInstancedTextureLut();
+    console.log(`PIXI WORKER: ENTITIES instanced batch ready (capacity ${maxItems}, glow ADD split)`);
   }
 
   /**
@@ -1236,10 +791,6 @@ void main() {
     // Not frame-locked: driven by particle_worker dirty flags, so always poll.
     this.updateDecalTiles();
 
-    if (runFrameLockedPasses) {
-      // Grow the central pool before any queue update loops acquire particles.
-      this.prewarmParticlePoolForFrameDemand();
-    }
     this.miscTimeThisFrame = performance.now() - t0;
 
     if (runFrameLockedPasses) {
@@ -1283,9 +834,6 @@ void main() {
       }
       this.lightsTimeThisFrame += performance.now() - t0;
     }
-
-    // Let particle pool handle deferred pre-allocation during idle frames
-    this.particlePool.endFrame();
   }
 
   /**
@@ -1977,145 +1525,82 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
   /**
    * Create the RenderTexture-based shadow system:
-   * 1. Create shadowRT (RenderTexture) - cleared to white each frame
-   * 2. Create shadowParticleContainer - holds light gradients + shadows
+   * 1. Create shadowRT (RenderTexture) - cleared to black each frame
+   * 2. Create shadowBatch - instanced Mesh (per-light soft cookies + black shadows)
    * 3. Create shadowDisplaySprite - displays shadowRT with multiply blend
    *
-   * Rendering order per frame:
-   * - Clear shadowRT to white
-   * - For each light: add light gradient (white/colored), then its shadows (black)
-   * - Render shadowParticleContainer to shadowRT
-   * - shadowDisplaySprite (multiply) darkens the scene where shadows exist
+   * Rendering order per frame (SoA already interleaved per light):
+   * - Clear shadowRT to black
+   * - Draw light cookies then that light's shadows (multi-light attenuation)
+   * - shadowDisplaySprite (multiply) darkens the scene where RT is dark
    */
   createShadowSpriteSystem() {
-    // Read shadow resolution from config (default 1.0)
     this.shadowResolution = this.config.lighting?.shadowResolution || 1.0;
 
-    // Create RenderTexture for shadow compositing
-    // Cleared to white each frame (white = no darkening when multiplied)
     this.shadowRT = PIXI.RenderTexture.create({
       width: this.canvasWidth * this.shadowResolution,
       height: this.canvasHeight * this.shadowResolution,
     });
 
-    // Create ParticleContainer for lights + shadows
-    // Uses normal blend internally - the multiply happens on shadowDisplaySprite
-    this.shadowParticleContainer = new PIXI.ParticleContainer({
-      blendMode: 'normal',
-      dynamicProperties: {
-        vertex: true,
-        position: true,
-        rotation: true,
-        uvs: true,
-        color: true,
-        alpha: true,
-      },
+    this.shadowBatch = new InstancedSpriteBatch({
+      capacity: this.maxShadowRenderItems || 1,
+      label: 'shadows-instanced',
+      atlasSource: this._resolveAtlasSource(),
+      depthTest: false,
     });
 
-    // Create display sprite to show shadowRT with multiply blend
     this.shadowDisplaySprite = new PIXI.Sprite(this.shadowRT);
     this.shadowDisplaySprite.anchor.set(0, 0);
     this.shadowDisplaySprite.position.set(0, 0);
     this.shadowDisplaySprite.scale.set(1.0 / this.shadowResolution);
     this._registerLayerDisplayObject('CASTED_SHADOWS', this.shadowDisplaySprite);
-
-    // Add to stage
     this.pixiApp.stage.addChild(this.shadowDisplaySprite);
 
     console.log(
-      `PIXI WORKER: Shadow RenderTexture system initialized (${this.maxShadowRenderItems} max items, ${this.shadowRT.width}x${this.shadowRT.height} RT)`
+      `PIXI WORKER: Shadow instanced RT (${this.maxShadowRenderItems} max, ${this.shadowRT.width}x${this.shadowRT.height})`
     );
   }
 
   /**
-   * Update shadow sprites from pre-sorted shadowRenderQueue
-   * Queue is built by particle_worker: light1_gradient, light1_shadows..., light2_gradient, etc.
-   * Rendering happens in SCREEN SPACE (shadowRT coordinates)
+   * Upload shadow SoA → instanced Mesh → shadowRT (screen space).
    */
   updateShadowSprites() {
     if (!this.shadowSpritesEnabled || !this.shadowRenderQueueCount) return;
-    if (!this.shadowParticleContainer || !this.shadowRT) return;
+    if (!this.shadowBatch || !this.shadowRT) return;
 
-    const count = this.shadowRenderQueueCount[0];
-    const prevCount = this._shadowPrevCount;
-
-    // Resize sprite pool based on count diff (same pattern as main renderQueue)
-    if (count > prevCount) {
-      // Need more sprites - acquire from central pool
-      for (let i = prevCount; i < count; i++) {
-        const { particle, index } = this.particlePool.acquire();
-        this._shadowSprites[i] = particle;
-        this._shadowSpritePoolIndices[i] = index;
+    this.shadowBatch.upload(
+      {
+        count: this.shadowRenderQueueCount[0],
+        x: this.shadowRenderQueueX,
+        y: this.shadowRenderQueueY,
+        scaleX: this.shadowRenderQueueScaleX,
+        scaleY: this.shadowRenderQueueScaleY,
+        rotation: this.shadowRenderQueueRotation,
+        alpha: this.shadowRenderQueueAlpha,
+        tint: this.shadowRenderQueueTint,
+        textureId: this.shadowRenderQueueTextureId,
+        anchorX: this.shadowRenderQueueAnchorX,
+        anchorY: this.shadowRenderQueueAnchorY,
+      },
+      {
+        space: 'screen',
+        zoom: this._renderZoom,
+        cameraX: this._renderCameraX,
+        cameraY: this._renderCameraY,
+        resolution: this.shadowResolution,
+        depthMode: 'index',
+        depthDenom: this.maxShadowRenderItems,
+        texLut: this._texLut,
+        texLutCount: this._texLutCount,
+        textures: this.flatTextures,
       }
-    } else if (count < prevCount) {
-      // Need fewer sprites - release extras back to pool
-      for (let i = count; i < prevCount; i++) {
-        if (this._shadowSpritePoolIndices[i] !== -1) {
-          this.particlePool.release(this._shadowSpritePoolIndices[i]);
-          this._shadowSprites[i] = null;
-          this._shadowSpritePoolIndices[i] = -1;
-        }
-      }
-    }
-    this._shadowPrevCount = count;
+    );
 
-    if (count === 0) {
-      syncParticleChildren(this.shadowParticleContainer, this._shadowSprites, 0);
-      this.pixiApp.renderer.render({
-        container: this.shadowParticleContainer,
-        target: this.shadowRT,
-        clear: true,
-      });
-      return;
-    }
-
-    // Cache render queue arrays
-    const rqX = this.shadowRenderQueueX;
-    const rqY = this.shadowRenderQueueY;
-    const rqScaleX = this.shadowRenderQueueScaleX;
-    const rqScaleY = this.shadowRenderQueueScaleY;
-    const rqRotation = this.shadowRenderQueueRotation;
-    const rqAlpha = this.shadowRenderQueueAlpha;
-    const rqTint = this.shadowRenderQueueTint;
-    const rqTextureId = this.shadowRenderQueueTextureId;
-    const rqAnchorX = this.shadowRenderQueueAnchorX;
-    const rqAnchorY = this.shadowRenderQueueAnchorY;
-
-    // Get flat texture array for O(1) lookup
-    const flatTextures = this.flatTextures;
-
-    // Camera transform for world-to-screen conversion
-    const zoom = this._renderZoom;
-    const cameraX = this._renderCameraX;
-    const cameraY = this._renderCameraY;
-    const resolution = this.shadowResolution;
-
-    const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
-    for (let i = 0; i < count; i++) {
-      const sprite = this._shadowSprites[i];
-      if (!sprite) continue;
-
-      const texId = rqTextureId[i];
-      sprite.texture = (texId < flatTextures.length && texId >= 0) ? flatTextures[texId] : fallbackTexture;
-
-      sprite.x = (rqX[i] - cameraX) * zoom * resolution;
-      sprite.y = (rqY[i] - cameraY) * zoom * resolution;
-      sprite.scaleX = rqScaleX[i] * zoom * resolution;
-      sprite.scaleY = rqScaleY[i] * zoom * resolution;
-      sprite.rotation = rqRotation[i];
-      sprite.alpha = rqAlpha[i];
-      sprite.tint = rqTint[i];
-      sprite.anchorX = rqAnchorX[i];
-      sprite.anchorY = rqAnchorY[i];
-    }
-
-    syncParticleChildren(this.shadowParticleContainer, this._shadowSprites, count);
-
-    // Render to shadowRT
     this.pixiApp.renderer.render({
-      container: this.shadowParticleContainer,
+      container: this.shadowBatch.mesh,
       target: this.shadowRT,
-      clear: true,
+      // clear: true,
+      // clearColor: [0, 0, 0, 1],
     });
   }
 
@@ -2224,17 +1709,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
             this.textures[frameName] = texture;
           }
 
-          // Initialize particle pool with default texture (_white square)
-          // Using _white ensures particles without explicit textures show a neutral default
-          // rather than whatever happens to be first in the atlas (which depends on packing order)
-          if (frameTextures['_white']) {
-            this.particlePool.setDefaultTexture(frameTextures['_white']);
-          } else {
-            const textureKeys = Object.keys(frameTextures);
-            if (textureKeys.length > 0) {
-              this.particlePool.setDefaultTexture(frameTextures[textureKeys[0]]);
-            }
-          }
+          const textureKeys = Object.keys(frameTextures);
 
           console.log(
             `✅ BigAtlas loaded: ${Object.keys(frameTextures).length} frames available as textures`
@@ -2253,9 +1728,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
               )
             );
           }
-
-          // Note: Shadow sprites are now acquired from central PixiParticlePool on demand
-          // (in updateShadowSprites based on shadowRenderQueue count)
 
           // ========================================
           // BUILD FLAT TEXTURE LOOKUP ARRAY
@@ -2282,6 +1754,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           }
 
           console.log(`✅ Built flat texture array: ${this.flatTextures.length} textures, ${animNames.length} animations`);
+
+          this.rebuildInstancedTextureLut();
         }
 
         // console.log(
@@ -2461,8 +1935,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       const layerObj = Layer.get(layer);
       if (layerObj) {
         const cl = this._customLayers[layerObj.id];
-        if (cl?.pc) {
-          cl.pc.blendMode = containerBlendMode;
+        if (cl?.batch?.mesh) {
+          cl.batch.mesh.blendMode = containerBlendMode;
         }
       }
     }
@@ -2473,19 +1947,19 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
   }
 
-  _applyLayerPresentation(layerName, displayObject) {
+  _applyLayerPresentation(layerName, displayObject, forceContainerBlend) {
     if (!displayObject) return;
     const layer = Layer.get(layerName);
     if (!layer) return;
     displayObject.zIndex = layer.zIndex;
     displayObject.alpha = layer.alpha;
-    const useContainerBlend = displayObject instanceof PIXI.ParticleContainer;
+    const useContainerBlend = forceContainerBlend || displayObject instanceof PIXI.ParticleContainer;
     displayObject.blendMode = useContainerBlend ? layer.containerBlendMode : layer.blendMode;
   }
 
-  _registerLayerDisplayObject(layerName, displayObject) {
+  _registerLayerDisplayObject(layerName, displayObject, forceContainerBlend) {
     if (!layerName || !displayObject) return;
-    this._applyLayerPresentation(layerName, displayObject);
+    this._applyLayerPresentation(layerName, displayObject, forceContainerBlend);
     this._layerRuntime[layerName] = displayObject;
   }
 
@@ -2522,51 +1996,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     if (cl.displaySprite) {
       cl.displaySprite.texture = cl.rtOut || cl.rt;
       cl.displaySprite.scale.set(1.0 / resolution);
-    }
-  }
-
-  prewarmParticlePoolAtBoot() {
-    let target = 0;
-    target += (this.renderQueueMaxItems * PARTICLE_PREWARM_POLICY.BOOT_MAIN_FRACTION) | 0;
-    if (this.shadowSpritesEnabled) {
-      target += (this.maxShadowRenderItems * PARTICLE_PREWARM_POLICY.BOOT_SHADOW_FRACTION) | 0;
-    }
-    for (let i = 0; i < this._customLayerList.length; i++) {
-      target += (this._customLayerList[i].maxItems * PARTICLE_PREWARM_POLICY.BOOT_CUSTOM_FRACTION) | 0;
-    }
-    if (target > PARTICLE_PREWARM_POLICY.MAX_PREWARM_COUNT) {
-      target = PARTICLE_PREWARM_POLICY.MAX_PREWARM_COUNT;
-    }
-
-    const missing = target - this.particlePool.freeIndices.length;
-    if (missing > 0) {
-      this.particlePool.preallocate(missing);
-    }
-  }
-
-  prewarmParticlePoolForFrameDemand() {
-    let needed = 0;
-    if (this.renderQueueCount) {
-      const mainCount = this.renderQueueCount[0];
-      if (mainCount > this._rqPrevCount) needed += (mainCount - this._rqPrevCount);
-    }
-    if (this.shadowRenderQueueCount) {
-      const shadowCount = this.shadowRenderQueueCount[0];
-      if (shadowCount > this._shadowPrevCount) needed += (shadowCount - this._shadowPrevCount);
-    }
-    for (let i = 0; i < this._customLayerList.length; i++) {
-      const cl = this._customLayerList[i];
-      const ref = cl.readRef;
-      if (!ref) continue;
-      const count = ref.count[0];
-      if (count > cl.prevCount) needed += (count - cl.prevCount);
-    }
-
-    if (needed <= 0) return;
-    needed += PARTICLE_PREWARM_POLICY.FRAME_SAFETY_MARGIN;
-    const missing = needed - this.particlePool.freeIndices.length;
-    if (missing > 0) {
-      this.particlePool.preallocate(missing);
     }
   }
 
@@ -2860,20 +2289,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     this.canvasView = data.view;
     this.physicsWorkerIndex = data.config.spatial.numberOfSpatialWorkers;
 
-    // Create ParticleContainer with dynamic properties for sprites
-    // PixiJS 8 ParticleContainer API
-    this.particleContainer = new PIXI.ParticleContainer({
-      blendMode: Layer.ENTITIES?.blendMode || 'normal',
-      dynamicProperties: {
-        vertex: true, // Must be true to allow dynamic scale changes
-        position: true,
-        rotation: true,
-        uvs: true,
-        color: true,
-        alpha: true,
-      },
-    });
-
     // Read renderer-specific configuration
     const rendererConfig = this.config.renderer || {};
 
@@ -3077,9 +2492,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         this.entityLastTextureId = new Uint16Array(data.renderQueue.entityTextureData);
       }
 
-      // Pre-allocate sprite arrays
-      this._rqSprites = new Array(maxItems).fill(null);
-      this._rqSpritePoolIndices = new Array(maxItems).fill(-1);
       this._rqPrevCount = 0;
 
       console.log(`PIXI WORKER: Double-buffered render queue initialized (max ${maxItems} items)`);
@@ -3092,16 +2504,17 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     // ========================================
     this.createCastedShadowsSystem(data);
 
-    // Add entity display to the stage (ParticleContainer or instanced Mesh)
-    if (this.instancedSprites && this.renderQueueEnabled) {
-      this.createInstancedSpriteMesh(this.renderQueueMaxItems);
-      this.particleContainer.visible = false;
+    // ENTITIES always render through the instanced Mesh (no ParticleContainer path)
+    if (this.renderQueueEnabled) {
+      this.createEntitiesInstancedBatch(this.renderQueueMaxItems);
       this._registerLayerDisplayObject('ENTITIES', this.spriteMesh);
       this.pixiApp.stage.addChild(this.spriteMesh);
-      console.log('PIXI WORKER: ENTITIES layer using instanced sprite mesh');
-    } else {
-      this._registerLayerDisplayObject('ENTITIES', this.particleContainer);
-      this.pixiApp.stage.addChild(this.particleContainer);
+      if (this.spriteGlowMesh) {
+        // Temporary; updateCameraTransform sets z above LIGHTING once that exists
+        this.spriteGlowMesh.zIndex = (this.spriteMesh.zIndex || 0) + 0.001;
+        this.pixiApp.stage.addChild(this.spriteGlowMesh);
+      }
+      console.log('PIXI WORKER: ENTITIES layer using instanced sprite mesh (+ glow ADD)');
     }
 
     // ========================================
@@ -3160,7 +2573,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     // CUSTOM LAYER RENDERING INFRASTRUCTURE
     // ========================================
     this.initializeCustomLayers(data);
-    this.prewarmParticlePoolAtBoot();
 
     // ========================================
     // LAYER REFERENCES MAP - For debug UI control
@@ -3169,7 +2581,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
     console.log('PIXI WORKER: Initialization complete, waiting for start signal...');
     console.log(
-      `PIXI WORKER: Centralized particle pool ready (entities: ${this.globalEntityCount} slots, particles: ${this.maxParticles} slots, decorations: ${this.maxDecorations} slots)`
+      `PIXI WORKER: Instanced rendering ready (entities: ${this.globalEntityCount} slots, particles: ${this.maxParticles} slots, decorations: ${this.maxDecorations} slots)`
     );
 
     // Note: Game loop will start when "start" message is received from main thread
@@ -3197,11 +2609,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
    * Initialize custom layer rendering infrastructure.
    *
    * NON-SHADER LAYERS:
-   *   ParticleContainer added directly to stage at the layer's zIndex.
-   *   Camera transform applied via container.scale / container.position.
+   *   Instanced Mesh (InstancedSpriteBatch) added directly to stage at the layer's zIndex.
+   *   Camera transform applied via mesh.scale / mesh.position.
    *
    * SHADER LAYERS (two-RT pipeline):
-   *   1. ParticleContainer rendered (additive blend) → raw density RenderTexture (RT)
+   *   1. Instanced Mesh rendered (container blend) → raw density RenderTexture (RT)
    *   2. Fullscreen Mesh with custom fragment shader reads density RT → output RT
    *   3. Output RT displayed on stage via Sprite at the layer's zIndex
    *   This enables screen-space effects (metaballs, heat distortion, etc.)
@@ -3238,19 +2650,15 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         createRenderQueueViews(lrq.dataB, maxItems),
       ];
 
-      // Create ParticleContainer for this layer
+      // Instanced Mesh batch for this layer (replaces per-sprite ParticleContainer)
       const containerBlend = layerObj.containerBlendMode;
-      const pc = new PIXI.ParticleContainer({
-        blendMode: containerBlend,
-        dynamicProperties: {
-          vertex: true,
-          position: true,
-          rotation: true,
-          uvs: true,
-          color: true,
-          alpha: true,
-        },
+      const batch = new InstancedSpriteBatch({
+        capacity: maxItems,
+        label: `custom-layer-${layerName}`,
+        atlasSource: this._resolveAtlasSource(),
+        depthTest: false,
       });
+      batch.mesh.blendMode = containerBlend;
 
       const cl = {
         layerId,
@@ -3260,10 +2668,9 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         resolution,
         buffers,
         readRef: buffers[0],
-        sprites: new Array(maxItems).fill(null),
-        poolIndices: new Array(maxItems).fill(-1),
         prevCount: 0,
-        pc,
+        batch,
+        containerBlend,
         rt: null,          // Raw density RT (additive blend output)
         rtOut: null,        // Post-processed RT (after threshold shader)
         shaderMesh: null,   // Fullscreen quad Mesh with custom shader
@@ -3277,7 +2684,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         const w = this.canvasWidth * resolution;
         const h = this.canvasHeight * resolution;
 
-        // Two RTs: raw (density accumulation via additive PC) and processed (after shader)
+        // Two RTs: raw (density accumulation via instanced Mesh) and processed (after shader)
         cl.rt = PIXI.RenderTexture.create({ width: w, height: h });
         cl.rtOut = PIXI.RenderTexture.create({ width: w, height: h });
 
@@ -3334,9 +2741,9 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         this.pixiApp.stage.addChild(cl.displaySprite);
         console.log(`PIXI WORKER: Custom shader layer "${layerName}" initialized (resolution=${resolution}, RT=${w}x${h})`);
       } else {
-        // Non-shader layer: PC goes directly on stage
-        this._registerLayerDisplayObject(layerName, pc);
-        this.pixiApp.stage.addChild(pc);
+        // Non-shader layer: instanced Mesh goes directly on stage (world-space, container blend)
+        this._registerLayerDisplayObject(layerName, batch.mesh, true);
+        this.pixiApp.stage.addChild(batch.mesh);
         console.log(`PIXI WORKER: Custom layer "${layerName}" initialized (no shader)`);
       }
 
@@ -3357,102 +2764,62 @@ UPDATE LIGHTING (NO ZOOM SCALING)
    * layers through the two-RT pipeline (density → threshold → display).
    */
   updateCustomLayers() {
-    const flatTextures = this.flatTextures;
-    const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
-
     for (let li = 0; li < this._customLayerList.length; li++) {
       const cl = this._customLayerList[li];
       const ref = cl.readRef;
       if (!ref) continue;
 
       const count = ref.count[0];
-      const prevCount = cl.prevCount;
-
-      // Resize sprite pool
-      if (count > prevCount) {
-        for (let i = prevCount; i < count; i++) {
-          const { particle, index } = this.particlePool.acquire();
-          cl.sprites[i] = particle;
-          cl.poolIndices[i] = index;
-        }
-      } else if (count < prevCount) {
-        for (let i = count; i < prevCount; i++) {
-          if (cl.poolIndices[i] !== -1) {
-            this.particlePool.release(cl.poolIndices[i]);
-            cl.sprites[i] = null;
-            cl.poolIndices[i] = -1;
-          }
-        }
-      }
       cl.prevCount = count;
-
-      if (count === 0) {
-        syncParticleChildren(cl.pc, cl.sprites, 0);
-        if (cl.rt) {
-          this.pixiApp.renderer.render({ container: cl.pc, target: cl.rt, clear: true });
-        }
-        if (cl.rtOut && cl.shaderMesh) {
-          this.pixiApp.renderer.render({ container: cl.shaderMesh, target: cl.rtOut, clear: true });
-        }
-        continue;
-      }
-
-      const rqX = ref.x;
-      const rqY = ref.y;
-      const rqScaleX = ref.scaleX;
-      const rqScaleY = ref.scaleY;
-      const rqRotation = ref.rotation;
-      const rqAlpha = ref.alpha;
-      const rqTint = ref.tint;
-      const rqTextureId = ref.textureId;
-      const rqAnchorX = ref.anchorX;
-      const rqAnchorY = ref.anchorY;
-
-      const zoom = this._renderZoom;
-      const cameraX = this._renderCameraX;
-      const cameraY = this._renderCameraY;
-      const resolution = cl.resolution || 1.0;
       const renderToRT = !!cl.rt;
 
-      for (let i = 0; i < count; i++) {
-        const sprite = cl.sprites[i];
-        if (!sprite) continue;
-
-        const texId = rqTextureId[i];
-        sprite.texture = (texId < flatTextures.length && texId >= 0) ? flatTextures[texId] : fallbackTexture;
-
-        if (renderToRT) {
-          // Screen-space coordinates for RT rendering (like shadow system)
-          sprite.x = (rqX[i] - cameraX) * zoom * resolution;
-          sprite.y = (rqY[i] - cameraY) * zoom * resolution;
-          sprite.scaleX = rqScaleX[i] * zoom * resolution;
-          sprite.scaleY = rqScaleY[i] * zoom * resolution;
-        } else {
-          // World-space coordinates (camera applied via container transform)
-          sprite.x = rqX[i];
-          sprite.y = rqY[i];
-          sprite.scaleX = rqScaleX[i];
-          sprite.scaleY = rqScaleY[i];
-        }
-
-        sprite.rotation = rqRotation[i];
-        sprite.alpha = rqAlpha[i];
-        sprite.tint = rqTint[i];
-        sprite.anchorX = rqAnchorX[i];
-        sprite.anchorY = rqAnchorY[i];
-      }
-
-      syncParticleChildren(cl.pc, cl.sprites, count);
+      cl.batch.upload(
+        {
+          count,
+          x: ref.x,
+          y: ref.y,
+          scaleX: ref.scaleX,
+          scaleY: ref.scaleY,
+          rotation: ref.rotation,
+          alpha: ref.alpha,
+          tint: ref.tint,
+          textureId: ref.textureId,
+          anchorX: ref.anchorX,
+          anchorY: ref.anchorY,
+        },
+        renderToRT
+          ? {
+            space: 'screen',
+            zoom: this._renderZoom,
+            cameraX: this._renderCameraX,
+            cameraY: this._renderCameraY,
+            resolution: cl.resolution || 1.0,
+            depthMode: 'index',
+            depthDenom: cl.maxItems,
+            texLut: this._texLut,
+            texLutCount: this._texLutCount,
+            textures: this.flatTextures,
+          }
+          : {
+            space: 'world',
+            depthMode: 'index',
+            depthDenom: cl.maxItems,
+            texLut: this._texLut,
+            texLutCount: this._texLutCount,
+            textures: this.flatTextures,
+          }
+      );
 
       // Two-pass shader pipeline for shader layers:
-      // 1. Render additive ParticleContainer → raw density RT
+      // 1. Render instanced Mesh (container-blend accumulation) → raw density RT
       // 2. Render fullscreen Mesh (threshold shader reads raw RT) → processed RT
-      if (cl.rt && cl.shaderMesh && cl.rtOut) {
-        this.pixiApp.renderer.render({ container: cl.pc, target: cl.rt, clear: true });
-        this.pixiApp.renderer.render({ container: cl.shaderMesh, target: cl.rtOut, clear: true });
-      } else if (!cl.rt) {
-        // Non-shader layer: PC already on stage (no RT needed)
+      if (cl.rt) {
+        this.pixiApp.renderer.render({ container: cl.batch.mesh, target: cl.rt, clear: true });
+        if (cl.shaderMesh && cl.rtOut) {
+          this.pixiApp.renderer.render({ container: cl.shaderMesh, target: cl.rtOut, clear: true });
+        }
       }
+      // Non-shader layers: cl.batch.mesh is already on stage (camera transform applied in updateCameraTransform())
 
       // Update shader uniforms from Layer SABs (cross-worker dirty flag)
       if (cl.shader && Layer._uniformDirty[cl.layerId]) {
@@ -3493,17 +2860,15 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     else if (this.backgroundSprite) this._registerLayerDisplayObject('BACKGROUND', this.backgroundSprite);
     if (this.decalTileContainer) this._registerLayerDisplayObject('DECALS', this.decalTileContainer);
     if (this.shadowDisplaySprite) this._registerLayerDisplayObject('CASTED_SHADOWS', this.shadowDisplaySprite);
-    if (this.spriteMesh && this.instancedSprites) {
+    if (this.spriteMesh) {
       this._registerLayerDisplayObject('ENTITIES', this.spriteMesh);
-    } else if (this.particleContainer) {
-      this._registerLayerDisplayObject('ENTITIES', this.particleContainer);
     }
     if (this._visPolyDisplaySprite) this._registerLayerDisplayObject('LIGHTING', this._visPolyDisplaySprite);
     else if (this.lightingDisplaySprite) this._registerLayerDisplayObject('LIGHTING', this.lightingDisplaySprite);
     else if (this.lightingMesh) this._registerLayerDisplayObject('LIGHTING', this.lightingMesh);
     for (let i = 0; i < this._customLayerList.length; i++) {
       const cl = this._customLayerList[i];
-      this._registerLayerDisplayObject(cl.layerName, cl.displaySprite || cl.pc);
+      this._registerLayerDisplayObject(cl.layerName, cl.displaySprite || cl.batch?.mesh, !cl.displaySprite);
     }
     this._syncLayerRefsFromRuntime();
 
@@ -3571,11 +2936,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
       // Set initial read buffer (same as main queue)
       this._setShadowReadBuffer(0);
-
-      // Pre-allocate sprite arrays (uses central PixiParticlePool)
-      this._shadowSprites = new Array(maxItems).fill(null);
-      this._shadowSpritePoolIndices = new Array(maxItems).fill(-1);
-      this._shadowPrevCount = 0;
 
       // Create shadow RenderTexture system
       this.createShadowSpriteSystem();

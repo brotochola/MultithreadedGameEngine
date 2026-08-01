@@ -274,10 +274,10 @@ export const RENDERER_DEFAULTS = Object.freeze({
   /** Pixi ImageSource mip chain for atlases/textures/tilesets. Off by default (VRAM + atlas bleed risk; STEP flat in benches). */
   autoGenerateMipmaps: false,
   /**
-   * When true, main ENTITIES queue uses one instanced Mesh+shader instead of ParticleContainer.
-   * Kill-switch for A/B benches; default off until visual gate passes.
+   * Instanced Mesh pipeline for ENTITIES / cast shadows / custom layers.
+   * Default on — ParticleContainer sprite path removed.
    */
-  instancedSprites: false,
+  instancedSprites: true,
 });
 
 // ============================================================================
