@@ -20,6 +20,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 | [`PHYSICS.md`](./PHYSICS.md)                           | Box2D 3.0 nested WASM worker, contacts, joints, sleep |
 | [`PHYSICS_KERNEL_STUDY.md`](./PHYSICS_KERNEL_STUDY.md) | Historical JS kernel microbench (pre–Box2D 3.0)       |
 | [`LAYER_ROUTING.md`](./LAYER_ROUTING.md)               | Render layer routing, layer-owned backgrounds, and custom layer constraints |
+| [`PARTICLES.md`](./PARTICLES.md)                       | ParticleEmitter emit / emitFlat / emitZenithal, physics vs view, decals    |
 | [`TILEMAP.md`](./TILEMAP.md)                           | Tiled JSON loading, SAB-backed tile data, and tile query APIs               |
 | [`RAYCASTING.md`](./RAYCASTING.md)                     | DDA grid raycasts, line-of-sight checks, and layer-mask filtering           |
 

@@ -368,7 +368,7 @@ const name = this.layerName;   // 'water', 'ENTITIES', etc.
 Any renderable type can target a custom layer via `layerId`:
 
 ```javascript
-// Particles
+// Particles (emit / emitFlat / emitZenithal — see docs/PARTICLES.md)
 WEED.ParticleEmitter.emit({
   x: this.x, y: this.y,
   texture: 'spark',
@@ -599,15 +599,33 @@ WEED.Camera.setZoom(1.5);
 // getViewportBounds(out?) — pass a stable object if you need to store bounds;
 // the no-arg form reuses an internal scratch object (consume immediately).
 
-// Particles (layerId optional -- 0 = default ENTITIES layer)
+// Particles — pick mode at call site (see docs/PARTICLES.md)
+// emit: heighted, screenY = y + z
+// emitZenithal: heighted, height → scale (scene zenithal* knobs)
+// emitFlat: no ground, screenY = y
 WEED.ParticleEmitter.emit({
   x: this.x,
   y: this.y,
+  z: -20,
   texture: 'blood',
   angleXY: { min: 0, max: 360 },
   speed: { min: 1, max: 3 },
   lifespan: 800,
+  stayOnTheFloor: true,
   layerId: 0,  // optional: route to custom layer
+});
+WEED.ParticleEmitter.emitFlat({
+  x: this.x, y: this.y,
+  texture: '_whiteCircle',
+  speed: { min: 1, max: 4 },
+  lifespan: 300,
+  tweenToAlpha0: true,
+});
+WEED.ParticleEmitter.emitZenithal({
+  x: this.x, y: this.y, z: -80,
+  texture: 'blood',
+  speed: { min: 2, max: 10 },
+  stayOnTheFloor: true,
 });
 
 // Query helpers (worker context)

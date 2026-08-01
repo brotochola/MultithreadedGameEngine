@@ -145,7 +145,7 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 
 **What it does each frame:**
 
-1. Update particle simulation (lifetime, gravity, ground collision, alpha fade)
+1. Update particle simulation (lifetime; flat = XY only; heighted = gravity / ground / floor flags — see `docs/PARTICLES.md`)
 2. Stamp decals onto tile buffers
 3. Tick bullets (movement, trail, screen visibility, impact detection → `impactBuffer`; publishes `count` then bumps batch `seq` via Atomics so logic workers never double-process a batch)
 4. Update decoration sway; resolve parented decorations from latched `posePublish` (no consume — pre_render owns `consumedFrame`)

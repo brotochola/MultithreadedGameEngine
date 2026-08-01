@@ -1,7 +1,3 @@
-Since Box2d:
-
--particleEmitter.emit2D(), emit3d(), should have a property to make it isometric with z or plain 2d.
-
 -use the who moved function of box2d for networking
 
 ---

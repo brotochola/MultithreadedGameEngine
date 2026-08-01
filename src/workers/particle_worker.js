@@ -1175,53 +1175,59 @@ class ParticleWorker extends AbstractWorker {
         alpha[i] = initialAlpha[i] * (1 - lifeProgress);
       }
 
+      // Flat: screen-plane only — always integrate XY (ignore z / floor flags)
       if (flat[i]) {
-        // Screen-plane: no ground — always integrate XY (ignore z / floor flags)
         x[i] += vx[i] * dtRatio;
         y[i] += vy[i] * dtRatio;
-      } else {
-        vz[i] += gravity[i] * dtRatio;
+        activeCount++;
+        continue;
+      }
 
-        if (z[i] < 0) {
-          x[i] += vx[i] * dtRatio;
-          y[i] += vy[i] * dtRatio;
-          z[i] += vz[i] * dtRatio;
-        } else {
-          z[i] = 0;
-          vx[i] = 0;
-          vy[i] = 0;
-          vz[i] = 0;
+      // Heighted: gravity + air / ground
+      vz[i] += gravity[i] * dtRatio;
 
-          if (despawnOnGroundContact[i]) {
-            active[i] = 0;
-            ParticleEmitter.returnToPool(i);
-            continue;
-          }
+      if (z[i] < 0) {
+        x[i] += vx[i] * dtRatio;
+        y[i] += vy[i] * dtRatio;
+        z[i] += vz[i] * dtRatio;
+        activeCount++;
+        continue;
+      }
 
-          if (stayOnTheFloor[i]) {
-            if (this.decalsEnabled) {
-              this.particlesToStamp[this.particlesToStampCount++] = i;
-            }
-            active[i] = 0;
-            ParticleEmitter.returnToPool(i);
-            continue;
-          }
+      // On ground
+      z[i] = 0;
+      vx[i] = 0;
+      vy[i] = 0;
+      vz[i] = 0;
 
-          if (fadeOnTheFloor[i] > 0) {
-            if (timeOnFloor[i] === 0) {
-              initialAlpha[i] = alpha[i];
-            }
+      if (despawnOnGroundContact[i]) {
+        active[i] = 0;
+        ParticleEmitter.returnToPool(i);
+        continue;
+      }
 
-            timeOnFloor[i] += deltaTime;
-            const fadeProgress = Math.min(timeOnFloor[i] / fadeOnTheFloor[i], 1);
-            alpha[i] = initialAlpha[i] * (1 - fadeProgress);
+      if (stayOnTheFloor[i]) {
+        if (this.decalsEnabled) {
+          this.particlesToStamp[this.particlesToStampCount++] = i;
+        }
+        active[i] = 0;
+        ParticleEmitter.returnToPool(i);
+        continue;
+      }
 
-            if (alpha[i] <= 0) {
-              active[i] = 0;
-              ParticleEmitter.returnToPool(i);
-              continue;
-            }
-          }
+      if (fadeOnTheFloor[i] > 0) {
+        if (timeOnFloor[i] === 0) {
+          initialAlpha[i] = alpha[i];
+        }
+
+        timeOnFloor[i] += deltaTime;
+        const fadeProgress = Math.min(timeOnFloor[i] / fadeOnTheFloor[i], 1);
+        alpha[i] = initialAlpha[i] * (1 - fadeProgress);
+
+        if (alpha[i] <= 0) {
+          active[i] = 0;
+          ParticleEmitter.returnToPool(i);
+          continue;
         }
       }
 
