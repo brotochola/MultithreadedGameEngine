@@ -44,6 +44,8 @@ Per entity `i`, layout is a fixed stride (see `Grid.neighborStride` / `Grid._str
 
 Visual-range neighbors only. Physics contacts come from Box2D, not this buffer.
 
+- **Lights / shadows:** entities with `LightEmitter` use the same `neighborData` lists as point-shadow casters. Soft shadow alpha fades with distance vs `Collider.visualRange` so shadows die at the rim before the neighbor list drops them.
+
 ---
 
 ## `entityPosData` (interleaved cache)

@@ -184,6 +184,14 @@ export function lightCookieScale(sqrtIntensity) {
   return lightInfluenceRadius(sqrtIntensity) / LIGHT_GRADIENT_TEXTURE_RADIUS;
 }
 
+/** Soft glow world radius = √I * this. Calibrated: I=20000 matches old (visualRange*4) at VR=300. */
+export const LIGHT_GLOW_RADIUS_SCALE = (300 * 4) / Math.sqrt(20000); // ~8.485
+
+/** Instanced sprite scale for soft light glow (independent of Collider.visualRange). */
+export function lightGlowScale(sqrtIntensity) {
+  return ((sqrtIntensity || 0) * LIGHT_GLOW_RADIUS_SCALE) / LIGHT_GRADIENT_TEXTURE_RADIUS;
+}
+
 /**
  * Convert screen-space camera bounds to world-space bounds.
  * Optional world margins are applied after conversion.

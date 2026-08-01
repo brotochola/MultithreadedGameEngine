@@ -34,7 +34,7 @@ export class TallLight extends GameObject {
     // Circle collider
     this.collider.shapeType = ShapeType.Circle;
     this.collider.radius = 17;
-    this.collider.visualRange = 300;
+    this.collider.visualRange = 400; // shadow-caster / neighbor radius (not derived from intensity)
     this.collider.offsetY = -9
   }
 

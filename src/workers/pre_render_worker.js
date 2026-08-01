@@ -24,6 +24,7 @@ import {
     generateSymmetricalCirclePattern,
     lightInfluenceRadius,
     lightCookieScale,
+    lightGlowScale,
 } from '../core/utils.js';
 import { PRE_RENDER_STATS, createStatsWriter } from './workers-utils.js';
 import { RENDERER_DEFAULTS, CAMERA_TYPES, DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
@@ -1607,10 +1608,8 @@ class PreRenderWorker extends AbstractWorker {
         const lightIntensity = LightEmitter.lightIntensity;
         const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
         const glowHeightOffset = LightEmitter.glowHeightOffset;
-        const visualRange = Collider.visualRange;
         const lightGradientAnimIdx = this.animationNameToIndex?.['_lightGradient'] ?? 0;
         const lightGradientTextureId = this.animationFrameStart?.[lightGradientAnimIdx] ?? 0;
-        const GLOW_TEXTURE_RADIUS = 100;
 
         const decoX = DecorationComponent.x;
         const decoY = DecorationComponent.y;
@@ -1853,9 +1852,7 @@ class PreRenderWorker extends AbstractWorker {
                 rqEntityIndex[out] = -1;
             } else {
                 // === LIGHT GLOW (type=3) ===
-                // Flash entities have no Collider, so visualRange is 0; fall back to sqrtLightIntensity
-                const rangeVal = visualRange[idx] || sqrtLightIntensity[idx] || 200;
-                const scale = (rangeVal * 4) / GLOW_TEXTURE_RADIUS;
+                const scale = lightGlowScale(sqrtLightIntensity[idx]);
                 const glowAlpha = lightIntensity[idx] / 50000;
 
                 if (scale < 0.1 || glowAlpha < 0.001) {
@@ -1973,10 +1970,8 @@ class PreRenderWorker extends AbstractWorker {
         const lightIntensity = LightEmitter.lightIntensity;
         const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
         const glowHeightOffset = LightEmitter.glowHeightOffset;
-        const visualRange = Collider.visualRange;
         const lightGradientAnimIdx = this.animationNameToIndex?.['_lightGradient'] ?? 0;
         const lightGradientTextureId = this.animationFrameStart?.[lightGradientAnimIdx] ?? 0;
-        const GLOW_TEXTURE_RADIUS = 100;
 
         const layerEntries = this._customLayerEntries;
         for (let li = 0; li < layerEntries.length; li++) {
@@ -2166,8 +2161,7 @@ class PreRenderWorker extends AbstractWorker {
 
                 } else if (type === 3) {
                     // === LIGHT GLOW ===
-                    const rangeVal = visualRange[idx] || sqrtLightIntensity[idx] || 200;
-                    const scale = (rangeVal * 4) / GLOW_TEXTURE_RADIUS;
+                    const scale = lightGlowScale(sqrtLightIntensity[idx]);
                     const glowAlpha = lightIntensity[idx] / 50000;
 
                     if (scale < 0.1 || glowAlpha < 0.001) {
@@ -2420,6 +2414,7 @@ class PreRenderWorker extends AbstractWorker {
         const flashDedupMarker = this._flashDedupMarker;
         const colliderOffsetX = Collider.offsetX;
         const colliderOffsetY = Collider.offsetY;
+        const visualRange = Collider.visualRange;
 
         // Frame-unique dedup tag (avoids clearing the marker array each light)
         let dedupTag = 0;
@@ -2445,20 +2440,29 @@ class PreRenderWorker extends AbstractWorker {
             const lightX = worldX[lightIdx];
             const lightY = worldY[lightIdx];
             const lightH = lightHeight[lightIdx] || 0;
-            const maxShadowDistSq = pointShadowAlphaScale > MIN_POINT_SHADOW_ALPHA
-                ? intensity * ((pointShadowAlphaScale / MIN_POINT_SHADOW_ALPHA) - 1)
-                : 0;
-
             const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
 
+            // Shadow-caster neighborhood radius: visualRange for lights; flash uses grid search R
+            const searchRangeR = isFlash
+                ? (sqrtLightIntensity[lightIdx] || 100)
+                : (visualRange[lightIdx] || 0);
+            const rangeRSq = searchRangeR * searchRangeR;
+
+            let maxShadowDistSq = pointShadowAlphaScale > MIN_POINT_SHADOW_ALPHA
+                ? intensity * ((pointShadowAlphaScale / MIN_POINT_SHADOW_ALPHA) - 1)
+                : 0;
+            if (rangeRSq > 0 && (maxShadowDistSq <= 0 || maxShadowDistSq > rangeRSq)) {
+                maxShadowDistSq = rangeRSq;
+            }
+
             // ── Determine candidate source ────────────────────────────
-            let candidateCount;
-            let candidateSource;   // typed array holding entity indices
-            let candidateOffset;   // first candidate starts at candidateSource[candidateOffset]
+            let candidateCount = 0;
+            let candidateSource = null;   // typed array holding entity indices
+            let candidateOffset = 0;
 
             if (isFlash && gridCounts && flashCandidateBuffer && flashDedupMarker) {
                 // FLASH PATH: circle pattern (fewer cells than rect, distance-sorted)
-                const searchRadius = sqrtLightIntensity[lightIdx] || 100;
+                const searchRadius = searchRangeR;
                 const cellRadius = Math.min(((searchRadius * invCellSize) | 0) + 1, 6);
                 const centerCol = (lightX * invCellSize) | 0;
                 const centerRow = (lightY * invCellSize) | 0;
@@ -2496,8 +2500,8 @@ class PreRenderWorker extends AbstractWorker {
                     candidateSource = flashCandidateBuffer;
                     candidateOffset = 0;
                 }
-            } else {
-                // REGULAR LIGHT PATH: use precomputed neighbor data
+            } else if (searchRangeR > 0) {
+                // REGULAR LIGHT PATH: neighbors within Collider.visualRange
                 const offset = lightIdx * stride;
                 candidateCount = neighborData[offset];
                 candidateSource = neighborData;
@@ -2555,6 +2559,7 @@ class PreRenderWorker extends AbstractWorker {
 
                 if (distSq < 1) continue;
                 if (maxShadowDistSq > 0 && distSq > maxShadowDistSq) continue;
+                if (rangeRSq > 0 && distSq >= rangeRSq) continue;
 
                 const casterX = pose.x;
                 const casterY = pose.y;
@@ -2576,11 +2581,13 @@ class PreRenderWorker extends AbstractWorker {
                 if (casterX + shadowExtent < viewMinX || casterX - shadowExtent > viewMaxX ||
                     casterY + shadowExtent < viewMinY || casterY - shadowExtent > viewMaxY) continue;
 
+                // Soft fade to 0 at search range R so neighbor-list drop is not a hard pop
+                const rangeFade = rangeRSq > 0 ? (1 - distSq / rangeRSq) : 1;
                 let alpha = intensity / (intensity + distSq);
                 if (Number.isNaN(alpha)) alpha = 0;
                 if (alpha > 1) alpha = 1;
                 if (alpha < 0) alpha = 0;
-                alpha *= pointShadowAlphaScale;
+                alpha *= pointShadowAlphaScale * rangeFade;
                 if (alpha < MIN_POINT_SHADOW_ALPHA) continue;
 
                 const angle = Math.atan2(dy, dx);

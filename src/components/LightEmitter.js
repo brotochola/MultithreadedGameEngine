@@ -1,5 +1,10 @@
 import { Component } from '../core/Component.js';
 
+/**
+ * Point / glow light on an entity.
+ * Shadow casters come from this entity's Collider.visualRange neighbors (not from lightIntensity).
+ * Tune visualRange for shadow reach / cost; lightIntensity still drives lighting / cookie math.
+ */
 export class LightEmitter extends Component {
   static ARRAY_SCHEMA = {
     active: Uint8Array, // 0 = entity doesn't have this component, 1 = active
