@@ -119,6 +119,21 @@ const PIXI = Object.freeze({
 // Make PIXI namespace available globally (renderer-specific)
 self.PIXI = PIXI;
 
+/**
+ * Sync ParticleContainer membership only when count changes.
+ * Stable count: slot i keeps the same pooled Particle; caller rewrites props only.
+ * Avoids addParticle → onViewUpdate per sprite. No alloc, no GC.
+ */
+function syncParticleChildren(pc, sprites, count) {
+  const kids = pc.particleChildren;
+  if (kids.length === count) return;
+  for (let i = 0; i < count; i++) {
+    kids[i] = sprites[i];
+  }
+  kids.length = count;
+  pc.update();
+}
+
 // Single ParticleContainer with Y-sorting for depth
 
 /**
@@ -309,6 +324,9 @@ class PixiRenderer extends AbstractWorker {
     this.particleContainer = null;
     this.backgroundSprite = null;
 
+    /** From renderer.autoGenerateMipmaps (default false) — applied at ImageSource create */
+    this.autoGenerateMipmaps = RENDERER_DEFAULTS.autoGenerateMipmaps;
+
     // Texture and spritesheet storage
     this.textures = {}; // Store simple PIXI textures by name
     this.spritesheets = {}; // Store loaded spritesheets by name
@@ -321,6 +339,13 @@ class PixiRenderer extends AbstractWorker {
     // ========================================
     // All sprites (entities, decorations, particles) share the same pool
     this.particlePool = new PixiParticlePool();
+
+    // Per-frame subtimers (ms) — written to RENDERER_STATS in reportFPS
+    this.lightsTimeThisFrame = 0;
+    this.shadowsTimeThisFrame = 0;
+    this.spritesTimeThisFrame = 0;
+    this.customLayersTimeThisFrame = 0;
+    this.miscTimeThisFrame = 0;
 
     // Entity rendering goes exclusively through the render queue from pre_render_worker
     // (see updateSpritesFromRenderQueue). Animation/texture selection happens in
@@ -686,6 +711,11 @@ class PixiRenderer extends AbstractWorker {
       // Active decorations count (derived from free list)
       this.stats[RENDERER_STATS.ACTIVE_DECORATIONS] = DecorationPool.getActiveCount();
       this.stats[RENDERER_STATS.MSG_MS] = this.messageTimeThisFrame;
+      this.stats[RENDERER_STATS.LIGHTS_MS] = this.lightsTimeThisFrame;
+      this.stats[RENDERER_STATS.SHADOWS_MS] = this.shadowsTimeThisFrame;
+      this.stats[RENDERER_STATS.SPRITES_MS] = this.spritesTimeThisFrame;
+      this.stats[RENDERER_STATS.CUSTOM_LAYERS_MS] = this.customLayersTimeThisFrame;
+      this.stats[RENDERER_STATS.MISC_MS] = this.miscTimeThisFrame;
     }
 
     // Reset draw call counter for next frame
@@ -775,8 +805,8 @@ class PixiRenderer extends AbstractWorker {
     this._rqPrevCount = count;
 
     if (count === 0) {
-      // Clear the particle container (O(1) array truncation)
-      this.particleContainer.particleChildren.length = 0;
+      syncParticleChildren(this.particleContainer, this._rqSprites, 0);
+      this.visibleEntityCount = 0;
       return;
     }
 
@@ -795,27 +825,15 @@ class PixiRenderer extends AbstractWorker {
     // Get flat texture array for O(1) lookup
     const flatTextures = this.flatTextures;
 
-    // Build particle container children in Y-sorted order
-    // Clear and re-add for proper depth ordering
-    // Use direct array manipulation (O(1)) instead of removeParticles() which is expensive
-    this.particleContainer.particleChildren.length = 0;
-
-    let visibleCount = 0;
-
-    // Apply render queue properties to sprites (zero-branching on type!)
-    // CRITICAL: Set texture FIRST before position - prevents "texture bleeding" when pool slots
-    // are reused (e.g. civilian showing grass texture for one frame). visible=false doesn't work
-    // in ParticleContainer, so we rely on correct texture+position assignment order.
+    // Apply render queue properties; membership synced only when count changes
     const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
     for (let i = 0; i < count; i++) {
       const sprite = this._rqSprites[i];
       if (!sprite) continue;
 
-      // Resolve texture FIRST - always set to prevent stale texture from previous pool reuse
       const texId = rqTextureId[i];
       sprite.texture = (texId < flatTextures.length && texId >= 0) ? flatTextures[texId] : fallbackTexture;
 
-      // Apply transform properties
       sprite.x = rqX[i];
       sprite.y = rqY[i];
       sprite.scaleX = rqScaleX[i];
@@ -825,13 +843,10 @@ class PixiRenderer extends AbstractWorker {
       sprite.tint = rqTint[i];
       sprite.anchorX = rqAnchorX[i];
       sprite.anchorY = rqAnchorY[i];
-
-      // Add to container (already Y-sorted by particle_worker!)
-      this.particleContainer.addParticle(sprite);
-      visibleCount++;
     }
 
-    this.visibleEntityCount = visibleCount;
+    syncParticleChildren(this.particleContainer, this._rqSprites, count);
+    this.visibleEntityCount = count;
   }
 
   /**
@@ -893,6 +908,15 @@ class PixiRenderer extends AbstractWorker {
     const runFrameLockedPasses =
       consumedNewFrame || resuming || this.lastReadFrame <= 0 || !this.renderQueueSync;
 
+    // Reset subtimers every frame (stale-gated frames keep zeros for skipped work)
+    this.lightsTimeThisFrame = 0;
+    this.shadowsTimeThisFrame = 0;
+    this.spritesTimeThisFrame = 0;
+    this.customLayersTimeThisFrame = 0;
+    this.miscTimeThisFrame = 0;
+
+    let t0 = performance.now();
+
     // Camera is always provided by the pre-render worker via renderQueueCamera.
     // Fall back to live SAB only during the very first frames before init completes.
     if (!this._cameraInitialized && this.cameraData) {
@@ -921,31 +945,39 @@ class PixiRenderer extends AbstractWorker {
     this.updateDecalTiles();
 
     if (runFrameLockedPasses) {
-      // Pre-compute visible lights once (shared by updateLighting, updateShadowSprites)
-      this.computeVisibleLights();
-
       // Grow the central pool before any queue update loops acquire particles.
       this.prewarmParticlePoolForFrameDemand();
+    }
+    this.miscTimeThisFrame = performance.now() - t0;
 
-      // Update lighting shader uniforms from LightEmitter components
+    if (runFrameLockedPasses) {
+      // Pre-compute visible lights once (shared by updateLighting, updateShadowSprites)
+      t0 = performance.now();
+      this.computeVisibleLights();
       this.updateLighting();
+      this.lightsTimeThisFrame = performance.now() - t0;
 
       // Update shadow RenderTexture with interleaved lights + shadows
-      // This renders lights and shadows to shadowRT, which is displayed via shadowDisplaySprite (multiply blend)
+      t0 = performance.now();
       this.updateShadowSprites();
+      this.shadowsTimeThisFrame = performance.now() - t0;
 
       // Use render queue from pre_render_worker - no fallback
+      t0 = performance.now();
       this.updateSpritesFromRenderQueue();
+      this.spritesTimeThisFrame = performance.now() - t0;
 
       // Update custom layer sprites and render shader layers to their RenderTextures
+      t0 = performance.now();
       this.updateCustomLayers();
+      this.customLayersTimeThisFrame = performance.now() - t0;
 
       // ========================================
       // LOW-RES OFF-SCREEN RENDERING
       // ========================================
       // Render lighting to lower-resolution texture if configured.
       // This significantly improves performance on GPU-bound systems.
-
+      t0 = performance.now();
       if (this._visPolyEnabled) {
         // Raycasted lighting: render visibility polygon meshes
         this.renderVisibilityLighting();
@@ -957,6 +989,7 @@ class PixiRenderer extends AbstractWorker {
           clear: true,
         });
       }
+      this.lightsTimeThisFrame += performance.now() - t0;
     }
 
     // Let particle pool handle deferred pre-allocation during idle frames
@@ -1735,8 +1768,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     this._shadowPrevCount = count;
 
     if (count === 0) {
-      // Clear the particle container
-      this.shadowParticleContainer.particleChildren.length = 0;
+      syncParticleChildren(this.shadowParticleContainer, this._shadowSprites, 0);
       this.pixiApp.renderer.render({
         container: this.shadowParticleContainer,
         target: this.shadowRT,
@@ -1766,21 +1798,14 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     const cameraY = this._renderCameraY;
     const resolution = this.shadowResolution;
 
-    // Clear particle container and rebuild
-    this.shadowParticleContainer.particleChildren.length = 0;
-
-    // Apply render queue properties to sprites (pre-sorted by particle_worker!)
-    // CRITICAL: Set texture FIRST to prevent texture bleeding when pool slots are reused
     const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
     for (let i = 0; i < count; i++) {
       const sprite = this._shadowSprites[i];
       if (!sprite) continue;
 
-      // Resolve texture FIRST - always set to prevent stale texture from previous pool reuse
       const texId = rqTextureId[i];
       sprite.texture = (texId < flatTextures.length && texId >= 0) ? flatTextures[texId] : fallbackTexture;
 
-      // Convert world coordinates to screen space (shadowRT coordinates)
       sprite.x = (rqX[i] - cameraX) * zoom * resolution;
       sprite.y = (rqY[i] - cameraY) * zoom * resolution;
       sprite.scaleX = rqScaleX[i] * zoom * resolution;
@@ -1790,10 +1815,9 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       sprite.tint = rqTint[i];
       sprite.anchorX = rqAnchorX[i];
       sprite.anchorY = rqAnchorY[i];
-
-      // Add to container (already ordered by particle_worker!)
-      this.shadowParticleContainer.addParticle(sprite);
     }
+
+    syncParticleChildren(this.shadowParticleContainer, this._shadowSprites, count);
 
     // Render to shadowRT
     this.pixiApp.renderer.render({
@@ -1816,7 +1840,10 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
     for (const [name, imageBitmap] of Object.entries(texturesData)) {
       // PixiJS 8: Create TextureSource from ImageBitmap, then create Texture
-      const source = new PIXI.ImageSource({ resource: imageBitmap });
+      const source = new PIXI.ImageSource({
+        resource: imageBitmap,
+        autoGenerateMipmaps: this.autoGenerateMipmaps,
+      });
       this.textures[name] = new PIXI.Texture({ source });
 
       // console.log(`✅ Loaded texture: ${name}`);
@@ -1850,6 +1877,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         // BigAtlas/canvas content uses premultiplied alpha - required for 'normal' blend mode
         const source = new PIXI.ImageSource({
           resource: data.imageBitmap,
+          autoGenerateMipmaps: this.autoGenerateMipmaps,
           // alphaMode: "premultiply-alpha-on-upload",
         });
         const jsonData = data.json;
@@ -2043,7 +2071,10 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
     for (const [tilemapId, bitmap] of Object.entries(tilesetBitmaps)) {
       try {
-        const source = new PIXI.ImageSource({ resource: bitmap });
+        const source = new PIXI.ImageSource({
+          resource: bitmap,
+          autoGenerateMipmaps: this.autoGenerateMipmaps,
+        });
         const tilesetTexture = new PIXI.Texture({ source });
 
         this.tilemaps[tilemapId] = { tilesetTexture };
@@ -2576,6 +2607,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     //   `PIXI WORKER: Interpolation ${this.interpolation ? "enabled" : "disabled"}`
     // );
 
+    this.autoGenerateMipmaps =
+      rendererConfig.autoGenerateMipmaps !== undefined
+        ? !!rendererConfig.autoGenerateMipmaps
+        : RENDERER_DEFAULTS.autoGenerateMipmaps;
+
     // Configure decoration zoom culling thresholds
     this.decorationFadeStartZoom =
       rendererConfig.startFadingDecorationsAtZoom !== undefined
@@ -3045,10 +3081,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       }
       cl.prevCount = count;
 
-      cl.pc.particleChildren.length = 0;
-
       if (count === 0) {
-        // Clear both RTs when empty
+        syncParticleChildren(cl.pc, cl.sprites, 0);
         if (cl.rt) {
           this.pixiApp.renderer.render({ container: cl.pc, target: cl.rt, clear: true });
         }
@@ -3101,9 +3135,9 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         sprite.tint = rqTint[i];
         sprite.anchorX = rqAnchorX[i];
         sprite.anchorY = rqAnchorY[i];
-
-        cl.pc.addParticle(sprite);
       }
+
+      syncParticleChildren(cl.pc, cl.sprites, count);
 
       // Two-pass shader pipeline for shader layers:
       // 1. Render additive ParticleContainer → raw density RT

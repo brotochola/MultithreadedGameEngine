@@ -123,7 +123,8 @@ export class PredatorScene extends WEED.Scene {
       cullingRatio: 0.33,
       startFadingDecorationsAtZoom: 0.5,
       hideDecorationsAtZoom: 0.25,
-      maxVisibleRenderables: 100000
+      maxVisibleRenderables: 100000,
+      autoGenerateMipmaps: false,
     },
     preRender: {
       noLimitFPS: false,
@@ -373,7 +374,7 @@ export class PredatorScene extends WEED.Scene {
     this.spawnBarrels(this.numberOfBarrels);
     // this.spawnRocks(this.numberOfRocks);
 
-    this.spawnMySoldiers(2000);
+    this.spawnMySoldiers(6000);
     // this.spawnClouds(5);
     this.spawnRocksTreesAndHouses();
   }

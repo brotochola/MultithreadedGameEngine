@@ -54,6 +54,15 @@ class PreRenderWorker extends AbstractWorker {
         // Pre-render worker doesn't need game scripts or GameObject instances
         this.needsGameScripts = false;
 
+        // Per-frame subtimers (ms) — written to PRE_RENDER_STATS in reportFPS
+        this.collectTimeThisFrame = 0;
+        this.sortTimeThisFrame = 0;
+        this.emitTimeThisFrame = 0;
+        this.customLayerTimeThisFrame = 0;
+        this.shadowQTimeThisFrame = 0;
+        this.visibilityTimeThisFrame = 0;
+        this.adobeTimeThisFrame = 0;
+
         // Entity and particle counts
         this.globalEntityCount = 0;
         this.maxParticles = 0;
@@ -727,26 +736,44 @@ class PreRenderWorker extends AbstractWorker {
             ? this.queryActiveEntities(this._queryAdobeAnim || [AdobeAnimComponent])
             : (this._emptyAdobeEntities || (this._emptyAdobeEntities = []));
 
+        this.collectTimeThisFrame = 0;
+        this.sortTimeThisFrame = 0;
+        this.emitTimeThisFrame = 0;
+        this.customLayerTimeThisFrame = 0;
+        this.shadowQTimeThisFrame = 0;
+        this.visibilityTimeThisFrame = 0;
+        this.adobeTimeThisFrame = 0;
+
+        let t0 = performance.now();
         this.advanceAdobeAnimations(deltaTime);
+        this.adobeTimeThisFrame = performance.now() - t0;
 
         // Collect visible renderables for render queue (entities + sun shadows fused in one pass)
+        t0 = performance.now();
         this.collectVisibleParticles();
         this.collectVisibleEntities();
         this.collectVisibleAdobeAnimations();
         this.collectVisibleDecorations();
         this.collectVisibleBullets();
+        this.collectTimeThisFrame = performance.now() - t0;
 
         // Build the final render queue (sorts by Y, applies interpolation, writes to SAB)
         this.buildRenderQueue(deltaTime);
 
         // Build custom layer render queues (entities routed by SpriteRenderer.layerId)
+        t0 = performance.now();
         this.buildCustomLayerQueues(deltaTime);
+        this.customLayerTimeThisFrame = performance.now() - t0;
 
         // Build shadow render queue (sun shadows already done in collectVisibleEntities)
+        t0 = performance.now();
         this.buildShadowRenderQueue();
+        this.shadowQTimeThisFrame = performance.now() - t0;
 
         // Build visibility polygons for raycasted light occlusion
+        t0 = performance.now();
         this.buildVisibilityPolygons();
+        this.visibilityTimeThisFrame = performance.now() - t0;
 
         // ========================================
         // SIGNAL FRAME READY
@@ -1505,6 +1532,7 @@ class PreRenderWorker extends AbstractWorker {
         const shouldSortByY = entitiesLayer ? entitiesLayer.ySorting : true;
 
         // Sort by Y (ENTITIES layer policy)
+        let tSort = performance.now();
         if (shouldSortByY && count > 1) {
             if (count > 256) {
                 this._heapsortRenderables(count);
@@ -1526,6 +1554,8 @@ class PreRenderWorker extends AbstractWorker {
                 }
             }
         }
+        this.sortTimeThisFrame = performance.now() - tSort;
+        const tEmit = performance.now();
 
         // Cache output arrays
         const rqX = this.renderQueueX;
@@ -1848,6 +1878,7 @@ class PreRenderWorker extends AbstractWorker {
             }
         }
 
+        this.emitTimeThisFrame = performance.now() - tEmit;
         this.renderQueueCount[0] = writeCount;
         this._renderableCount = 0;
     }
@@ -2732,6 +2763,13 @@ class PreRenderWorker extends AbstractWorker {
             this.stats[PRE_RENDER_STATS.RENDER_QUEUE_SIZE] = this.renderQueueCount ? this.renderQueueCount[0] : 0;
             this.stats[PRE_RENDER_STATS.MSG_MS] = this.messageTimeThisFrame;
             this.stats[PRE_RENDER_STATS.SKIPPED_FRAMES] = this.skippedFramesThisFrame;
+            this.stats[PRE_RENDER_STATS.COLLECT_MS] = this.collectTimeThisFrame;
+            this.stats[PRE_RENDER_STATS.SORT_MS] = this.sortTimeThisFrame;
+            this.stats[PRE_RENDER_STATS.EMIT_MS] = this.emitTimeThisFrame;
+            this.stats[PRE_RENDER_STATS.CUSTOM_LAYER_MS] = this.customLayerTimeThisFrame;
+            this.stats[PRE_RENDER_STATS.SHADOW_Q_MS] = this.shadowQTimeThisFrame;
+            this.stats[PRE_RENDER_STATS.VISIBILITY_MS] = this.visibilityTimeThisFrame;
+            this.stats[PRE_RENDER_STATS.ADOBE_MS] = this.adobeTimeThisFrame;
         }
     }
 }

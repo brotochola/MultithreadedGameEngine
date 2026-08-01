@@ -17,6 +17,10 @@
 
 var H = 4; // header ints
 var S = 8; // fields per slot
+// AudioWorkletGlobalScope: performance missing in some browsers
+var now = typeof performance !== 'undefined' && performance.now
+  ? function () { return performance.now(); }
+  : function () { return Date.now(); };
 
 class MixerProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -47,7 +51,7 @@ class MixerProcessor extends AudioWorkletProcessor {
   process(_inputs, outputs) {
     if (!this._ready) return true;
 
-    var t0 = performance.now();
+    var t0 = this._processMs ? now() : 0;
 
     var out = outputs[0];
     var L = out[0];
@@ -129,7 +133,7 @@ class MixerProcessor extends AudioWorkletProcessor {
     }
 
     if (this._processMs) {
-      this._processMs[0] = performance.now() - t0;
+      this._processMs[0] = now() - t0;
     }
     return true;
   }

@@ -271,6 +271,8 @@ export const RENDERER_DEFAULTS = Object.freeze({
   hideDecorationsAtZoom: 0.25,
   maxVisibleRenderables: 10000,
   maxDecalTileUploadsPerFrame: 32,
+  /** Pixi ImageSource mip chain for atlases/textures/tilesets. Off by default (VRAM + atlas bleed risk; STEP flat in benches). */
+  autoGenerateMipmaps: false,
 });
 
 // ============================================================================
