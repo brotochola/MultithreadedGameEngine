@@ -9,11 +9,16 @@ const src = readFileSync(
   'utf8'
 );
 
-test('normal fragment does not re-premultiply already-PMA atlas texels', () => {
-  assert.match(src, /gl_FragColor = c;/);
+test('normal fragment scales PMA rgb by instance alpha without re-multiplying tex.a', () => {
+  assert.match(
+    src,
+    /gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, t\.a \* vColor\.a\);/
+  );
+  // Old bugs: passthrough (no instA on rgb) or double-premultiply (× combined a)
+  assert.doesNotMatch(src, /gl_FragColor = c;/);
   assert.doesNotMatch(src, /gl_FragColor\s*=\s*vec4\(\s*c\.rgb\s*\*\s*c\.a/);
 });
 
-test('additive fragment outputs PMA rgb with alpha 0 (no extra * a)', () => {
-  assert.match(src, /gl_FragColor = vec4\(c\.rgb, 0\.0\);/);
+test('additive fragment scales PMA rgb by instance alpha, alpha forced 0', () => {
+  assert.match(src, /gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, 0\.0\);/);
 });

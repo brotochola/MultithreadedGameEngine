@@ -1,8 +1,9 @@
 /**
  * Shared SoA → one instanced Mesh upload for ENTITIES / cast shadows / custom layers.
  * Pixi v8 Geometry + Shader + Mesh.
- * Atlas is PMA-on-upload (Pixi ImageSource default); fragment must NOT rgb*a again —
- * that double-premultiplies and turns soft white fades (bullet trails) dark/gray.
+ * Atlas is PMA-on-upload (Pixi ImageSource default). Fragment must:
+ *   - scale rgb by instance alpha (vColor.a) so soft particles / smoke fade
+ *   - NOT multiply by tex.a again (tex.rgb already has it) — that darkens trails
  * blendMode 'normal' expects PMA (ONE, ONE_MINUS_SRC_ALPHA).
  */
 
@@ -59,7 +60,7 @@ void main() {
 }
 `;
 
-/** Normal: texture already PMA from upload; texture*vColor applies tint + instance alpha. */
+/** Normal: PMA tex × tint × instance alpha (do not × tex.a again). */
 const FRAGMENT_SRC = `
 precision highp float;
 in vec2 vUV;
@@ -67,12 +68,12 @@ in vec4 vColor;
 uniform sampler2D uTexture;
 
 void main() {
-  vec4 c = texture2D(uTexture, vUV) * vColor;
-  gl_FragColor = c;
+  vec4 t = texture2D(uTexture, vUV);
+  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, t.a * vColor.a);
 }
 `;
 
-/** Additive glows: PMA rgb, alpha 0 so ADD (ONE,ONE) never darkens. */
+/** Additive glows: same rgb scale, alpha 0 so ADD (ONE,ONE) never darkens. */
 const FRAGMENT_SRC_ADDITIVE = `
 precision highp float;
 in vec2 vUV;
@@ -80,8 +81,8 @@ in vec4 vColor;
 uniform sampler2D uTexture;
 
 void main() {
-  vec4 c = texture2D(uTexture, vUV) * vColor;
-  gl_FragColor = vec4(c.rgb, 0.0);
+  vec4 t = texture2D(uTexture, vUV);
+  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, 0.0);
 }
 `;
 
