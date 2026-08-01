@@ -25,8 +25,8 @@ const SCHEMA_BY_TYPE = {
   preRender: PRE_RENDER_STATS,
 };
 
-/** Start expanded — these carry the hot diagnostics. */
-const DEFAULT_EXPANDED = new Set(['physics', 'spatial']);
+/** Worker types that start expanded (empty = all collapsed). */
+const DEFAULT_EXPANDED = new Set();
 
 function fmtMs(v) {
   return v == null || Number.isNaN(v) ? '—' : v.toFixed(2) + ' ms';
@@ -150,13 +150,11 @@ export class PerformancePanel {
     list.appendChild(this._createAudioRow());
   }
 
-  _isExpanded(rowId, expandable, detailCount = 0) {
+  _isExpanded(rowId, expandable) {
     if (!expandable) return false;
     if (this._expandedById.has(rowId)) return this._expandedById.get(rowId);
     const type = rowId.split(':')[0];
-    if (DEFAULT_EXPANDED.has(type)) return true;
-    // Light rows: keep details visible without a click.
-    return detailCount > 0 && detailCount <= 3;
+    return DEFAULT_EXPANDED.has(type);
   }
 
   _setExpanded(rowId, row, expanded) {
@@ -168,7 +166,7 @@ export class PerformancePanel {
     row.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   }
 
-  _createRowShell(rowId, colorClass, title, { expandable = false, detailCount = 0 } = {}) {
+  _createRowShell(rowId, colorClass, title, { expandable = false } = {}) {
     const row = document.createElement('div');
     row.className = `debug-ui-worker-row ${colorClass}`;
     row.dataset.rowId = rowId;
@@ -209,7 +207,7 @@ export class PerformancePanel {
 
     if (expandable) {
       row.classList.add('expandable');
-      const expanded = this._isExpanded(rowId, true, detailCount);
+      const expanded = this._isExpanded(rowId, true);
       this._setExpanded(rowId, row, expanded);
       head.addEventListener('click', () => {
         this._setExpanded(rowId, row, !row.classList.contains('expanded'));
@@ -266,7 +264,6 @@ export class PerformancePanel {
     const rowId = 'audio';
     const { row, metrics, loadFill, details } = this._createRowShell(rowId, 'audio', 'Audio', {
       expandable: true,
-      detailCount: 6,
     });
     this.elements.audioStats = { _loadFill: loadFill, _extras: details };
 
@@ -293,7 +290,6 @@ export class PerformancePanel {
     const rowId = `${workerType}:${workerIndex}`;
     const { row, metrics, loadFill, details } = this._createRowShell(rowId, config.color, title, {
       expandable: detailCount > 0,
-      detailCount,
     });
 
     const elements = { _loadFill: loadFill, _extras: details };

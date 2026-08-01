@@ -27,7 +27,7 @@ import { DEFAULT_LAYERS, RENDERER_DEFAULTS } from '../core/ConfigDefaults.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
-import { sortByY, normalizeAngleDifference, extractRGBNormalizedMut } from '../core/utils.js';
+import { sortByY, normalizeAngleDifference, extractRGBNormalizedMut, lightInfluenceRadius } from '../core/utils.js';
 import { InstancedSpriteBatch, buildTextureLut } from './InstancedSpriteBatch.js';
 
 // OPTIMIZED: Pre-defined comparator function for light sorting (avoids closure allocation per frame)
@@ -1404,8 +1404,8 @@ COMPUTE VISIBLE LIGHTS (used by updateLighting shader)
       const x = worldX[i];
       const yForLight = worldY[i] - (lightHeight[i] || 0);
 
-      // Viewport culling: influenceRadius = 10 * sqrt(intensity)
-      const influenceRadius = 10 * sqrtLightIntensity[i];
+      // Viewport culling: shared lightInfluenceRadius(sqrtIntensity)
+      const influenceRadius = lightInfluenceRadius(sqrtLightIntensity[i]);
 
       if (
         x + influenceRadius < cameraX ||

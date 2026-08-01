@@ -6,6 +6,7 @@ import {
   create2dCanvas,
   createCircularGradientCanvas,
   createBulletTrailCanvas,
+  LIGHT_GRADIENT_TEXTURE_RADIUS,
 } from './utils.js';
 
 /**
@@ -1006,7 +1007,7 @@ class SpriteSheetRegistry {
     console.log(`  ✅ Generated built-in: _empty (1x1 transparent)`);
 
     // Light glow gradient (200px diameter white radial gradient)
-    const lightGradientCanvas = createCircularGradientCanvas(100, 0xffffff);
+    const lightGradientCanvas = createCircularGradientCanvas(LIGHT_GRADIENT_TEXTURE_RADIUS, 0xffffff);
     imagesToPack.push({
       name: '_lightGradient',
       sourceImg: lightGradientCanvas,

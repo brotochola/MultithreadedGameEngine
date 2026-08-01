@@ -22,6 +22,8 @@ import {
     calculateCameraScreenBounds,
     screenBoundsToWorldBounds,
     generateSymmetricalCirclePattern,
+    lightInfluenceRadius,
+    lightCookieScale,
 } from '../core/utils.js';
 import { PRE_RENDER_STATS, createStatsWriter } from './workers-utils.js';
 import { RENDERER_DEFAULTS, CAMERA_TYPES, DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
@@ -2325,9 +2327,9 @@ class PreRenderWorker extends AbstractWorker {
                 if (!isFlash) {
                     const lightX = worldX[lightIdx];
                     const lightY = worldY[lightIdx];
-                    const lightInfluenceRadius = sqrtLightIntensity[lightIdx] * 10;
-                    if (lightX + lightInfluenceRadius < viewMinX || lightX - lightInfluenceRadius > viewMaxX ||
-                        lightY + lightInfluenceRadius < viewMinY || lightY - lightInfluenceRadius > viewMaxY) {
+                    const lightInfluenceR = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
+                    if (lightX + lightInfluenceR < viewMinX || lightX - lightInfluenceR > viewMaxX ||
+                        lightY + lightInfluenceR < viewMinY || lightY - lightInfluenceR > viewMaxY) {
                         continue;
                     }
                 }
@@ -2604,10 +2606,11 @@ class PreRenderWorker extends AbstractWorker {
                 }
             }
 
-            // if (shadowsForThisLight > 0) {
+            // Always emit light cookie (even with 0 casters) so CASTED_SHADOWS lit pools
+            // stay on-screen and other lights can attenuate prior shadows.
             lightsProcessed++;
 
-            const gradientScale = 10 * sqrtLightIntensity[lightIdx] * 3 / 100;
+            const gradientScale = lightCookieScale(sqrtLightIntensity[lightIdx]);
             const gradientAlpha = intensity / 50000;
 
             rqX[writeIdx] = lightX;
@@ -2622,7 +2625,6 @@ class PreRenderWorker extends AbstractWorker {
             rqAnchorY[writeIdx] = 0.5;
 
             writeIdx = shadowStartIdx + shadowsForThisLight;
-            //}
         }
 
         this.shadowRenderQueueCount[0] = writeIdx;
@@ -2694,7 +2696,7 @@ class PreRenderWorker extends AbstractWorker {
 
             const lx = worldX[lightIdx];
             const ly = worldY[lightIdx];
-            const influenceRadius = sqrtLightIntensity[lightIdx] * 10;
+            const influenceRadius = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
 
             // Collect nearby occluder circles from neighbor data
             let circleCount = 0;

@@ -22,8 +22,8 @@ export class LightEmitter extends Component {
 
   /**
    * Custom setter for lightIntensity
-   * OPTIMIZED: Automatically updates sqrtLightIntensity to avoid repeated sqrt calculations
-   * This is used in pixi_worker for light culling: influenceRadius = 10 * sqrt(intensity)
+   * OPTIMIZED: Automatically updates sqrtLightIntensity to avoid repeated sqrt calculations.
+   * Cull / cookie radius: lightInfluenceRadius(sqrtLightIntensity) in utils.js.
    */
   set lightIntensity(value) {
     LightEmitter.lightIntensity[this.index] = value;

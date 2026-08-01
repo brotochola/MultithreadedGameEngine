@@ -170,6 +170,20 @@ export function calculateCameraScreenBounds(
   return result;
 }
 
+export const LIGHT_GRADIENT_TEXTURE_RADIUS = 100;
+/** World radius = sqrtIntensity * this. Used by lighting + shadow culls. */
+export const LIGHT_INFLUENCE_RADIUS_SCALE = 10;
+
+/** World-space light influence radius for LIGHTING / CASTED_SHADOWS culls. */
+export function lightInfluenceRadius(sqrtIntensity) {
+  return (sqrtIntensity || 0) * LIGHT_INFLUENCE_RADIUS_SCALE;
+}
+
+/** Instanced sprite scale so cookie world radius == lightInfluenceRadius. */
+export function lightCookieScale(sqrtIntensity) {
+  return lightInfluenceRadius(sqrtIntensity) / LIGHT_GRADIENT_TEXTURE_RADIUS;
+}
+
 /**
  * Convert screen-space camera bounds to world-space bounds.
  * Optional world margins are applied after conversion.
@@ -689,8 +703,8 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
     lengthUnitsPerMeter: Math.max(
       1e-6,
       newConfig.lengthUnitsPerMeter ??
-        current.lengthUnitsPerMeter ??
-        PHYSICS_DEFAULTS.lengthUnitsPerMeter
+      current.lengthUnitsPerMeter ??
+      PHYSICS_DEFAULTS.lengthUnitsPerMeter
     ),
     contactSpeed: Math.max(
       0,
@@ -699,8 +713,8 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
     maximumLinearSpeed: Math.max(
       1,
       newConfig.maximumLinearSpeed ??
-        current.maximumLinearSpeed ??
-        PHYSICS_DEFAULTS.maximumLinearSpeed
+      current.maximumLinearSpeed ??
+      PHYSICS_DEFAULTS.maximumLinearSpeed
     ),
     box2dWorkerCount: Math.max(
       1,
@@ -911,7 +925,7 @@ export function create2dCanvas(width = 1, height = 1) {
   throw new Error('No canvas API available');
 }
 
-export function createCircularGradientCanvas(radius = 100, color = 0xffffff) {
+export function createCircularGradientCanvas(radius = LIGHT_GRADIENT_TEXTURE_RADIUS, color = 0xffffff) {
   radius = Math.round(radius);
   const size = radius * 2;
   const canvas = create2dCanvas(size, size);
