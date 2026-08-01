@@ -134,13 +134,13 @@ export class PredatorScene extends WEED.Scene {
     lighting: {
       enabled: true,
       baseAmbient: 0, // Minimum light at night (pitch black without lights)
-      maxLights: 100,
+      maxLights: 256,
       shadowsEnabled: true,
       maxShadowCastingLights: 1000,
       maxShadowsPerLight: 512,
       maxShadowsPerEntity: 5,
       maxShadowSprites: 30000,
-      maxFlashes: 80,
+      maxFlashes: 200,
       resolution: 0.25,
 
       // Sun/directional light configuration
