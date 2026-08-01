@@ -1971,31 +1971,31 @@ export declare class SceneBridge {
 // --- Components ---
 
 export declare class Transform extends Component {
+  /** SoA only — pose lives on Box2D HEAP via `bindBox2dHotFields`. */
   static readonly ARRAY_SCHEMA: {
     active: typeof Uint8Array;
     entityType: typeof Uint8Array;
     isItOnScreen: typeof Uint8Array;
-    x: typeof Float32Array;
-    y: typeof Float32Array;
-    rotation: typeof Float32Array;
   };
   static active: Uint8Array;
   static entityType: Uint8Array;
   static isItOnScreen: Uint8Array;
+  /** HEAP-bound after `box2dReady`. */
   static x: Float32Array;
   static y: Float32Array;
   static rotation: Float32Array;
 }
 
 export declare class RigidBody extends Component {
+  /** SoA — `vx`/`vy`/`angularVelocity`/`sleeping` are HEAP-bound, not in schema. */
   static readonly ARRAY_SCHEMA: {
     active: typeof Uint8Array;
     static: typeof Uint8Array;
-    vx: typeof Float32Array;
-    vy: typeof Float32Array;
     ax: typeof Float32Array;
     ay: typeof Float32Array;
-    angularVelocity: typeof Float32Array;
+    px: typeof Float32Array;
+    py: typeof Float32Array;
+    pRotation: typeof Float32Array;
     angularAccel: typeof Float32Array;
     mass: typeof Float32Array;
     invMass: typeof Float32Array;
@@ -2006,15 +2006,20 @@ export declare class RigidBody extends Component {
     fixedRotation: typeof Uint8Array;
     velocityAngle: typeof Float32Array;
     speed: typeof Float32Array;
-    sleeping: typeof Uint8Array;
+    sleepThreshold: typeof Float32Array;
   };
   static active: Uint8Array;
   /** SoA column: `RigidBody.static[index]` — `0` dynamic, `1` static. */
   static static: Uint8Array;
+  /** HEAP-bound after `box2dReady`. */
   static vx: Float32Array;
   static vy: Float32Array;
   static ax: Float32Array;
   static ay: Float32Array;
+  static px: Float32Array;
+  static py: Float32Array;
+  static pRotation: Float32Array;
+  /** HEAP-bound after `box2dReady`. */
   static angularVelocity: Float32Array;
   static angularAccel: Float32Array;
   static mass: Float32Array;
@@ -2026,7 +2031,9 @@ export declare class RigidBody extends Component {
   static fixedRotation: Uint8Array;
   static velocityAngle: Float32Array;
   static speed: Float32Array;
+  /** HEAP-bound after `box2dReady`. */
   static sleeping: Uint8Array;
+  static sleepThreshold: Float32Array;
   static syncMassFromCollider(index: number): boolean;
   syncMassFromCollider(): boolean;
   get static(): number;

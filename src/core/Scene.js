@@ -7,7 +7,7 @@ import { popFreeIndex } from './atomicFreeList.js';
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
-import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
+import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing, enqueueExplode } from '../box2d/box2dCommandRing.js';
 import {
   bindQueryAabbSab,
@@ -966,6 +966,11 @@ class Scene {
       this.totalEntityCount
     );
 
+    // Pose/vel live on Box2D HEAP only — bind after SoA init (box2dReady precedes readyPromise).
+    if (this.box2dHotFields?.sab) {
+      bindBox2dHotFields(this.box2dHotFields);
+    }
+
     // Expose all components globally (both core and custom)
     exposeComponentsGlobally(componentMap, window);
 
@@ -1586,7 +1591,7 @@ class Scene {
         contactPairIntStride: e.data.contactPairIntStride || 2,
         eventHeaderIntCount: e.data.eventHeaderIntCount || 11,
       };
-      rebindBox2dHotFields(payload);
+      bindBox2dHotFields(payload);
       this.box2dHotFields = payload;
       if (payload.commandSab) {
         bindCommandRing(payload.commandSab);

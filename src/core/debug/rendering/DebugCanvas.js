@@ -3,8 +3,7 @@
 import { DEBUG_FLAGS } from '../DebugFlags.js';
 import { NavDebugRenderer } from './NavDebugRenderer.js';
 import { PhysicsDebugRenderer } from './PhysicsDebugRenderer.js';
-import { Transform } from '../../../components/Transform.js';
-import { rebindBox2dHotFields } from '../../../box2d/box2dHotFields.js';
+import { bindBox2dHotFields, isBox2dHotFieldsBound } from '../../../box2d/box2dHotFields.js';
 
 /**
  * Owns the <canvas> overlay that sits above the game viewport.
@@ -263,19 +262,12 @@ export class DebugCanvas {
       this.physics.drawSelectedEntity(ctx, canvas, camera, zoom, flags);
   }
 
-  /**
-   * Keep main-thread Transform/RigidBody hot views on Box2D HEAP.
-   * Repairs silent resets (e.g. component re-init) so debug overlays track sprites.
-   */
+  /** Re-bind HEAP views if WASM memory growth detached TypedArrays. */
   _ensureBox2dHotFields(scene) {
     const hot = scene?.box2dHotFields;
     if (!hot?.sab || !hot.channelOffsets) return;
-    if (Transform.x?.buffer === hot.sab) return;
-    rebindBox2dHotFields(hot);
-    if (!this._hotRebindLogged) {
-      this._hotRebindLogged = true;
-      console.log('[DebugCanvas] rebindBox2dHotFields repaired — Transform.x now on HEAP');
-    }
+    if (isBox2dHotFieldsBound(hot)) return;
+    bindBox2dHotFields(hot);
   }
 
   // ------- cleanup -------

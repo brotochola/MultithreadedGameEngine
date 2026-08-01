@@ -130,15 +130,16 @@
   }
 
   function bindWeedViews(desc) {
+    // Pose/vel/sleeping are HEAP-only (bound in bindStateChannels). SoA supplies the rest.
     views = {
       entityActive: viewFromDesc(desc.entityActive, Uint8Array),
-      x: viewFromDesc(desc.x, Float32Array),
-      y: viewFromDesc(desc.y, Float32Array),
-      rotation: viewFromDesc(desc.rotation, Float32Array),
+      x: null,
+      y: null,
+      rotation: null,
       rbActive: viewFromDesc(desc.rbActive, Uint8Array),
       rbStatic: viewFromDesc(desc.rbStatic, Uint8Array),
-      vx: viewFromDesc(desc.vx, Float32Array),
-      vy: viewFromDesc(desc.vy, Float32Array),
+      vx: null,
+      vy: null,
       ax: viewFromDesc(desc.ax, Float32Array),
       ay: viewFromDesc(desc.ay, Float32Array),
       px: desc.px ? viewFromDesc(desc.px, Float32Array) : null,
@@ -146,12 +147,12 @@
       pRotation: desc.pRotation
         ? viewFromDesc(desc.pRotation, Float32Array)
         : null,
-      angularVelocity: viewFromDesc(desc.angularVelocity, Float32Array),
+      angularVelocity: null,
       angularAccel: viewFromDesc(desc.angularAccel, Float32Array),
       mass: viewFromDesc(desc.mass, Float32Array),
       linearDamping: viewFromDesc(desc.linearDamping, Float32Array),
       angularDamping: viewFromDesc(desc.angularDamping, Float32Array),
-      sleeping: viewFromDesc(desc.sleeping, Uint8Array),
+      sleeping: null,
       fixedRotation: desc.fixedRotation
         ? viewFromDesc(desc.fixedRotation, Uint8Array)
         : null,
@@ -255,19 +256,16 @@
         ? new Uint8Array(sab, ready.sleepingByteOffset, n)
         : null;
 
-    // Seed HEAP from Weed SoA, then point all hot views at HEAP (zero-copy).
+    // HEAP is sole pose/vel/sleep store — zero channels, then point views (zero-copy).
     const count = Math.min(entityCount | 0, n);
-    for (let i = 0; i < count; i++) {
-      pxChan[i] = views.x[i];
-      pyChan[i] = views.y[i];
-      rotChan[i] = isFixedRotation(i) ? 0 : views.rotation[i];
-      vxChan[i] = views.vx[i];
-      vyChan[i] = views.vy[i];
-      angChan[i] = views.angularVelocity[i];
-      if (sleepingU8) {
-        sleepingU8[i] = views.sleeping[i];
-      }
-    }
+    pxChan.fill(0, 0, count);
+    pyChan.fill(0, 0, count);
+    rotChan.fill(0, 0, count);
+    vxChan.fill(0, 0, count);
+    vyChan.fill(0, 0, count);
+    angChan.fill(0, 0, count);
+    if (sleepingU8) sleepingU8.fill(0, 0, count);
+
     views.x = pxChan;
     views.y = pyChan;
     views.rotation = rotChan;
@@ -278,7 +276,6 @@
       views.sleeping = sleepingU8;
     }
 
-    // Seed px/py/pRotation from Transform
     seedPrevPose(count);
   }
 

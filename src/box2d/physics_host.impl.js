@@ -40,26 +40,21 @@
     MSG_MS: 2,
   };
 
+  // Mirrors Transform / RigidBody ARRAY_SCHEMA (pose/vel/sleeping = HEAP only).
   var TRANSFORM_SCHEMA = {
     active: Uint8Array,
     entityType: Uint8Array,
     isItOnScreen: Uint8Array,
-    x: Float32Array,
-    y: Float32Array,
-    rotation: Float32Array,
   };
 
   var RIGIDBODY_SCHEMA = {
     active: Uint8Array,
     static: Uint8Array,
-    vx: Float32Array,
-    vy: Float32Array,
     ax: Float32Array,
     ay: Float32Array,
     px: Float32Array,
     py: Float32Array,
     pRotation: Float32Array,
-    angularVelocity: Float32Array,
     angularAccel: Float32Array,
     mass: Float32Array,
     invMass: Float32Array,
@@ -70,7 +65,6 @@
     fixedRotation: Uint8Array,
     velocityAngle: Float32Array,
     speed: Float32Array,
-    sleeping: Uint8Array,
     sleepThreshold: Float32Array,
   };
 
@@ -423,24 +417,17 @@
         : null,
       views: {
         entityActive: packView(T.active),
-        x: packView(T.x),
-        y: packView(T.y),
-        rotation: packView(T.rotation),
         rbActive: packView(R.active),
         rbStatic: packView(R.static),
-        vx: packView(R.vx),
-        vy: packView(R.vy),
         ax: packView(R.ax),
         ay: packView(R.ay),
         px: packView(R.px),
         py: packView(R.py),
         pRotation: packView(R.pRotation),
-        angularVelocity: packView(R.angularVelocity),
         angularAccel: packView(R.angularAccel),
         mass: packView(R.mass),
         linearDamping: packView(R.linearDamping),
         angularDamping: packView(R.angularDamping),
-        sleeping: packView(R.sleeping),
         fixedRotation: packView(R.fixedRotation),
         sleepThreshold: packView(R.sleepThreshold),
         colActive: packView(C.active),

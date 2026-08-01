@@ -10,14 +10,12 @@ import { ShapeType } from '../core/ConfigDefaults.js';
 import { BODY_DIRTY, markBodyDirty } from '../box2d/box2dBodySync.js';
 
 export class RigidBody extends Component {
-  // Array schema - defines all physics properties
+  // SoA fields only. vx/vy/angularVelocity/sleeping live on Box2D HEAP
+  // (bound via bindBox2dHotFields after box2dReady) — not allocated here.
   static ARRAY_SCHEMA = {
     active: Uint8Array, // 0 = entity doesn't have this component, 1 = active
     static: Uint8Array, // 0 = dynamic, 1 = static
 
-    // Linear motion
-    vx: Float32Array,
-    vy: Float32Array,
     ax: Float32Array,
     ay: Float32Array,
 
@@ -26,8 +24,6 @@ export class RigidBody extends Component {
     py: Float32Array,
     pRotation: Float32Array,
 
-    // Angular motion
-    angularVelocity: Float32Array,
     angularAccel: Float32Array,
 
     // Mass properties
@@ -47,12 +43,51 @@ export class RigidBody extends Component {
     velocityAngle: Float32Array,
     speed: Float32Array,
 
-    // Sleeping: Box2D owns RigidBody.sleeping (HEAP). Scene config.physics.sleeping → b2World_EnableSleeping.
-    sleeping: Uint8Array, // 0 = awake, 1 = sleeping
-
     // Linear sleep speed threshold (m/s). 0 = Box2D default (~0.05 * lengthUnits)
     sleepThreshold: Float32Array,
   };
+
+  static initializeArrays(buffer, count) {
+    super.initializeArrays(buffer, count);
+    RigidBody.vx = new Float32Array(count);
+    RigidBody.vy = new Float32Array(count);
+    RigidBody.angularVelocity = new Float32Array(count);
+    RigidBody.sleeping = new Uint8Array(count);
+  }
+
+  static clearArrays() {
+    super.clearArrays();
+    RigidBody.vx = null;
+    RigidBody.vy = null;
+    RigidBody.angularVelocity = null;
+    RigidBody.sleeping = null;
+  }
+
+  // HEAP-bound (not in ARRAY_SCHEMA)
+  get vx() {
+    return RigidBody.vx[this.index];
+  }
+  set vx(value) {
+    RigidBody.vx[this.index] = value;
+  }
+  get vy() {
+    return RigidBody.vy[this.index];
+  }
+  set vy(value) {
+    RigidBody.vy[this.index] = value;
+  }
+  get angularVelocity() {
+    return RigidBody.angularVelocity[this.index];
+  }
+  set angularVelocity(value) {
+    RigidBody.angularVelocity[this.index] = value;
+  }
+  get sleeping() {
+    return RigidBody.sleeping[this.index];
+  }
+  set sleeping(value) {
+    RigidBody.sleeping[this.index] = value;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CUSTOM GETTERS/SETTERS

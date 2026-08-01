@@ -60,7 +60,7 @@ Owns the Box2D tick. Scene’s `workers.physics` **is** the classic `box2d_wasm.
 
 **What it does each frame:**
 
-1. Call `weedjsDoStep` (WASM HEAP holds pose/vel; Weed SoA views rebound onto those channels)
+1. Call `weedjsDoStep` (WASM HEAP holds pose/vel; Weed binds `Transform`/`RigidBody` hot views onto those channels via `bindBox2dHotFields`)
 2. Drain the command ring (set pose/vel, fixedRotation, etc.)
 3. After the step, contact begin/end (+ sensors) land in the sequenced contact ring for logic workers
 4. Sync Weed `Joint` slots into Box2D joints
@@ -70,7 +70,7 @@ Spatial `neighborData` is visual-range only — Box2D does narrowphase itself.
 
 | Buffer / channel                   | Access         | Notes                                                                                |
 | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------ |
-| Transform / RigidBody hot fields   | **Write** via HEAP rebind | `x,y,rotation,vx,vy,ω` live in WASM memory after `box2dReady`              |
+| Transform / RigidBody hot fields   | **Write** HEAP | `x,y,rotation,vx,vy,ω,sleeping` — HEAP only after `box2dReady` (`bindBox2dHotFields`) |
 | `poseDataA/B` + `poseSync`         | **Write**      | Post-step display snapshot for pre_render / particle (not mid-step HEAP)             |
 | Collider                           | Read (sync)    | Shapes, radii, `friction`, layers/masks/`groupIndex`                                 |
 | `neighborData`                     | Read           | Visual-range neighbors — not the contact source                                      |

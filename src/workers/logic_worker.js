@@ -22,7 +22,7 @@ import { AbstractWorker } from './AbstractWorker.js';
 
 import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
 import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
-import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
+import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
@@ -920,7 +920,8 @@ class LogicWorker extends AbstractWorker {
 
     switch (msg) {
       case 'box2dReady': {
-        rebindBox2dHotFields(data);
+        // Seed HEAP from this worker's setup() placeholder writes (Destination etc.).
+        bindBox2dHotFields(data, { seedFromPlaceholders: true });
         if (data.commandSab) {
           bindCommandRing(data.commandSab);
         }

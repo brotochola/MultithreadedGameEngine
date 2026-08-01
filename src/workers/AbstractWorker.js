@@ -38,7 +38,7 @@ import { DecorationComponent } from '../components/DecorationComponent.js';
 import { Joint } from '../core/Joint.js';
 import { SoundManager } from '../core/SoundManager.js';
 import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
-import { rebindBox2dHotFields } from '../box2d/box2dHotFields.js';
+import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
@@ -1146,7 +1146,7 @@ export class AbstractWorker {
    */
   handleCustomMessage(data) {
     if (data?.msg === 'box2dReady' && data.channelOffsets) {
-      rebindBox2dHotFields(data);
+      bindBox2dHotFields(data);
       if (data.commandSab) {
         bindCommandRing(data.commandSab);
       }
