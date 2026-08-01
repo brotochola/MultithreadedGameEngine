@@ -95,11 +95,27 @@
     }
 
     let currentGame = null;
+    /** @type {null | {
+     *   config: ReturnType<typeof normalizeConfig>,
+     *   SceneClass: Function,
+     *   reader: { snapshot: (t: number) => unknown },
+     *   summarizeWorkerBenchmarkWindow: Function,
+     *   startSnapshot: unknown,
+     *   sampleSnapshots: unknown[],
+     *   sampleTimer: ReturnType<typeof setInterval> | null,
+     * }} */
+    let session = null;
 
     async function cleanupCurrentGame() {
       if (!currentGame) return;
       await currentGame.destroy();
       currentGame = null;
+    }
+
+    function stopSampling() {
+      if (!session?.sampleTimer) return;
+      clearInterval(session.sampleTimer);
+      session.sampleTimer = null;
     }
 
     async function loadModules(sceneModule, sceneExport) {
@@ -121,7 +137,47 @@
       };
     }
 
-    async function runIntegratedWorkerBenchmark(options = {}) {
+    function summarizeFromSession(
+      startSnapshot,
+      endSnapshot,
+      sampleSnapshots,
+      config,
+      SceneClass,
+      scene
+    ) {
+      const summary = session.summarizeWorkerBenchmarkWindow(startSnapshot, endSnapshot, {
+        measurementDurationMs: endSnapshot.takenAtMs - startSnapshot.takenAtMs,
+        sampleSnapshots,
+      });
+
+      return {
+        ...summary,
+        metadata: {
+          benchmark: 'integrated-worker-benchmark',
+          sceneName: SceneClass.name || config.sceneExport,
+          sceneModule: config.sceneModule,
+          sceneExport: config.sceneExport,
+          canvasWidth: config.canvasWidth,
+          canvasHeight: config.canvasHeight,
+          spatialWorkers: scene.config.spatial.numberOfSpatialWorkers,
+          logicWorkers: scene.config.logic.numberOfLogicWorkers,
+          worldWidth: config.worldWidth,
+          worldHeight: config.worldHeight,
+          warmupMs: config.warmupMs,
+          durationMs: config.durationMs,
+          sampleIntervalMs: config.sampleIntervalMs,
+          sampleCount: sampleSnapshots.length,
+        },
+      };
+    }
+
+    /**
+     * Boot scene and start the game loop. Runner controls warmup/measure pacing.
+     */
+    async function prepareIntegratedWorkerBenchmark(options = {}) {
+      stopSampling();
+      session = null;
+
       const config = normalizeConfig(options);
       const {
         WEED,
@@ -147,51 +203,78 @@
       const scene = game.currentScene;
       const reader = createWorkerBenchmarkReader(scene);
 
-      await sleep(config.warmupMs);
-
-      const startSnapshot = reader.snapshot(performance.now());
-      const sampleSnapshots = [];
-      const sampleDeadline = startSnapshot.takenAtMs + config.durationMs;
-
-      while (performance.now() < sampleDeadline) {
-        await sleep(Math.min(config.sampleIntervalMs, Math.max(0, sampleDeadline - performance.now())));
-        sampleSnapshots.push(reader.snapshot(performance.now()));
-      }
-
-      const endSnapshot = reader.snapshot(performance.now());
-
-      const summary = summarizeWorkerBenchmarkWindow(startSnapshot, endSnapshot, {
-        measurementDurationMs: endSnapshot.takenAtMs - startSnapshot.takenAtMs,
-        sampleSnapshots,
-      });
-
-      const result = {
-        ...summary,
-        metadata: {
-          benchmark: 'integrated-worker-benchmark',
-          sceneName: SceneClass.name || config.sceneExport,
-          sceneModule: config.sceneModule,
-          sceneExport: config.sceneExport,
-          canvasWidth: config.canvasWidth,
-          canvasHeight: config.canvasHeight,
-          spatialWorkers: scene.config.spatial.numberOfSpatialWorkers,
-          logicWorkers: scene.config.logic.numberOfLogicWorkers,
-          worldWidth: config.worldWidth,
-          worldHeight: config.worldHeight,
-          warmupMs: config.warmupMs,
-          durationMs: config.durationMs,
-          sampleIntervalMs: config.sampleIntervalMs,
-          sampleCount: sampleSnapshots.length,
-        },
+      session = {
+        config,
+        SceneClass,
+        scene,
+        reader,
+        summarizeWorkerBenchmarkWindow,
+        startSnapshot: null,
+        sampleSnapshots: [],
+        sampleTimer: null,
       };
 
+      return {
+        ok: true,
+        warmupMs: config.warmupMs,
+        durationMs: config.durationMs,
+        sampleIntervalMs: config.sampleIntervalMs,
+      };
+    }
+
+    /** Start measure window + periodic metric samples. */
+    function beginMeasureIntegratedWorkerBenchmark() {
+      if (!session) {
+        throw new Error('Benchmark session not prepared');
+      }
+      stopSampling();
+      session.startSnapshot = session.reader.snapshot(performance.now());
+      session.sampleSnapshots = [];
+      session.sampleTimer = setInterval(() => {
+        if (!session) return;
+        session.sampleSnapshots.push(session.reader.snapshot(performance.now()));
+      }, session.config.sampleIntervalMs);
+      return { ok: true };
+    }
+
+    /** Stop sampling, summarize, destroy game. Same shape as legacy run(). */
+    async function collectIntegratedWorkerBenchmark() {
+      if (!session) {
+        throw new Error('Benchmark session not prepared');
+      }
+      stopSampling();
+
+      const endSnapshot = session.reader.snapshot(performance.now());
+      const startSnapshot = session.startSnapshot || endSnapshot;
+      const result = summarizeFromSession(
+        startSnapshot,
+        endSnapshot,
+        session.sampleSnapshots,
+        session.config,
+        session.SceneClass,
+        session.scene
+      );
+
       globalThis.__WEED_LAST_BENCHMARK__ = result;
+      session = null;
       await cleanupCurrentGame();
       return result;
     }
 
+    /** Legacy single-call API (no mid-run screenshots). */
+    async function runIntegratedWorkerBenchmark(options = {}) {
+      const prepared = await prepareIntegratedWorkerBenchmark(options);
+      await sleep(prepared.warmupMs);
+      beginMeasureIntegratedWorkerBenchmark();
+      await sleep(prepared.durationMs);
+      return collectIntegratedWorkerBenchmark();
+    }
+
     globalThis.__WEED_BENCHMARK__ = {
       run: runIntegratedWorkerBenchmark,
+      prepare: prepareIntegratedWorkerBenchmark,
+      beginMeasure: beginMeasureIntegratedWorkerBenchmark,
+      collect: collectIntegratedWorkerBenchmark,
     };
 
     document.body.dataset.benchmarkReady = 'true';

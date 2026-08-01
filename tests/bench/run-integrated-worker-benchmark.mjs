@@ -124,6 +124,27 @@ function buildBenchmarkOptions(cliArgs) {
   };
 }
 
+/** Resolve screenshot output dir from --screenshots [dir] and --output. */
+function resolveScreenshotDir(cliArgs, outputPath) {
+  if (!cliArgs.screenshots) return null;
+  if (typeof cliArgs.screenshots === 'string') {
+    return path.resolve(cliArgs.screenshots);
+  }
+  const stem = path.basename(outputPath, path.extname(outputPath));
+  return path.join(path.dirname(outputPath), stem);
+}
+
+async function captureCanvasScreenshot(page, filePath) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const canvas = page.locator('canvas').first();
+  await canvas.screenshot({ path: filePath, type: 'png' });
+  return filePath;
+}
+
+async function sleep(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main() {
   const cliArgs = parseArgs(process.argv.slice(2));
   const benchmarkOptions = buildBenchmarkOptions(cliArgs);
@@ -132,6 +153,8 @@ async function main() {
   const allowThrottle = Boolean(cliArgs['allow-throttle']);
   const positional = cliArgs._ || [];
   const outputPath = path.resolve(cliArgs.output || positional[3] || defaultOutputPath);
+  const screenshotDir = resolveScreenshotDir(cliArgs, outputPath);
+  const usePhasedScreenshots = Boolean(screenshotDir);
 
   const server = await createStaticBenchmarkServer(repoRoot);
   const benchmarkUrl = `http://127.0.0.1:${server.port}/tests/bench/integrated-worker-benchmark.html`;
@@ -234,7 +257,38 @@ async function main() {
       sceneExport: benchmarkOptions.sceneExport,
     };
 
-    const result = await page.evaluate((options) => window.__WEED_BENCHMARK__.run(options), runOptions);
+    let result;
+    let screenshotPaths = [];
+
+    if (usePhasedScreenshots) {
+      await fs.mkdir(screenshotDir, { recursive: true });
+      const prepared = await page.evaluate(
+        (options) => window.__WEED_BENCHMARK__.prepare(options),
+        runOptions
+      );
+
+      await sleep(prepared.warmupMs);
+      screenshotPaths.push(
+        await captureCanvasScreenshot(page, path.join(screenshotDir, '01-post-warmup.png'))
+      );
+
+      await page.evaluate(() => window.__WEED_BENCHMARK__.beginMeasure());
+
+      const halfMs = Math.floor(prepared.durationMs / 2);
+      await sleep(halfMs);
+      screenshotPaths.push(
+        await captureCanvasScreenshot(page, path.join(screenshotDir, '02-mid-measure.png'))
+      );
+
+      await sleep(prepared.durationMs - halfMs);
+      screenshotPaths.push(
+        await captureCanvasScreenshot(page, path.join(screenshotDir, '03-end-measure.png'))
+      );
+
+      result = await page.evaluate(() => window.__WEED_BENCHMARK__.collect());
+    } else {
+      result = await page.evaluate((options) => window.__WEED_BENCHMARK__.run(options), runOptions);
+    }
 
     if (trace) {
       const memoryUsage = await page.evaluate(() => {
@@ -260,6 +314,12 @@ async function main() {
       chromiumExtraArgs: launchArgs,
       benchmarkNote:
         'Headed runs: keep the Chromium window visible and not minimized for comparable FPS; hidden/occluded windows can still throttle despite launch flags.',
+      ...(screenshotPaths.length > 0
+        ? {
+            screenshots: screenshotPaths,
+            screenshotDir,
+          }
+        : {}),
     };
 
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -271,6 +331,12 @@ async function main() {
     console.log(
       `Benchmark report written to ${outputPath} (${headed ? 'headed' : 'headless'} Chromium; ${throttleNote})`
     );
+    if (screenshotPaths.length > 0) {
+      console.log(`Screenshots (${screenshotPaths.length}): ${screenshotDir}`);
+      for (const p of screenshotPaths) {
+        console.log(`  ${p}`);
+      }
+    }
     console.log(`Main thread average FPS: ${result.mainThread.averageFPS.toFixed(2)}`);
     for (const worker of result.workers) {
       console.log(formatWorkerConsoleLine(worker));

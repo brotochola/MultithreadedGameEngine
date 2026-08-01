@@ -49,6 +49,7 @@ export class BallsScene extends Scene {
     renderer: {
       noLimitFPS: false,
       maxVisibleRenderables: 11000,
+      instancedSprites: true,
     },
 
     lighting: {

@@ -63,6 +63,9 @@ import {
   Mesh,
   Shader,
   GlProgram,
+  Buffer,
+  BufferUsage,
+  State,
   extensions,
   RendererType,
   RenderTexture,
@@ -108,9 +111,16 @@ const PIXI = Object.freeze({
   Mesh,
   Shader,
   GlProgram,
+  Buffer,
+  BufferUsage,
+  State,
   RendererType,
   RenderTexture,
 });
+
+/** Interleaved floats per instanced sprite (see createInstancedSpriteMesh). */
+const INSTANCED_SPRITE_FLOATS = 22; // +trim xywh for atlas trim (Pixi orig/trim)
+const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 // Note: Core engine classes (GameObject, Mouse, etc.) and components
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker.
@@ -322,6 +332,14 @@ class PixiRenderer extends AbstractWorker {
     // Single ParticleContainer with Y-sorting for proper depth ordering
     // Will be created during initialization with correct entityCount
     this.particleContainer = null;
+    /** When true, main ENTITIES queue uses instanced Mesh instead of ParticleContainer */
+    this.instancedSprites = false;
+    this.spriteMesh = null;
+    this.spriteShader = null;
+    this._instGeometry = null;
+    this._instBuffer = null;
+    this._instData = null;
+    this._instCapacity = 0;
     this.backgroundSprite = null;
 
     /** From renderer.autoGenerateMipmaps (default false) — applied at ImageSource create */
@@ -735,6 +753,12 @@ class PixiRenderer extends AbstractWorker {
     this.particleContainer.x = -cameraX * zoom;
     this.particleContainer.y = -cameraY * zoom;
 
+    if (this.spriteMesh) {
+      this.spriteMesh.scale.set(zoom);
+      this.spriteMesh.x = -cameraX * zoom;
+      this.spriteMesh.y = -cameraY * zoom;
+    }
+
     // Apply camera state to background (since it's not a child of particleContainer)
     if (this.backgroundSprite) {
       this.backgroundSprite.scale.set(zoom);
@@ -780,6 +804,11 @@ class PixiRenderer extends AbstractWorker {
    */
   updateSpritesFromRenderQueue() {
     if (!this.renderQueueEnabled) return;
+
+    if (this.instancedSprites && this.spriteMesh) {
+      this.updateSpritesFromRenderQueueInstanced();
+      return;
+    }
 
     const count = this.renderQueueCount[0];
     const prevCount = this._rqPrevCount;
@@ -847,6 +876,269 @@ class PixiRenderer extends AbstractWorker {
 
     syncParticleChildren(this.particleContainer, this._rqSprites, count);
     this.visibleEntityCount = count;
+  }
+
+  /**
+   * Upload render-queue SoA into one instanced Mesh (GPU path).
+   * Queue is already Y-sorted by pre_render; depth = inverse index for Z-buffer.
+   */
+  updateSpritesFromRenderQueueInstanced() {
+    const count = this.renderQueueCount[0];
+    const capacity = this._instCapacity;
+    const drawCount = count > capacity ? capacity : count;
+
+    if (drawCount <= 0) {
+      this._instGeometry.instanceCount = 0;
+      this.spriteMesh.visible = false;
+      this.visibleEntityCount = 0;
+      return;
+    }
+
+    this.spriteMesh.visible = true;
+
+    const data = this._instData;
+    const flatTextures = this.flatTextures;
+    const fallbackTexture = this.particlePool.defaultTexture || PIXI.Texture.WHITE;
+    const maxItems = this.renderQueueMaxItems || capacity;
+    const depthDenom = maxItems + 1;
+
+    const rqX = this.renderQueueX;
+    const rqY = this.renderQueueY;
+    const rqScaleX = this.renderQueueScaleX;
+    const rqScaleY = this.renderQueueScaleY;
+    const rqRotation = this.renderQueueRotation;
+    const rqAlpha = this.renderQueueAlpha;
+    const rqTint = this.renderQueueTint;
+    const rqTextureId = this.renderQueueTextureId;
+    const rqAnchorX = this.renderQueueAnchorX;
+    const rqAnchorY = this.renderQueueAnchorY;
+
+    let base = 0;
+    for (let i = 0; i < drawCount; i++) {
+      const texId = rqTextureId[i];
+      const tex =
+        texId < flatTextures.length && texId >= 0 ? flatTextures[texId] : fallbackTexture;
+      const uvs = tex.uvs;
+      const tint = rqTint[i] >>> 0;
+      // tex.width/height = orig (logical) size when trim is set — stable across anim frames
+      const origW = tex.width;
+      const origH = tex.height;
+      const trim = tex.trim;
+
+      data[base] = rqX[i];
+      data[base + 1] = rqY[i];
+      data[base + 2] = rqScaleX[i];
+      data[base + 3] = rqScaleY[i];
+      data[base + 4] = origW;
+      data[base + 5] = origH;
+      data[base + 6] = rqAnchorX[i];
+      data[base + 7] = rqAnchorY[i];
+      data[base + 8] = rqRotation[i];
+      // Lower depth = in front. Queue is ascending Y; later index wins.
+      data[base + 9] = 1.0 - (i + 1) / depthDenom;
+      data[base + 10] = uvs.x0;
+      data[base + 11] = uvs.y0;
+      data[base + 12] = uvs.x2;
+      data[base + 13] = uvs.y2;
+      data[base + 14] = ((tint >> 16) & 0xff) / 255;
+      data[base + 15] = ((tint >> 8) & 0xff) / 255;
+      data[base + 16] = (tint & 0xff) / 255;
+      data[base + 17] = rqAlpha[i];
+      // Place trimmed frame inside orig (same as Pixi Particle) — do not stretch UVs to orig
+      if (trim) {
+        data[base + 18] = trim.x;
+        data[base + 19] = trim.y;
+        data[base + 20] = trim.width;
+        data[base + 21] = trim.height;
+      } else {
+        data[base + 18] = 0;
+        data[base + 19] = 0;
+        data[base + 20] = origW;
+        data[base + 21] = origH;
+      }
+      base += INSTANCED_SPRITE_FLOATS;
+    }
+
+    this._instBuffer.update();
+    this._instGeometry.instanceCount = drawCount;
+    this.visibleEntityCount = drawCount;
+  }
+
+  /**
+   * Build unit-quad Geometry + Shader + Mesh for instanced entity sprites.
+   * Call after flatTextures / atlas are available.
+   */
+  createInstancedSpriteMesh(maxItems) {
+    const capacity = Math.max(1, maxItems | 0);
+    this._instCapacity = capacity;
+    this._instData = new Float32Array(capacity * INSTANCED_SPRITE_FLOATS);
+    this._instBuffer = new Buffer({
+      data: this._instData,
+      usage: BufferUsage.VERTEX | BufferUsage.COPY_DST,
+      label: 'instanced-sprites',
+    });
+
+    const quad = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
+    const stride = INSTANCED_SPRITE_STRIDE;
+
+    const geometry = new Geometry({
+      attributes: {
+        aQuad: { buffer: quad, format: 'float32x2' },
+        aInstXY: {
+          buffer: this._instBuffer,
+          format: 'float32x2',
+          stride,
+          offset: 0,
+          instance: true,
+        },
+        aInstScale: {
+          buffer: this._instBuffer,
+          format: 'float32x2',
+          stride,
+          offset: 8,
+          instance: true,
+        },
+        aInstSize: {
+          buffer: this._instBuffer,
+          format: 'float32x2',
+          stride,
+          offset: 16,
+          instance: true,
+        },
+        aInstAnchor: {
+          buffer: this._instBuffer,
+          format: 'float32x2',
+          stride,
+          offset: 24,
+          instance: true,
+        },
+        aInstRot: {
+          buffer: this._instBuffer,
+          format: 'float32',
+          stride,
+          offset: 32,
+          instance: true,
+        },
+        aInstDepth: {
+          buffer: this._instBuffer,
+          format: 'float32',
+          stride,
+          offset: 36,
+          instance: true,
+        },
+        aInstUV: {
+          buffer: this._instBuffer,
+          format: 'float32x4',
+          stride,
+          offset: 40,
+          instance: true,
+        },
+        aInstColor: {
+          buffer: this._instBuffer,
+          format: 'float32x4',
+          stride,
+          offset: 56,
+          instance: true,
+        },
+        aInstTrim: {
+          buffer: this._instBuffer,
+          format: 'float32x4',
+          stride,
+          offset: 72,
+          instance: true,
+        },
+      },
+      indexBuffer: [0, 1, 2, 0, 2, 3],
+    });
+    geometry.instanceCount = 0;
+    this._instGeometry = geometry;
+
+    const vertexSrc = `
+in vec2 aQuad;
+in vec2 aInstXY;
+in vec2 aInstScale;
+in vec2 aInstSize;
+in vec2 aInstAnchor;
+in float aInstRot;
+in float aInstDepth;
+in vec4 aInstUV;
+in vec4 aInstColor;
+in vec4 aInstTrim;
+
+uniform mat3 uProjectionMatrix;
+uniform mat3 uWorldTransformMatrix;
+uniform mat3 uTransformMatrix;
+
+out vec2 vUV;
+out vec4 vColor;
+
+void main() {
+  // Anchor relative to orig size; textured quad = trimmed rect inside orig (Pixi Particle trim)
+  vec2 content = aInstTrim.xy + aQuad * aInstTrim.zw;
+  vec2 local = (content - aInstAnchor * aInstSize) * aInstScale;
+  float c = cos(aInstRot);
+  float s = sin(aInstRot);
+  vec2 rotated = vec2(local.x * c - local.y * s, local.x * s + local.y * c);
+  vec2 world = rotated + aInstXY;
+  mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
+  vec3 clip = mvp * vec3(world, 1.0);
+  gl_Position = vec4(clip.xy, aInstDepth, 1.0);
+  vUV = mix(aInstUV.xy, aInstUV.zw, aQuad);
+  vColor = aInstColor;
+}
+`;
+
+    const fragmentSrc = `
+precision highp float;
+in vec2 vUV;
+in vec4 vColor;
+uniform sampler2D uTexture;
+
+void main() {
+  vec4 c = texture2D(uTexture, vUV) * vColor;
+  // Premultiply for Pixi 'normal' blend (same contract as ParticleContainer)
+  gl_FragColor = vec4(c.rgb * c.a, c.a);
+}
+`;
+
+    const glProgram = GlProgram.from({
+      vertex: vertexSrc,
+      fragment: fragmentSrc,
+      name: 'instanced-sprites',
+    });
+
+    let atlasSource = PIXI.Texture.WHITE.source;
+    if (this.flatTextures && this.flatTextures.length > 0) {
+      for (let i = 0; i < this.flatTextures.length; i++) {
+        const t = this.flatTextures[i];
+        if (t && t.source) {
+          atlasSource = t.source;
+          break;
+        }
+      }
+    }
+
+    this.spriteShader = new Shader({
+      glProgram,
+      resources: {
+        uTexture: atlasSource,
+      },
+    });
+
+    const state = new State();
+    state.blend = true;
+    state.depthTest = true;
+    state.culling = false;
+
+    this.spriteMesh = new Mesh({
+      geometry,
+      shader: this.spriteShader,
+      state,
+      label: 'instanced-sprites',
+    });
+    this.spriteMesh.visible = false;
+
+    console.log(`PIXI WORKER: Instanced sprite mesh ready (capacity ${capacity})`);
   }
 
   /**
@@ -2612,6 +2904,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         ? !!rendererConfig.autoGenerateMipmaps
         : RENDERER_DEFAULTS.autoGenerateMipmaps;
 
+    this.instancedSprites =
+      rendererConfig.instancedSprites !== undefined
+        ? !!rendererConfig.instancedSprites
+        : RENDERER_DEFAULTS.instancedSprites;
+
     // Configure decoration zoom culling thresholds
     this.decorationFadeStartZoom =
       rendererConfig.startFadingDecorationsAtZoom !== undefined
@@ -2676,6 +2973,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         resolution: 1,
         canvas: this.canvasView, // v8 uses 'canvas' instead of 'view'
         backgroundColor: 0x000000,
+        depth: true,
         // Performance optimizations
         powerPreference: 'high-performance',
         preference: 'webgl', // Force WebGL for worker compatibility
@@ -2794,10 +3092,17 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     // ========================================
     this.createCastedShadowsSystem(data);
 
-    // Add particle container to the stage
-    // Sprites are Y-sorted and re-added every frame for proper depth ordering
-    this._registerLayerDisplayObject('ENTITIES', this.particleContainer);
-    this.pixiApp.stage.addChild(this.particleContainer);
+    // Add entity display to the stage (ParticleContainer or instanced Mesh)
+    if (this.instancedSprites && this.renderQueueEnabled) {
+      this.createInstancedSpriteMesh(this.renderQueueMaxItems);
+      this.particleContainer.visible = false;
+      this._registerLayerDisplayObject('ENTITIES', this.spriteMesh);
+      this.pixiApp.stage.addChild(this.spriteMesh);
+      console.log('PIXI WORKER: ENTITIES layer using instanced sprite mesh');
+    } else {
+      this._registerLayerDisplayObject('ENTITIES', this.particleContainer);
+      this.pixiApp.stage.addChild(this.particleContainer);
+    }
 
     // ========================================
     // LIGHTING SYSTEM - Initialize
@@ -3188,7 +3493,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     else if (this.backgroundSprite) this._registerLayerDisplayObject('BACKGROUND', this.backgroundSprite);
     if (this.decalTileContainer) this._registerLayerDisplayObject('DECALS', this.decalTileContainer);
     if (this.shadowDisplaySprite) this._registerLayerDisplayObject('CASTED_SHADOWS', this.shadowDisplaySprite);
-    if (this.particleContainer) this._registerLayerDisplayObject('ENTITIES', this.particleContainer);
+    if (this.spriteMesh && this.instancedSprites) {
+      this._registerLayerDisplayObject('ENTITIES', this.spriteMesh);
+    } else if (this.particleContainer) {
+      this._registerLayerDisplayObject('ENTITIES', this.particleContainer);
+    }
     if (this._visPolyDisplaySprite) this._registerLayerDisplayObject('LIGHTING', this._visPolyDisplaySprite);
     else if (this.lightingDisplaySprite) this._registerLayerDisplayObject('LIGHTING', this.lightingDisplaySprite);
     else if (this.lightingMesh) this._registerLayerDisplayObject('LIGHTING', this.lightingMesh);

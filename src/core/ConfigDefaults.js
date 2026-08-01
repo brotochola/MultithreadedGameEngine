@@ -273,6 +273,11 @@ export const RENDERER_DEFAULTS = Object.freeze({
   maxDecalTileUploadsPerFrame: 32,
   /** Pixi ImageSource mip chain for atlases/textures/tilesets. Off by default (VRAM + atlas bleed risk; STEP flat in benches). */
   autoGenerateMipmaps: false,
+  /**
+   * When true, main ENTITIES queue uses one instanced Mesh+shader instead of ParticleContainer.
+   * Kill-switch for A/B benches; default off until visual gate passes.
+   */
+  instancedSprites: false,
 });
 
 // ============================================================================
