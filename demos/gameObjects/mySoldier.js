@@ -21,7 +21,7 @@ export class MySoldier extends Person {
 
   // Flocking / locomotion — px/s². Terminal ≈ accel / linearDamping (damping=10 → follow~80 px/s)
   static groupingForce = 1188;
-  static separationForce = 60000;
+  static separationForce = 20000;
   // 1/r chase coeff: |a| = chaseStrength / dist (floored at punchRange). At 35px → |a|≈700 → ~70 px/s
   static chaseStrength = 24500;
 
@@ -48,7 +48,7 @@ export class MySoldier extends Person {
 
     this.collider.visualRange = 250;
     this.setFixedRotation(1);
-    this.rigidBody.linearDamping = 1.2;
+    this.rigidBody.linearDamping = 2
   }
 
   /**
