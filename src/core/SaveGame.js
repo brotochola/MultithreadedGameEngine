@@ -85,8 +85,10 @@ export function assertPayloadCompatible(scene, payload) {
 /**
  * Apply decoded payload into a live scene (workers still paused or after create).
  * Posts one restoreSave message to logic0; applies camera/sun on main.
+ * Resolves when logic0 replies restoreSaveComplete (entities in active lists).
  * @param {object} scene
  * @param {object} payload
+ * @returns {Promise<{ restored: number, failed: number }>}
  */
 export function applySavePayloadToScene(scene, payload) {
   assertPayloadCompatible(scene, payload);
@@ -100,6 +102,10 @@ export function applySavePayloadToScene(scene, payload) {
     throw new Error('SaveGame: logic worker 0 not ready');
   }
 
+  const completePromise = new Promise((resolve, reject) => {
+    scene._pendingRestoreComplete = { resolve, reject };
+  });
+
   worker0.postMessage({
     msg: 'restoreSave',
     serializableClassNames,
@@ -109,6 +115,8 @@ export function applySavePayloadToScene(scene, payload) {
   applyCameraGlobals(payload.camera);
   applySunGlobals(payload.sun);
   scene._restorePayload = null;
+
+  return completePromise;
 }
 
 /**

@@ -28,8 +28,8 @@ Per entity, the snapshot packs SoA component fields (plus Transform pose and Rig
 preload()
 create()                 // always — static world
 ├─ createNewGame()       // new game only
-└─ restore + onLoadGame  // save load only
-startMainLoop / workers
+└─ restore (await restoreSaveComplete) + onLoadGame  // save load only
+startMainLoop / workers  // only after restore ack — workers stay paused until then
 ```
 
 | Hook | When | Put here |
@@ -40,6 +40,8 @@ startMainLoop / workers
 | `onLoadGame(payload)` | After save applied | Load-only logic (UI, quests). Payload already restored entities + camera/sun |
 
 Base `Scene` defaults: empty `createNewGame()` / `onLoadGame()`.
+
+Load awaits logic0 `restoreSaveComplete` (entities spawned + active lists flushed) before `onLoadGame` and before play starts.
 
 **PredatorScene example:** static setup stays in `create()`; `spawnCivilians` / `spawnMySoldiers` live in `createNewGame()`.
 
@@ -73,7 +75,7 @@ await game.loadScene(MyScene, { restorePayload: payload });
 import { saveGame, loadGame, SaveStore, encodeSave, decodeSave } from '/src/index.js';
 ```
 
-Load remounts the scene: `create()` builds statics, then logic worker `restoreSave` despawns serializable types and re-spawns from records (Box2D bodies via normal spawn dirty path), then `onLoadGame(payload)`.
+Load remounts the scene: `create()` builds statics, then logic worker `restoreSave` despawns serializable types and re-spawns from records (Box2D bodies via normal spawn dirty path), flushes active lists, acks `restoreSaveComplete`, then `onLoadGame(payload)`, then play starts.
 
 ## Debug UI
 

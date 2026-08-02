@@ -1060,6 +1060,8 @@ class LogicWorker extends AbstractWorker {
         if (this.workerIndex !== 0) break;
 
         const { serializableClassNames = [], entities = [] } = data;
+        let restored = 0;
+        let failed = 0;
 
         for (let i = 0; i < serializableClassNames.length; i++) {
           const EntityClass = self[serializableClassNames[i]];
@@ -1073,6 +1075,7 @@ class LogicWorker extends AbstractWorker {
             console.error(
               `LOGIC WORKER ${this.workerIndex}: restoreSave missing class ${rec.typeName}`
             );
+            failed++;
             continue;
           }
           const fields = rec.components?.Transform?.fields || {};
@@ -1086,8 +1089,15 @@ class LogicWorker extends AbstractWorker {
             console.warn(
               `LOGIC WORKER ${this.workerIndex}: restoreSave spawn failed for ${rec.typeName}`
             );
+            failed++;
+          } else {
+            restored++;
           }
         }
+
+        // Flush active lists before ack so entities are fully in the scene.
+        this.processListUpdates();
+        self.postMessage({ msg: 'restoreSaveComplete', restored, failed });
         break;
       }
 

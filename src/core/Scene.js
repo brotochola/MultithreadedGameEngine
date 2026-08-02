@@ -908,10 +908,12 @@ class Scene {
     await this.create();
 
     // LIFECYCLE PHASE 2b: new game vs save restore
+    // Restore awaits logic0 restoreSaveComplete so entities are in the scene
+    // before play starts (workers stay paused until start below).
     if (this._restorePayload) {
       const payload = this._restorePayload;
       const { applySavePayloadToScene } = await import('./SaveGame.js');
-      applySavePayloadToScene(this, payload);
+      await applySavePayloadToScene(this, payload);
       await this.onLoadGame(payload);
     } else {
       await this.createNewGame();
@@ -1045,7 +1047,8 @@ class Scene {
 
   /**
    * Called after create() and after the engine has applied a save payload
-   * (serializable entities restored, camera/sun applied).
+   * (serializable entities restored + active lists flushed, camera/sun applied).
+   * Runs only after logic0 restoreSaveComplete — before play starts.
    * Override for load-only hooks (UI, quests, follow-up spawns).
    * @param {object} payload - Decoded save payload
    */
@@ -1640,6 +1643,15 @@ class Scene {
       }
     } else if (e.data.msg === 'backgroundReady') {
       Layer.resolveBackgroundReady(e.data.layerId, e.data.requestId);
+    } else if (e.data.msg === 'restoreSaveComplete') {
+      const pending = this._pendingRestoreComplete;
+      this._pendingRestoreComplete = null;
+      if (pending) {
+        pending.resolve({
+          restored: e.data.restored || 0,
+          failed: e.data.failed || 0,
+        });
+      }
     } else if (e.data.msg === 'messageFromGameObject') {
       this.onMessageFromGameObject(
         e.data.data,
