@@ -2482,6 +2482,15 @@ class PreRenderWorker extends AbstractWorker {
             const lightH = lightHeight[lightIdx] || 0;
             const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
 
+            // Lighting-only flashes skip the expensive flash grid-query + shadow sprites
+            if (
+                isFlash &&
+                FlashComponent.castShadows &&
+                FlashComponent.castShadows[lightIdx] === 0
+            ) {
+                continue;
+            }
+
             // Shadow-caster neighborhood radius: visualRange for lights; flash uses grid search R
             const searchRangeR = isFlash
                 ? (sqrtLightIntensity[lightIdx] || 100)

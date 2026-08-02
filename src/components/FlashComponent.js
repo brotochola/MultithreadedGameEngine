@@ -15,5 +15,8 @@ export class FlashComponent extends Component {
 
     // === Initial values (for calculating decay) ===
     initialIntensity: Float32Array, // Starting light intensity (decays to 0)
+
+    // === Shadows ===
+    castShadows: Uint8Array, // 1 = cast point shadows, 0 = lighting only
   };
 }

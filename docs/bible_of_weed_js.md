@@ -628,6 +628,18 @@ WEED.ParticleEmitter.emitZenithal({
   stayOnTheFloor: true,
 });
 
+// Flashes — pooled LightEmitter + FlashComponent (see docs/FLASHES.md)
+// Needs lighting.maxFlashes > 0. Shares lighting.maxLights with persistent lights.
+WEED.Flash.create({
+  x: this.x,
+  y: this.y,
+  z: 30,
+  lifespan: 50,
+  color: 0xffaa00,
+  intensity: 10000,
+  castShadows: false, // default true; false = lighting only (cheap muzzle)
+});
+
 // Query helpers (worker context)
 const all = query([WEED.Transform, WEED.Collider]); // all matching slots, active or inactive
 const activeSprites = queryActiveEntities([WEED.SpriteRenderer]); // active precomputed query
@@ -736,7 +748,8 @@ scene.getMemoryUsageReport();  // summary + per-component allocation metadata
 - Use `tickInterval > 1` for heavy AI and enable `logic.staggeredUpdates`.
 - Use particles/decorations for short-lived or static visuals instead of full entities.
 - Particle and bullet pools are finite. Exhaustion warnings are one-shot per scene/init; increase `particle.maxParticles` or `bullet.maxBullets` when they appear.
-- Rendering caps are finite too. One-shot pre-render warnings for visible lights, shadow queues, shadow sprites, and visibility polygon occluders mean the scene is truncating work. Tune `lighting.maxLights`, `lighting.maxShadowCastingLights`, `lighting.maxShadowsPerLight`, `lighting.maxShadowSprites`, or reduce light/occluder density.
+- Flash pool is finite (`lighting.maxFlashes`). Flashes also compete for `lighting.maxLights`; persistent lights win when the list is capped. Short muzzle flashes should use `Flash.create({ castShadows: false })` so they light without point-shadow grid work.
+- Rendering caps are finite too. One-shot pre-render warnings for visible lights, shadow queues, shadow sprites, and visibility polygon occluders mean the scene is truncating work. Tune `lighting.maxLights`, `lighting.maxFlashes`, `lighting.maxShadowCastingLights`, `lighting.maxShadowsPerLight`, `lighting.maxShadowSprites`, or reduce light/occluder density.
 - Sound slots are finite (default 64). One-shot SFX are cheap; don't forget `stop()` on loops.
 - Spatial sound culls anything a full viewport-width outside the camera. Keep that in mind for ambient loops.
 - Only add `CollisionListener` / `CameraInOutListener` to entity types that actually use the callbacks or `isCollidingWith()`. Without `CollisionListener` anywhere in the scene, the engine skips the entire collision callback/query pass.

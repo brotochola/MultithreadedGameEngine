@@ -1586,6 +1586,7 @@ export class GameObject {
       FlashComponent.lifespan[i] = 0;
       FlashComponent.currentLife[i] = 0;
       FlashComponent.initialIntensity[i] = 0;
+      FlashComponent.castShadows[i] = 0;
     }
     if (this.lightOccluder) LightOccluder.active[i] = 0;
     if (hadPhysicsBody) markBodyDirty(i);
@@ -2001,6 +2002,7 @@ export class GameObject {
       FlashComponent.lifespan[i] = 0;
       FlashComponent.currentLife[i] = 0;
       FlashComponent.initialIntensity[i] = 0;
+      FlashComponent.castShadows[i] = 1; // default on; Flash.onSpawned may override
     }
 
     if (has.LightOccluder) {
@@ -2237,6 +2239,7 @@ export class GameObject {
     const flashLifespan = FlashComponent.lifespan;
     const flashCurrentLife = FlashComponent.currentLife;
     const flashInitialIntensity = FlashComponent.initialIntensity;
+    const flashCastShadows = FlashComponent.castShadows;
     const lightOccluderActive = LightOccluder.active;
 
     for (let i = startIndex; i < endIndex; i++) {
@@ -2286,6 +2289,7 @@ export class GameObject {
         if (flashLifespan) flashLifespan[i] = 0;
         if (flashCurrentLife) flashCurrentLife[i] = 0;
         if (flashInitialIntensity) flashInitialIntensity[i] = 0;
+        if (flashCastShadows) flashCastShadows[i] = 0;
         if (lightOccluderActive) lightOccluderActive[i] = 0;
         if (hadPhysicsBody) markBodyDirty(i);
       }

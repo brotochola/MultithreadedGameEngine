@@ -26,6 +26,19 @@ export class Flash extends GameObject {
   static maxFlashes = 0;
   static initialized = false;
 
+  // Reused spawn payload (per-worker module instance; create is sync/non-reentrant)
+  static _spawnScratch = {
+    x: 0,
+    y: 0,
+    z: 0,
+    glowHeightOffset: 0,
+    lifespan: 100,
+    color: 0xffffff,
+    intensity: 10000,
+    hasGlowSprite: 1,
+    castShadows: 1,
+  };
+
   /**
    * Initialize Flash system with pool size
    * Called by gameEngine during initialization
@@ -59,22 +72,24 @@ export class Flash extends GameObject {
    * @param {Object} config - Flash configuration
    * @param {number} config.x - X position in world coordinates
    * @param {number} config.y - Y position in world coordinates
-   * @param {number} [config.z=50] - Height of the light source
+   * @param {number} [config.z=0] - Height of the light source
    * @param {number} [config.lifespan=100] - Duration in milliseconds
    * @param {number} [config.color=0xFFFFFF] - Light color (0xRRGGBB)
    * @param {number} [config.intensity=10000] - Initial light intensity
    * @param {number} [config.hasGlowSprite=1] - Whether to render glow sprite (0 = no, 1 = yes)
+   * @param {boolean|number} [config.castShadows=true] - Point shadows (false/0 = lighting only)
    * @returns {Flash|null} - The created flash instance, or null if pool exhausted/routed
    *
    * @example
-   * // Muzzle flash
+   * // Muzzle flash (no shadows)
    * Flash.create({
    *   x: gun.x + 20,
    *   y: gun.y,
    *   z: 30,
    *   lifespan: 80,
    *   color: 0xFFAA00,
-   *   intensity: 40000
+   *   intensity: 40000,
+   *   castShadows: false,
    * });
    */
   static create(config) {
@@ -88,17 +103,20 @@ export class Flash extends GameObject {
       return null;
     }
 
+    const s = this._spawnScratch;
+    s.x = config.x;
+    s.y = config.y;
+    s.z = config.z ?? 0;
+    s.glowHeightOffset = config.z ?? 0;
+    s.lifespan = config.lifespan ?? 100;
+    s.color = config.color ?? 0xffffff;
+    s.intensity = config.intensity ?? 10000;
+    s.hasGlowSprite = config.hasGlowSprite ?? 1;
+    s.castShadows =
+      config.castShadows !== 0 && config.castShadows !== false ? 1 : 0;
+
     // Use standard spawn() - handles free list, active entity tracking, and query updates
-    return this.spawn({
-      x: config.x,
-      y: config.y,
-      z: config.z ?? 0,
-      glowHeightOffset: config.z ?? 0,
-      lifespan: config.lifespan ?? 100,
-      color: config.color ?? 0xffffff,
-      intensity: config.intensity ?? 10000,
-      hasGlowSprite: config.hasGlowSprite ?? 1,
-    });
+    return this.spawn(s);
   }
 
   /**
@@ -130,6 +148,8 @@ export class Flash extends GameObject {
     this.flashComponent.lifespan = spawnConfig.lifespan ?? 100;
     this.flashComponent.currentLife = 0;
     this.flashComponent.initialIntensity = spawnConfig.intensity ?? 10000;
+    this.flashComponent.castShadows =
+      spawnConfig.castShadows !== 0 && spawnConfig.castShadows !== false ? 1 : 0;
     this.flashComponent.active = 1;
   }
 

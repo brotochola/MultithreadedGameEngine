@@ -203,8 +203,16 @@ ParticleEmitter.emit({
   lifespan: 800,
 });
 
-// Flashes
-Flash.create({ x: this.x, y: this.y, z: 30, lifespan: 50, color: 0xffaa00, intensity: 10000 });
+// Flashes (see docs/FLASHES.md) — castShadows defaults true; false = light only
+Flash.create({
+  x: this.x,
+  y: this.y,
+  z: 30,
+  lifespan: 50,
+  color: 0xffaa00,
+  intensity: 10000,
+  castShadows: false, // muzzle: skip point-shadow work
+});
 
 // Queries inside worker/entity code
 const allEnemies = query([RigidBody, EnemyComponent]);
@@ -239,6 +247,8 @@ Start with `docs/README.md` for the full docs index.
 | `docs/PHYSICS.md`              | Box2D 3.0 worker pipeline and invariants         |
 | `src/box2d/README.md`          | Nested WASM runtime, rebuild, bundle embed       |
 | `docs/LAYER_ROUTING.md`        | Render layers, backgrounds, custom layer routing |
+| `docs/PARTICLES.md`            | ParticleEmitter modes and physics vs view        |
+| `docs/FLASHES.md`              | Flash.create, castShadows, light budget          |
 | `docs/TILEMAP.md`              | SAB-backed Tiled map API                         |
 | `docs/RAYCASTING.md`           | Grid-based raycast API                           |
 | `docs/ENTITY_TEMPLATE.js`      | Copy-paste entity starter                        |

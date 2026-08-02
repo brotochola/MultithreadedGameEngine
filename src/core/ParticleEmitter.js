@@ -56,6 +56,19 @@ export class ParticleEmitter extends SharedAtomicPool {
   static poolName = 'ParticleEmitter';
   static _warnedPoolExhausted = false;
 
+  // Hot-path scratches (per-worker module instance; emit is sync/non-reentrant)
+  static _cfgScratch = Object.create(null);
+  static _topdownOverrides = { flat: 0, viewMode: CAMERA_TYPES.TOPDOWN };
+  static _zenithalOverrides = { flat: 0, viewMode: CAMERA_TYPES.ZENITHAL };
+  static _flatOverrides = {
+    flat: 1,
+    viewMode: CAMERA_TYPES.TOPDOWN,
+    gravity: 0,
+    z: 0,
+    vz: 0,
+  };
+  static _stampScratch = Object.create(null);
+
   // Alias for backwards compatibility
   static get maxParticles() {
     return this.maxCount;
@@ -78,7 +91,7 @@ export class ParticleEmitter extends SharedAtomicPool {
    * @returns {number} - Number of particles actually spawned
    */
   static emit(config) {
-    return this._spawn(config, { flat: 0, viewMode: CAMERA_TYPES.TOPDOWN });
+    return this._spawn(config, this._topdownOverrides);
   }
 
   /**
@@ -88,7 +101,7 @@ export class ParticleEmitter extends SharedAtomicPool {
    * @returns {number} - Number of particles actually spawned
    */
   static emitZenithal(config) {
-    return this._spawn(config, { flat: 0, viewMode: CAMERA_TYPES.ZENITHAL });
+    return this._spawn(config, this._zenithalOverrides);
   }
 
   /**
@@ -97,13 +110,18 @@ export class ParticleEmitter extends SharedAtomicPool {
    * @returns {number} - Number of particles actually spawned
    */
   static emitFlat(config) {
-    return this._spawn(config, {
-      flat: 1,
-      viewMode: CAMERA_TYPES.TOPDOWN,
-      gravity: config.gravity ?? 0,
-      z: 0,
-      vz: 0,
-    });
+    const o = this._flatOverrides;
+    o.gravity = config.gravity ?? 0;
+    return this._spawn(config, o);
+  }
+
+  /** Merge config + overrides into reusable scratch (clears stale keys). */
+  static _mergeCfg(config, modeOverrides) {
+    const s = this._cfgScratch;
+    for (const k in s) delete s[k];
+    for (const k in config) s[k] = config[k];
+    for (const k in modeOverrides) s[k] = modeOverrides[k];
+    return s;
   }
 
   /**
@@ -117,7 +135,7 @@ export class ParticleEmitter extends SharedAtomicPool {
       return 0;
     }
 
-    const cfg = modeOverrides ? { ...config, ...modeOverrides } : config;
+    const cfg = modeOverrides ? this._mergeCfg(config, modeOverrides) : config;
     const flatMode = cfg.flat ? 1 : 0;
     const viewMode = cfg.viewMode ?? CAMERA_TYPES.TOPDOWN;
 
@@ -272,16 +290,19 @@ export class ParticleEmitter extends SharedAtomicPool {
    * @returns {number} - Number of decals actually spawned
    */
   static stampDecal(config) {
-    return this.emit({
-      ...config,
-      z: 0,
-      lifespan: 100,
-      stayOnTheFloor: true,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      gravity: 1,
-    });
+    const s = this._stampScratch;
+    for (const k in s) delete s[k];
+    for (const k in config) s[k] = config[k];
+    s.z = 0;
+    s.lifespan = 100;
+    s.stayOnTheFloor = true;
+    s.vx = 0;
+    s.vy = 0;
+    s.vz = 0;
+    s.gravity = 1;
+    s.flat = 0;
+    s.viewMode = CAMERA_TYPES.TOPDOWN;
+    return this._spawn(s, null);
   }
 
   /**
