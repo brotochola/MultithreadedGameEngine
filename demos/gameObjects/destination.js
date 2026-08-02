@@ -4,7 +4,7 @@
 import WEED from '/src/index.js';
 
 import { Mouse } from '../../src/core/Mouse.js';
-import { containerRadius } from '../../src/index.js';
+import { containerRadius, DecorationPool, Decoration } from '../../src/index.js';
 
 const {
   GameObject,
@@ -19,7 +19,7 @@ export class Destination extends GameObject {
   static serializable = true;
   // Components: basic physics + rendering + our FSM
   static components = [Collider, SpriteRenderer];
-
+  static outQueryDecorationIndices = new Uint16Array(64);
   /**
    * LIFECYCLE: Configure entity TYPE properties - runs ONCE per instance
    */
@@ -46,6 +46,26 @@ export class Destination extends GameObject {
   tick(dt) {
 
     if (Mouse.isButton0Pressed) {
+      // let countOfDecorationsHit = Decoration.queryCircle(Mouse.x, Mouse.y, 100, Destination.outQueryDecorationIndices)
+
+      // for (let i = 0; i < countOfDecorationsHit; i++) {
+      //   const index = Destination.outQueryDecorationIndices[i];
+      //   Decoration.get(index).sway = 0;
+      //   Decoration.get(index).rotation = 0
+      //   Decoration.get(index).baseRotation = 0
+      //   Decoration.get(index).swayFrequency = 0
+      //   Decoration.get(index).swayAmplitude = 0
+      // }
+
+      // countOfDecorationsHit = Decoration.queryCircle(Mouse.x, Mouse.y, 50, Destination.outQueryDecorationIndices)
+
+      // for (let i = 0; i < countOfDecorationsHit; i++) {
+      //   const index = Destination.outQueryDecorationIndices[i];
+      //   Decoration.get(index).sway = 1;
+      //   Decoration.get(index).swayAmplitude = 1
+      //   Decoration.get(index).swayFrequency = 100
+      // }
+
       this.x = Mouse.x;
       this.y = Mouse.y;
       this.collider.radius = containerRadius(MySoldier.activeCount, 12, 1);

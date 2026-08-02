@@ -8,6 +8,7 @@ import { Mouse } from '../core/Mouse.js';
 import { Gamepad } from '../core/Gamepad.js';
 import { ParticleEmitter } from '../core/ParticleEmitter.js';
 import { DecorationPool } from '../core/DecorationPool.js';
+import { DecorationSpatial } from '../core/DecorationSpatial.js';
 import { Decoration } from '../core/Decoration.js';
 import { BulletPool } from '../core/BulletPool.js';
 import { BulletComponent } from '../components/BulletComponent.js';
@@ -448,6 +449,29 @@ export class AbstractWorker {
         );
         this.reportLog(
           `initialized DecorationPool attachment slots (${data.globalEntityCount} entities × ${maxAttached})`
+        );
+      }
+
+      if (
+        data.decorationSpatialHead &&
+        data.decorationSpatialNext &&
+        data.decorationSpatialPrev &&
+        data.decorationSpatialCellOf &&
+        data.decorationSpatialMeta
+      ) {
+        DecorationSpatial.initialize(
+          {
+            head: data.decorationSpatialHead,
+            next: data.decorationSpatialNext,
+            prev: data.decorationSpatialPrev,
+            cellOf: data.decorationSpatialCellOf,
+            lock: data.decorationSpatialLock || null,
+          },
+          data.decorationSpatialMeta,
+          false
+        );
+        this.reportLog(
+          `initialized DecorationSpatial (${data.decorationSpatialMeta.gridWidth}x${data.decorationSpatialMeta.gridHeight})`
         );
       }
     }

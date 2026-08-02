@@ -4,13 +4,14 @@ import assert from 'node:assert/strict';
 import { DecorationComponent } from '../../src/components/DecorationComponent.js';
 import { Decoration } from '../../src/core/Decoration.js';
 import { DecorationPool } from '../../src/core/DecorationPool.js';
+import { DecorationSpatial } from '../../src/core/DecorationSpatial.js';
 import { resetFreeList } from '../../src/core/atomicFreeList.js';
 
 function assertApprox(actual, expected, epsilon = 0.00001) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `expected ${actual} to be close to ${expected}`);
 }
 
-function setupDecorationPool(count) {
+function setupDecorationPool(count, spatial = { cellSize: 100, gridWidth: 10, gridHeight: 10 }) {
   const previousComponentState = {};
   for (const key of Object.keys(DecorationComponent.ARRAY_SCHEMA)) {
     previousComponentState[key] = DecorationComponent[key];
@@ -31,10 +32,22 @@ function setupDecorationPool(count) {
   const activeListBuffer = new SharedArrayBuffer((1 + count) * Uint16Array.BYTES_PER_ELEMENT);
   const activeListLockBuffer = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
 
+  const totalCells = spatial.gridWidth * spatial.gridHeight;
+  const headBuf = new SharedArrayBuffer(totalCells * Uint16Array.BYTES_PER_ELEMENT);
+  const nextBuf = new SharedArrayBuffer(count * Uint16Array.BYTES_PER_ELEMENT);
+  const prevBuf = new SharedArrayBuffer(count * Uint16Array.BYTES_PER_ELEMENT);
+  const cellOfBuf = new SharedArrayBuffer(count * Int32Array.BYTES_PER_ELEMENT);
+  const lockBuf = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+
   DecorationPool.reset();
   DecorationPool.initialize(count);
   DecorationPool.initializeFreeList(freeListBuffer, freeListTopBuffer);
   DecorationPool.initializeActiveList(activeListBuffer, activeListLockBuffer);
+  DecorationSpatial.initialize(
+    { head: headBuf, next: nextBuf, prev: prevBuf, cellOf: cellOfBuf, lock: lockBuf },
+    { ...spatial, maxDecorations: count },
+    true
+  );
 
   return () => {
     DecorationPool.reset();
@@ -42,6 +55,13 @@ function setupDecorationPool(count) {
       DecorationComponent[key] = value;
     }
   };
+}
+
+function queryContains(out, count, index) {
+  for (let i = 0; i < count; i++) {
+    if (out[i] === index) return true;
+  }
+  return false;
 }
 
 test('DecorationPool publishes stable active-list snapshots', { concurrency: false }, () => {
@@ -84,6 +104,87 @@ test('stale Decoration facades cannot mutate recycled decoration slots', { concu
     assert.equal(currentFacade.active, true);
     assertApprox(currentFacade.alpha, 0.4);
     assertApprox(DecorationComponent.alpha[recycledIndex], 0.4);
+  } finally {
+    restore();
+  }
+});
+
+test('Decoration.queryCircle finds world spawn and loses it after despawn', { concurrency: false }, () => {
+  const restore = setupDecorationPool(4);
+  const out = new Uint16Array(8);
+
+  try {
+    const idx = DecorationPool.spawn({ x: 150, y: 150 });
+    assert.ok(idx >= 0);
+
+    let n = Decoration.queryCircle(150, 150, 10, out);
+    assert.equal(n, 1);
+    assert.equal(out[0], idx);
+
+    DecorationPool.despawn(idx);
+    n = Decoration.queryCircle(150, 150, 10, out);
+    assert.equal(n, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('parented decorations are not in the spatial hash', { concurrency: false }, () => {
+  const restore = setupDecorationPool(4);
+  const out = new Uint16Array(8);
+
+  try {
+    const idx = DecorationPool.spawn({ parent: 0, localX: 10, localY: 10, x: 200, y: 200 });
+    assert.ok(idx >= 0);
+
+    const n = Decoration.queryCircle(0, 0, 500, out);
+    assert.equal(n, 0);
+    assert.equal(DecorationSpatial.cellOf[idx], -1);
+  } finally {
+    restore();
+  }
+});
+
+test('setPosition moves decoration across cells for queryCircle', { concurrency: false }, () => {
+  const restore = setupDecorationPool(4);
+  const out = new Uint16Array(8);
+
+  try {
+    const idx = DecorationPool.spawn({ x: 50, y: 50 });
+    const deco = Decoration.get(idx);
+
+    let n = Decoration.queryCircle(50, 50, 5, out);
+    assert.equal(n, 1);
+    assert.equal(out[0], idx);
+
+    deco.setPosition(550, 550);
+    assertApprox(deco.x, 550);
+    assertApprox(deco.y, 550);
+
+    n = Decoration.queryCircle(50, 50, 5, out);
+    assert.equal(n, 0);
+
+    n = Decoration.queryCircle(550, 550, 5, out);
+    assert.equal(n, 1);
+    assert.equal(out[0], idx);
+  } finally {
+    restore();
+  }
+});
+
+test('queryCircle caps results to out.length', { concurrency: false }, () => {
+  const restore = setupDecorationPool(8);
+  const out = new Uint16Array(2);
+
+  try {
+    const a = DecorationPool.spawn({ x: 100, y: 100 });
+    const b = DecorationPool.spawn({ x: 105, y: 100 });
+    const c = DecorationPool.spawn({ x: 110, y: 100 });
+    assert.ok(a >= 0 && b >= 0 && c >= 0);
+
+    const n = Decoration.queryCircle(105, 100, 50, out);
+    assert.equal(n, 2);
+    assert.ok(queryContains(out, n, a) || queryContains(out, n, b) || queryContains(out, n, c));
   } finally {
     restore();
   }

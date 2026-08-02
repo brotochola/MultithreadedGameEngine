@@ -211,6 +211,23 @@ function buildSceneWorkerInitData(scene, sharedBuffers, scriptsToLoad) {
     visibleDecorationsData: scene.buffers.visibleDecorationsData || null,
     attachedDecorationCount: scene.buffers.attachedDecorationCount || null,
     attachedDecorationIndices: scene.buffers.attachedDecorationIndices || null,
+    decorationSpatialHead: scene.buffers.decorationSpatialHead || null,
+    decorationSpatialNext: scene.buffers.decorationSpatialNext || null,
+    decorationSpatialPrev: scene.buffers.decorationSpatialPrev || null,
+    decorationSpatialCellOf: scene.buffers.decorationSpatialCellOf || null,
+    decorationSpatialLock: scene.buffers.decorationSpatialLock || null,
+    decorationSpatialMeta: scene.buffers.decorationSpatialHead
+      ? {
+          cellSize: scene.config.spatial?.cellSize || scene.config.cellSize,
+          gridWidth: Math.ceil(
+            scene.config.worldWidth / (scene.config.spatial?.cellSize || scene.config.cellSize)
+          ),
+          gridHeight: Math.ceil(
+            scene.config.worldHeight / (scene.config.spatial?.cellSize || scene.config.cellSize)
+          ),
+          maxDecorations: scene.config.decoration.maxDecorations,
+        }
+      : null,
     maxBullets: scene.config.bullet.maxBullets,
     bulletFreeList: scene.buffers.bulletFreeList || null,
     bulletFreeListTop: scene.buffers.bulletFreeListTop || null,

@@ -3,6 +3,8 @@
 import { DecorationComponent } from '../components/DecorationComponent.js';
 import { ensureDecorationFacade, evictDecorationFacade } from './decorationFacades.js';
 import { DECORATION_INNER_Z_MIN, DECORATION_INNER_Z_MAX } from './ConfigDefaults.js';
+import { DecorationSpatial } from './DecorationSpatial.js';
+import { DECORATION_NO_PARENT } from './DecorationPool.js';
 
 export class Decoration {
   /**
@@ -30,6 +32,18 @@ export class Decoration {
     evictDecorationFacade(id);
   }
 
+  /**
+   * Query world-owned decorations in a circle (parented decorations are never indexed).
+   * @param {number} x
+   * @param {number} y
+   * @param {number} radius
+   * @param {Uint16Array} out - Preallocated pool-index buffer
+   * @returns {number} Count written (capped by out.length)
+   */
+  static queryCircle(x, y, radius, out) {
+    return DecorationSpatial.queryCircle(x, y, radius, out);
+  }
+
   _isCurrent() {
     return (
       DecorationComponent.active[this.index] !== 0 &&
@@ -37,8 +51,42 @@ export class Decoration {
     );
   }
 
+  _isWorldOwned() {
+    return (
+      this._isCurrent() &&
+      DecorationComponent.parentEntityIndex[this.index] === DECORATION_NO_PARENT
+    );
+  }
+
   get active() {
     return this._isCurrent();
+  }
+
+  get x() {
+    return this._isCurrent() ? DecorationComponent.x[this.index] : 0;
+  }
+  set x(v) {
+    if (!this._isWorldOwned()) return;
+    this.setPosition(v, DecorationComponent.y[this.index]);
+  }
+
+  get y() {
+    return this._isCurrent() ? DecorationComponent.y[this.index] : 0;
+  }
+  set y(v) {
+    if (!this._isWorldOwned()) return;
+    this.setPosition(DecorationComponent.x[this.index], v);
+  }
+
+  /**
+   * Move a world-owned decoration and update the spatial hash.
+   * No-op for inactive or parented decorations.
+   * @param {number} x
+   * @param {number} y
+   */
+  setPosition(x, y) {
+    if (!this._isWorldOwned()) return;
+    DecorationSpatial.move(this.index, x, y);
   }
 
   get scaleX() {
@@ -123,6 +171,34 @@ export class Decoration {
   }
   set offsetY(v) {
     if (this._isCurrent()) DecorationComponent.offsetY[this.index] = v;
+  }
+
+  get sway() {
+    return this._isCurrent() ? DecorationComponent.sway[this.index] !== 0 : false;
+  }
+  set sway(v) {
+    if (this._isCurrent()) DecorationComponent.sway[this.index] = v ? 1 : 0;
+  }
+
+  get swayAmplitude() {
+    return this._isCurrent() ? DecorationComponent.swayAmplitude[this.index] : 0;
+  }
+  set swayAmplitude(v) {
+    if (this._isCurrent()) DecorationComponent.swayAmplitude[this.index] = v;
+  }
+
+  get swayFrequency() {
+    return this._isCurrent() ? DecorationComponent.swayFrequency[this.index] : 0;
+  }
+  set swayFrequency(v) {
+    if (this._isCurrent()) DecorationComponent.swayFrequency[this.index] = v;
+  }
+
+  get rotation() {
+    return this._isCurrent() ? DecorationComponent.rotation[this.index] : 0;
+  }
+  set rotation(v) {
+    if (this._isCurrent()) DecorationComponent.rotation[this.index] = v;
   }
 
   get baseRotation() {

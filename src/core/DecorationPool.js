@@ -15,6 +15,7 @@ import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { SharedAtomicPool } from './SharedAtomicPool.js';
 import { randomRange } from './utils.js';
 import { evictDecorationFacade, clearAllDecorationFacades } from './decorationFacades.js';
+import { DecorationSpatial } from './DecorationSpatial.js';
 import {
   DECORATION_Y_SORT_SCALE,
   DECORATION_INNER_Z_MIN,
@@ -214,6 +215,7 @@ export class DecorationPool extends SharedAtomicPool {
     if (DecorationComponent.active[index] === 0) {
       return false;
     }
+    DecorationSpatial.remove(index);
     evictDecorationFacade(index);
     DecorationComponent.active[index] = 0;
     DecorationComponent.isItOnScreen[index] = 0;
@@ -391,6 +393,11 @@ export class DecorationPool extends SharedAtomicPool {
       }
     }
 
+    // World-owned only — parented decorations are resolved every frame and stay out of the hash
+    if (!hasParent) {
+      DecorationSpatial.insert(i);
+    }
+
     return i;
   }
 
@@ -494,6 +501,8 @@ export class DecorationPool extends SharedAtomicPool {
       }
     }
 
+    DecorationSpatial.clear();
+
     // Reset free list with interleaved ordering (reduces cache contention in multi-worker scenarios)
     this.resetFreeListInterleaved();
   }
@@ -523,5 +532,6 @@ export class DecorationPool extends SharedAtomicPool {
     this._attachedDecorationIndices = null;
     this._attachmentEntityCount = 0;
     this._maxAttachedPerEntity = 0;
+    DecorationSpatial.reset();
   }
 }

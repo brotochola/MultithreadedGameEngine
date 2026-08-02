@@ -2553,7 +2553,15 @@ export declare class Decoration {
   static get(id: number): Decoration;
   static ensureForParented(id: number): Decoration;
   static evictFacade(id: number): void;
+  /** World-owned decorations only; fills out with pool indices; returns count. */
+  static queryCircle(x: number, y: number, radius: number, out: Uint16Array): number;
   get active(): boolean;
+  get x(): number;
+  set x(v: number);
+  get y(): number;
+  set y(v: number);
+  /** Move world-owned decoration and update spatial hash. */
+  setPosition(x: number, y: number): void;
   get scaleX(): number;
   set scaleX(v: number);
   get scaleY(): number;
@@ -2576,8 +2584,46 @@ export declare class Decoration {
   set offsetX(v: number);
   get offsetY(): number;
   set offsetY(v: number);
+  get sway(): boolean;
+  set sway(v: boolean);
+  get swayAmplitude(): number;
+  set swayAmplitude(v: number);
+  get swayFrequency(): number;
+  set swayFrequency(v: number);
   get baseRotation(): number;
   set baseRotation(v: number);
+}
+
+export declare class DecorationSpatial {
+  static cellSize: number;
+  static invCellSize: number;
+  static gridWidth: number;
+  static gridHeight: number;
+  static totalCells: number;
+  static maxDecorations: number;
+  static initialize(
+    buffers: {
+      head: SharedArrayBuffer;
+      next: SharedArrayBuffer;
+      prev: SharedArrayBuffer;
+      cellOf: SharedArrayBuffer;
+      lock?: SharedArrayBuffer | null;
+    },
+    metadata: {
+      cellSize: number;
+      gridWidth: number;
+      gridHeight: number;
+      maxDecorations: number;
+    },
+    fillEmpty?: boolean,
+  ): void;
+  static reset(): void;
+  static clear(): void;
+  static getCellIndex(x: number, y: number): number;
+  static insert(decoIdx: number): void;
+  static remove(decoIdx: number): void;
+  static move(decoIdx: number, x: number, y: number): void;
+  static queryCircle(x: number, y: number, radius: number, out: Uint16Array): number;
 }
 
 export declare class BulletPool extends SharedAtomicPool {
@@ -2762,6 +2808,7 @@ export interface WeedNamespace {
   DecorationPool: typeof DecorationPool;
   Decoration: typeof Decoration;
   DecorationComponent: typeof DecorationComponent;
+  DecorationSpatial: typeof DecorationSpatial;
   BulletPool: typeof BulletPool;
   BulletComponent: typeof BulletComponent;
   Joint: typeof Joint;

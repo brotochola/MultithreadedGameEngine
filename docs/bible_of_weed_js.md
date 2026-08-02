@@ -144,6 +144,26 @@ Scene config: `decoration.maxAttachedDecorationsPerEntity` caps attachments per 
 
 `Decoration.get(poolIndex)` returns a lightweight facade for the current pool slot generation. If you keep a facade after its decoration despawns and that pool index is reused, the old facade becomes inactive and will not mutate the new decoration. Store pool indices for long-lived references, and call `Decoration.get(index)` again when you need the current facade.
 
+### World decoration spatial query
+
+When `decoration.maxDecorations > 0`, world-owned decorations (no parent) are indexed in a shared spatial hash (same `spatial.cellSize` as the entity grid). Parented / `addDecoration` props are **not** indexed.
+
+```javascript
+const out = new Uint16Array(64);
+const n = Decoration.queryCircle(worldX, worldY, 100, out);
+for (let i = 0; i < n; i++) {
+  const deco = Decoration.get(out[i]);
+  // ...
+}
+
+// Move only via facade (keeps the hash correct) — do not write DecorationComponent.x/y directly
+const d = Decoration.get(poolIndex);
+d.setPosition(400, 300);
+// or: d.x = 400; d.y = 300;
+```
+
+Positions outside world bounds are not inserted (same OOB rule as entity `Grid`).
+
 ```javascript
 onSpawned() {
   this.addDecoration('_whiteCircle', 0, -16, 0.25, 0.25, -32, { alpha: 0.35 }); // negative innerZ: behind parent sprite

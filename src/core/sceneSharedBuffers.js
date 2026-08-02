@@ -8,6 +8,7 @@ import { ParticleComponent } from '../components/ParticleComponent.js';
 import { DecorationComponent } from '../components/DecorationComponent.js';
 import { BulletComponent } from '../components/BulletComponent.js';
 import { DecorationPool } from './DecorationPool.js';
+import { DecorationSpatial } from './DecorationSpatial.js';
 import { BulletPool } from './BulletPool.js';
 import { ShadowCaster } from '../components/ShadowCaster.js';
 import { FlashComponent } from '../components/FlashComponent.js';
@@ -198,6 +199,7 @@ function initializeDecorationBuffers(scene) {
   const maxDecorations = config.decoration.maxDecorations;
 
   DecorationPool.reset();
+  DecorationSpatial.reset();
 
   if (maxDecorations <= 0) return;
 
@@ -220,6 +222,27 @@ function initializeDecorationBuffers(scene) {
   createCompactUint16ListPair(buffers, 'activeDecorationsData', 'visibleDecorationsData', maxDecorations);
   buffers.activeDecorationsLock = new SharedArrayBuffer(4);
   DecorationPool.initializeActiveList(buffers.activeDecorationsData, buffers.activeDecorationsLock);
+
+  const cellSize = config.spatial?.cellSize || config.cellSize;
+  const gridWidth = Math.ceil(config.worldWidth / cellSize);
+  const gridHeight = Math.ceil(config.worldHeight / cellSize);
+  const totalCells = gridWidth * gridHeight;
+  buffers.decorationSpatialHead = new SharedArrayBuffer(totalCells * Uint16Array.BYTES_PER_ELEMENT);
+  buffers.decorationSpatialNext = new SharedArrayBuffer(maxDecorations * Uint16Array.BYTES_PER_ELEMENT);
+  buffers.decorationSpatialPrev = new SharedArrayBuffer(maxDecorations * Uint16Array.BYTES_PER_ELEMENT);
+  buffers.decorationSpatialCellOf = new SharedArrayBuffer(maxDecorations * Int32Array.BYTES_PER_ELEMENT);
+  buffers.decorationSpatialLock = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+  DecorationSpatial.initialize(
+    {
+      head: buffers.decorationSpatialHead,
+      next: buffers.decorationSpatialNext,
+      prev: buffers.decorationSpatialPrev,
+      cellOf: buffers.decorationSpatialCellOf,
+      lock: buffers.decorationSpatialLock,
+    },
+    { cellSize, gridWidth, gridHeight, maxDecorations },
+    true
+  );
 
   const maxAttached = config.decoration.maxAttachedDecorationsPerEntity;
   if (totalEntityCount > 0 && maxAttached > 0) {
