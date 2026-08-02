@@ -1056,6 +1056,41 @@ class LogicWorker extends AbstractWorker {
         break;
       }
 
+      case 'restoreSave': {
+        if (this.workerIndex !== 0) break;
+
+        const { serializableClassNames = [], entities = [] } = data;
+
+        for (let i = 0; i < serializableClassNames.length; i++) {
+          const EntityClass = self[serializableClassNames[i]];
+          if (EntityClass) GameObject.despawnAll(EntityClass);
+        }
+
+        for (let i = 0; i < entities.length; i++) {
+          const rec = entities[i];
+          const EntityClass = self[rec.typeName];
+          if (!EntityClass) {
+            console.error(
+              `LOGIC WORKER ${this.workerIndex}: restoreSave missing class ${rec.typeName}`
+            );
+            continue;
+          }
+          const fields = rec.components?.Transform?.fields || {};
+          const spawnConfig = {
+            x: fields.x ?? 0,
+            y: fields.y ?? 0,
+            _saveRestore: rec.components,
+          };
+          const instance = GameObject.spawn(EntityClass, spawnConfig);
+          if (!instance) {
+            console.warn(
+              `LOGIC WORKER ${this.workerIndex}: restoreSave spawn failed for ${rec.typeName}`
+            );
+          }
+        }
+        break;
+      }
+
       case 'clearAll': {
         // Only worker 0 handles clearAll to keep freeList synchronized with spawn
         if (this.workerIndex !== 0) {

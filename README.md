@@ -138,7 +138,11 @@ class ZombieScene extends Scene {
   static entities = [[Zombie, 20000]];
   static queries = [[RigidBody, Collider]];
 
-  create() {
+  // Always runs (new game and save load) — static world
+  create() {}
+
+  // New game only — serializable / dynamic entities
+  createNewGame() {
     for (let i = 0; i < 20000; i++) {
       this.spawnEntity(Zombie, {
         x: Math.random() * 5000,
@@ -146,6 +150,9 @@ class ZombieScene extends Scene {
       });
     }
   }
+
+  // After a save restore (optional)
+  onLoadGame(payload) {}
 }
 
 const game = new WEED.GameEngine({ debug: true });
@@ -176,6 +183,7 @@ WeedJS is intended to be a full 2D game runtime, not just a renderer. The major 
 - **Input and camera**: keyboard, mouse, edge-triggered mouse events, camera follow, zoom, and shared input/camera buffers are available inside workers.
 - **FSM helpers**: `FSM` and `FSMState` support behavior and animation state machines without imposing a specific gameplay architecture.
 - **Debugging tools**: the debug UI includes worker FPS stats, performance panels, scene/entity/decorations/layers/navigation panels, selected entity inspection, visual aids, physics debug rendering, navigation debug rendering, raycast debug drawing, and configurable debug flags.
+- **Save games**: sparse snapshots of `static serializable` active entities (IndexedDB + DebugUI **Saves** tab). Scene hooks: `create()` (always), `createNewGame()` (fresh start), `onLoadGame(payload)` (after restore). See [`docs/SAVE_GAME.md`](docs/SAVE_GAME.md).
 
 Everything performance-critical is aggressively optimized: pooled allocation, dense typed-array component storage, `SharedArrayBuffer` data paths, single-writer regions, preallocated scratch buffers, compact active/visible lists, double-buffered render queues, worker-side broadphase/physics/render preparation, and benchmark scripts for measuring worker throughput.
 

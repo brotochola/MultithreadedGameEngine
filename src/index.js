@@ -32,6 +32,19 @@ export { AdobeAnimRegistry } from './core/AdobeAnimRegistry.js';
 export { BigAtlasInspector } from './core/BigAtlasInspector.js';
 export { SoundManager } from './core/SoundManager.js';
 export * from './core/utils.js';
+export {
+  SaveStore,
+  saveGame,
+  loadGame,
+  buildSavePayload,
+  encodeSave,
+  decodeSave,
+  collectSerializableEntities,
+  isEntityClassSerializable,
+  shouldSaveEntity,
+  applyEntitySaveRestore,
+} from './core/SaveGame.js';
+export * as SaveGame from './core/SaveGame.js';
 
 // ============================================================================
 // COMPONENTS
@@ -162,6 +175,8 @@ import { SpriteSheetRegistry } from './core/SpriteSheetRegistry.js';
 import { AdobeAnimRegistry } from './core/AdobeAnimRegistry.js';
 import { BigAtlasInspector } from './core/BigAtlasInspector.js';
 import { SoundManager } from './core/SoundManager.js';
+import * as SaveGameNS from './core/SaveGame.js';
+import { SaveStore } from './core/SaveStore.js';
 import {
   containerRadius,
   distanceSq2D,
@@ -256,6 +271,8 @@ const WEED = Object.freeze({
   AdobeAnimRegistry,
   BigAtlasInspector,
   SoundManager,
+  SaveGame: SaveGameNS,
+  SaveStore,
 
   // Components
   Transform,

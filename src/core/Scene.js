@@ -904,8 +904,18 @@ class Scene {
     await this.preload();
 
     // LIFECYCLE PHASE 2: create()
-    // Spawn entities and set up the game world.
+    // Static / always-on world setup (runs for new game AND save load).
     await this.create();
+
+    // LIFECYCLE PHASE 2b: new game vs save restore
+    if (this._restorePayload) {
+      const payload = this._restorePayload;
+      const { applySavePayloadToScene } = await import('./SaveGame.js');
+      applySavePayloadToScene(this, payload);
+      await this.onLoadGame(payload);
+    } else {
+      await this.createNewGame();
+    }
 
     // LIFECYCLE PHASE 3: Start everything.
     // Main thread loop first (for input handling), then worker game loops.
@@ -1016,10 +1026,31 @@ class Scene {
 
   /**
    * Called after preload(), right before workers start their game loops.
-   * Use this for spawning entities and game-world setup.
+   * Runs for **both** new games and save loads.
+   * Use for static world setup that is not restored from a save
+   * (tile props, lights, decorations, non-serializable entities).
    */
   create() {
-    // Override this to spawn initial entities
+    // Override this to spawn static / always-present world content
+  }
+
+  /**
+   * Called after create() only when starting a **new game** (no restore payload).
+   * Spawn serializable / dynamic entities here (soldiers, civilians, player, …).
+   * Skipped entirely when loading a save — those entities come from the save instead.
+   */
+  createNewGame() {
+    // Override for new-game-only spawns
+  }
+
+  /**
+   * Called after create() and after the engine has applied a save payload
+   * (serializable entities restored, camera/sun applied).
+   * Override for load-only hooks (UI, quests, follow-up spawns).
+   * @param {object} payload - Decoded save payload
+   */
+  onLoadGame(payload) {
+    // Override for post-load scene logic
   }
 
   /**
@@ -1321,10 +1352,10 @@ class Scene {
 
     const flowfieldsPromise = imageUrls?.flowfields
       ? NavGrid.loadStaticFlowfieldsFromJSON(
-          imageUrls.flowfields,
-          this.config.worldWidth,
-          this.config.worldHeight
-        )
+        imageUrls.flowfields,
+        this.config.worldWidth,
+        this.config.worldHeight
+      )
       : Promise.resolve();
 
     const audioPromise = this.preloadAudios(
@@ -2030,6 +2061,24 @@ class Scene {
     allWorkers.forEach((worker) => {
       if (worker) worker.postMessage({ msg: 'resize', width, height });
     });
+  }
+
+  /**
+   * Sparse save of active serializable entities to IndexedDB.
+   * @param {string} [slotId]
+   */
+  async saveGame(slotId) {
+    const { saveGame } = await import('./SaveGame.js');
+    return saveGame(this, slotId);
+  }
+
+  /**
+   * Load a save slot by remounting this scene class with restore payload.
+   * @param {string} slotId
+   */
+  async loadGame(slotId) {
+    const { loadGame } = await import('./SaveGame.js');
+    return loadGame(this.game, this.constructor, slotId);
   }
 
   spawnEntity(EntityClassOrName, spawnConfig = {}) {

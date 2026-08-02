@@ -352,32 +352,25 @@ export class PredatorScene extends WEED.Scene {
   }
 
   create() {
-    // Spawn initial entities
-    // console.log('🎬 PredatorScene: Spawning entities...');
-
-    // Spawn player first
-    // this.spawnPlayer();
-
     this.cloudsLayer = Layer.get('clouds');
 
-    this.spawnLights(100);
-    // this.spawnHouses(this.numberOfHouses);
-
-    this.spawnTrash(100);
-    // this.spawnEntity(PreySpawner, {});
-
-    this.spawnDestination();
     this.spawnEntity(CameraController);
-    // this.spawnTrees(this.numberOfTrees);
-
     this.spawnGrass(1000);
-    this.spawnCivilians(10000);
-    this.spawnBarrels(this.numberOfBarrels);
-    // this.spawnRocks(this.numberOfRocks);
 
-    this.spawnMySoldiers(6000);
-    // this.spawnClouds(5);
+  }
+
+  onLoadGame(payload) {
+    console.log('onLoadGame', payload);
+  }
+
+  createNewGame() {
+    this.spawnBarrels(this.numberOfBarrels);
     this.spawnRocksTreesAndHouses();
+    this.spawnLights(100);
+    this.spawnTrash(100);
+    this.spawnCivilians(10000);
+    this.spawnMySoldiers(6000);
+    this.spawnDestination();
   }
 
   spawnTrash(count) {

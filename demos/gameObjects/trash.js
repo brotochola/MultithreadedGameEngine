@@ -20,7 +20,7 @@ const { ShapeType } = enums;
 export class Trash extends Lootable {
     static scriptUrl = import.meta.url;
     static components = [RigidBody, Collider, SpriteRenderer, ShadowCaster, LootableComponent];
-
+    static serializable = true;
     static resistance = 0.5
 
     setup() {

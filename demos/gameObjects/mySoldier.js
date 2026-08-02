@@ -13,6 +13,9 @@ const { Transform, Keyboard } = WEED;
 export class MySoldier extends Person {
   static scriptUrl = import.meta.url;
 
+  /** Opt into sparse SaveGame (active instances only). */
+  static serializable = true;
+
   static tickInterval = 4; // Tick every 4 frames (staggered across entities)
 
   // Static properties for soldier behavior

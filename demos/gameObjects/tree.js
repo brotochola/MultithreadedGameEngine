@@ -15,7 +15,7 @@ const { ShapeType } = enums;
 
 export class Tree extends GameObject {
   static scriptUrl = import.meta.url;
-
+  static serializable = true;
   static components = [Collider, SpriteRenderer, ShadowCaster, RigidBody];
 
   setup() {

@@ -7,6 +7,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 | File                                                   | Use it for                                                                                                                           |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | [`bible_of_weed_js.md`](./bible_of_weed_js.md)         | Practical quick reference: scene contract, entity lifecycle, tags, collision filtering, layer usage, audio, and common engine limits |
+| [`SAVE_GAME.md`](./SAVE_GAME.md)                       | Sparse save/load, `create` / `createNewGame` / `onLoadGame`, IndexedDB slots, DebugUI Saves tab                                    |
 | [`WORKERS_ARCHITECTURE.md`](./WORKERS_ARCHITECTURE.md) | Worker roles, data flow, scaling rules, and message protocols                                                                        |
 | [`MEMORY_STRUCTURE.md`](./MEMORY_STRUCTURE.md)         | SharedArrayBuffer layouts, ownership, and writer/reader map                                                                          |
 | [`ENTITY_TEMPLATE.js`](./ENTITY_TEMPLATE.js)           | Minimal entity starter with worker-safe imports and lifecycle hooks                                                                  |

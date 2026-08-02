@@ -194,9 +194,10 @@ class GameEngine {
    * Load and initialize a new scene
    * Destroys the current scene if one exists
    * @param {Class} SceneClass - Scene class to instantiate
+   * @param {{ restorePayload?: object, restoreSlot?: string }} [options]
    * @returns {boolean} - true if scene change accepted, false if busy
    */
-  async loadScene(SceneClass) {
+  async loadScene(SceneClass, options = {}) {
     // Reject if already transitioning
     if (this.state === GameEngine.states.TRANSITIONING) {
       console.warn(
@@ -209,6 +210,14 @@ class GameEngine {
     this.state = GameEngine.states.TRANSITIONING;
 
     try {
+      let restorePayload = options.restorePayload || null;
+      if (!restorePayload && options.restoreSlot) {
+        const { SaveStore, decodeSave } = await import('./SaveGame.js');
+        const blob = await SaveStore.get(options.restoreSlot);
+        if (!blob) throw new Error(`Save slot not found: ${options.restoreSlot}`);
+        restorePayload = await decodeSave(blob);
+      }
+
       // Detach debug UI from current scene
       if (this.debugUI && this.currentScene) {
         this.debugUI.detach();
@@ -230,6 +239,9 @@ class GameEngine {
       // Create and initialize new scene
       console.log(`📥 Loading scene: ${SceneClass.name}`);
       this.currentScene = new SceneClass(this);
+      if (restorePayload) {
+        this.currentScene._restorePayload = restorePayload;
+      }
 
       // Engine owns canvas dimensions — inject into scene config before init
       // so workers receive the correct values during initialization

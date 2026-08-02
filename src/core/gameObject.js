@@ -21,6 +21,7 @@ import {
   pushFreeIndex,
   getFreeListCount,
 } from './atomicFreeList.js';
+import { applyEntitySaveRestore } from './entitySaveSnapshot.js';
 import {
   addToActiveEntities,
   removeFromActiveEntities,
@@ -2092,6 +2093,11 @@ export class GameObject {
       if (ComponentClass && ComponentClass.isFSM) {
         ComponentClass.initializeEntity(i, instance);
       }
+    }
+
+    // Save-game restore: overwrite SoA (+ pose) after defaults / onSpawned / FSM init
+    if (spawnConfig && spawnConfig._saveRestore) {
+      applyEntitySaveRestore(i, EntityClass, spawnConfig._saveRestore);
     }
 
     // Initialize tick decimation countdown (if staggeredUpdates enabled)

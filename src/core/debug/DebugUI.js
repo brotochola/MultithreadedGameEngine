@@ -19,6 +19,7 @@ import { DecorationsPanel } from './panels/DecorationsPanel.js';
 import { LayersPanel } from './panels/LayersPanel.js';
 import { NavigationPanel } from './panels/NavigationPanel.js';
 import { MemoryPanel } from './panels/MemoryPanel.js';
+import { SavesPanel } from './panels/SavesPanel.js';
 
 /**
  * DebugUI — Self-contained debug overlay managed by GameEngine.
@@ -54,6 +55,7 @@ export class DebugUI {
       scene: new ScenePanel(this),
       performance: new PerformancePanel(this),
       memory: new MemoryPanel(this),
+      saves: new SavesPanel(this),
       visual: new VisualAidsPanel(this),
       entities: new EntitiesPanel(this),
       decorations: new DecorationsPanel(this),
@@ -198,6 +200,7 @@ export class DebugUI {
       ['🎬', 'Scene', 'scene'],
       ['⚡', 'Performance', 'performance'],
       ['💾', 'Memory', 'memory'],
+      ['💿', 'Saves', 'saves'],
       ['👁', 'Visual', 'visual'],
       ['📦', 'Entities', 'entities'],
       ['🌿', 'Decorations', 'decorations'],

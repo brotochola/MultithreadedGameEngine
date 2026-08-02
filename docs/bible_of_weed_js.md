@@ -51,6 +51,39 @@ class MyScene extends WEED.Scene {
 }
 ```
 
+### Scene boot lifecycle
+
+After workers are ready, `Scene.init()` calls hooks in this order (workers still paused until the end):
+
+1. **`preload()`** — infrastructure (tilemap background, camera prep, nav). Messages reach paused workers before frame 1.
+2. **`create()`** — always runs (new game **and** save load). Put static world here: props, lights, non-serializable entities, decorations.
+3. Then **exactly one** of:
+   - **`createNewGame()`** — new game only. Spawn `static serializable = true` entities (player, NPCs, …).
+   - **`onLoadGame(payload)`** — after the engine restores a save (serializable entities + camera/sun). Load-only hooks go here.
+4. Main loop + worker `start`.
+
+```javascript
+class MyScene extends WEED.Scene {
+  async preload() {
+    await WEED.Layer.BACKGROUND.setTilemapBackground('myTilemap', { scale: 1 });
+  }
+
+  create() {
+    this.spawnEntity(Tree, { x: 100, y: 100 }); // static — always
+  }
+
+  createNewGame() {
+    this.spawnEntity(MySoldier, { x: 200, y: 200 }); // skipped when loading a save
+  }
+
+  onLoadGame(payload) {
+    // Optional: UI, quests, follow-up after restore
+  }
+}
+```
+
+Do **not** branch on `_restorePayload` inside `create()`. Use `createNewGame` / `onLoadGame` instead. Full save API: [`docs/SAVE_GAME.md`](./SAVE_GAME.md).
+
 ### Prebaked bigAtlas
 
 At boot the engine packs `textures` + `spritesheets` into one `bigAtlas` (proxy sheets keep names like `civil1` + `"hurt"`). To skip runtime packing, bake once and point the scene at the output:
