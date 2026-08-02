@@ -75,7 +75,7 @@ export class PredatorScene extends WEED.Scene {
       cellSize: 128,
       maxNeighbors: 1024,
       maxEntitiesPerCell: 128, //this is very important!!
-      numberOfSpatialWorkers: 2, // Multiple workers for parallel neighbor detection
+      numberOfSpatialWorkers: 3, // Multiple workers for parallel neighbor detection
       noLimitFPS: false,
     },
 
@@ -88,7 +88,7 @@ export class PredatorScene extends WEED.Scene {
     },
 
     decoration: {
-      maxDecorations: 40000, // Non-interactive decorations like grass
+      maxDecorations: 20000, // Non-interactive decorations like grass
       maxAttachedDecorationsPerEntity: 32, // GameObject.addDecoration slots (Uint8 max 255)
     },
 
@@ -103,7 +103,7 @@ export class PredatorScene extends WEED.Scene {
     // Logic configuration
     logic: {
       noLimitFPS: false,
-      numberOfLogicWorkers: 2,
+      numberOfLogicWorkers: 3,
       staggeredUpdates: true, // Enable tick decimation (entities tick based on their tickInterval)
     },
 
@@ -355,7 +355,7 @@ export class PredatorScene extends WEED.Scene {
     this.cloudsLayer = Layer.get('clouds');
 
     this.spawnEntity(CameraController);
-    this.spawnGrass(10000);
+    this.spawnGrass(20000);
 
   }
 
@@ -620,7 +620,7 @@ export class PredatorScene extends WEED.Scene {
         alpha: 0.7 + this.rng() * 0.3,
         anchorX: 0.5,
         anchorY: 1.0, // Bottom anchor for grass
-        // sway: true,
+        sway: true,
         swayAmplitude: 0.05 + Math.random() * 0.03,
         swayFrequency: 1 + Math.random() * 2,
       });

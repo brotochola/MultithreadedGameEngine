@@ -5,6 +5,9 @@ import { ensureDecorationFacade, evictDecorationFacade } from './decorationFacad
 import { DECORATION_INNER_Z_MIN, DECORATION_INNER_Z_MAX } from './ConfigDefaults.js';
 import { DecorationSpatial } from './DecorationSpatial.js';
 import { DECORATION_NO_PARENT } from './DecorationPool.js';
+import { SWAY_OFF, SWAY_LOOP, SWAY_IMPULSE } from './decorationSway.js';
+
+export { SWAY_OFF, SWAY_LOOP, SWAY_IMPULSE } from './decorationSway.js';
 
 export class Decoration {
   /**
@@ -177,7 +180,9 @@ export class Decoration {
     return this._isCurrent() ? DecorationComponent.sway[this.index] !== 0 : false;
   }
   set sway(v) {
-    if (this._isCurrent()) DecorationComponent.sway[this.index] = v ? 1 : 0;
+    if (!this._isCurrent()) return;
+    DecorationComponent.sway[this.index] = v ? SWAY_LOOP : SWAY_OFF;
+    if (!v) DecorationComponent.swayPhase[this.index] = 0;
   }
 
   get swayAmplitude() {
@@ -192,6 +197,24 @@ export class Decoration {
   }
   set swayFrequency(v) {
     if (this._isCurrent()) DecorationComponent.swayFrequency[this.index] = v;
+  }
+
+  /**
+   * One-shot half-sine sway (phase 0→π) then settle at baseRotation.
+   * Same angular rate as continuous: dPhase/dt_ms = 0.002 * frequency.
+   * No-op if already looping or mid-impulse.
+   * @param {number} amplitude - Radians
+   * @param {number} frequency - Speed multiplier (same as continuous swayFrequency)
+   */
+  impulseSway(amplitude, frequency) {
+    if (!this._isCurrent()) return;
+    const i = this.index;
+    if (DecorationComponent.sway[i] !== SWAY_OFF) return;
+
+    DecorationComponent.sway[i] = SWAY_IMPULSE;
+    DecorationComponent.swayAmplitude[i] = amplitude;
+    DecorationComponent.swayFrequency[i] = frequency < 0 ? -frequency : frequency;
+    DecorationComponent.swayPhase[i] = 0;
   }
 
   get rotation() {

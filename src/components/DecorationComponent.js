@@ -33,9 +33,11 @@ export class DecorationComponent extends Component {
     isItOnScreen: Uint8Array, // 0 = not on screen, 1 = on screen (set by culling)
 
     // === Sway Animation ===
-    sway: Uint8Array, // 0 = no sway, 1 = sway enabled
+    // sway: 0 = off, 1 = continuous loop, 2 = one-shot impulse (0→π then clears)
+    sway: Uint8Array,
     swayAmplitude: Float32Array, // Rotation amplitude in radians (e.g., 0.025 ≈ 1.4°)
     swayFrequency: Float32Array, // Speed multiplier (1.0 = normal, 0.5 = slow, 2.0 = fast)
+    swayPhase: Float32Array, // Impulse progress in radians [0, π); unused for loop
 
     // === Layer Routing ===
     layerId: Uint8Array, // 0 = default ENTITIES layer, non-zero = custom layer id

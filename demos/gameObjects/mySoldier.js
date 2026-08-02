@@ -8,7 +8,7 @@ import { SoldierBehaviorFSM } from '../fsm/SoldierBehaviorFSM.js';
 import { PersonAnimationFSM } from '../fsm/PersonAnimationFSM.js';
 import { PersonComponent } from '../components/personComponent.js';
 
-const { Transform, Keyboard } = WEED;
+const { Transform, Keyboard, Decoration } = WEED;
 
 export class MySoldier extends Person {
   static scriptUrl = import.meta.url;
@@ -34,6 +34,7 @@ export class MySoldier extends Person {
   static resistance = 0.6;
 
   static components = [...Person.components, SoldierBehaviorFSM];
+  outQueryDecorationIndices = new Uint16Array(64);
 
   onSpawned(spawnConfig = {}) {
     // Set spritesheet and animation before super.onSpawned()
@@ -63,6 +64,29 @@ export class MySoldier extends Person {
     if (PersonComponent.dead[this.index] === 1) return;
 
     this.soldierBehaviorFSM.tick(dtRatio, this);
+
+    // this.swayGrassAround()
+  }
+
+  swayGrassAround() {
+    //this is heavy for 10k soldiers!
+    if (Math.random() > 0.9) return
+    this.countOfDecorationsHit = Decoration.queryCircle(
+      this.x,
+      this.y,
+      30,
+      this.outQueryDecorationIndices
+    );
+
+    for (let i = 0; i < this.countOfDecorationsHit; i++) {
+      const index = this.outQueryDecorationIndices[i];
+      const amplitude = this.vx > 0.5 ? Math.random() * 0.5 : Math.random() * -0.5;
+      const frequency = Math.random() * 2 + 1
+      const deco = Decoration.get(index);
+      if (!deco || !deco.active) continue
+      deco.impulseSway(amplitude, frequency);
+    }
+
   }
 
   startFollowingDestination() {

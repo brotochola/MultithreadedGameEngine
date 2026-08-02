@@ -32,6 +32,14 @@ export {
 /** Uint16 sentinel: decoration not parented to any entity (entity index 0 is valid) */
 export const DECORATION_NO_PARENT = 0xffff;
 
+export {
+  SWAY_OFF,
+  SWAY_LOOP,
+  SWAY_IMPULSE,
+  SWAY_ANGLE_PER_MS,
+  advanceImpulsePhase,
+} from './decorationSway.js';
+
 export class DecorationPool extends SharedAtomicPool {
   // Pool name for logging (used by base class)
   static poolName = 'DecorationPool';
@@ -371,6 +379,7 @@ export class DecorationPool extends SharedAtomicPool {
     sway[i] = config.sway ? 1 : 0;
     swayAmplitude[i] = config.swayAmplitude ?? 0.025;
     swayFrequency[i] = config.swayFrequency ?? 1.0;
+    DecorationComponent.swayPhase[i] = 0;
 
     // Layer routing: 0 = default ENTITIES layer
     DecorationComponent.layerId[i] = config.layerId ?? 0;

@@ -164,6 +164,8 @@ d.setPosition(400, 300);
 
 Positions outside world bounds are not inserted (same OOB rule as entity `Grid`).
 
+One-shot nudge (half sine 0→π, then settle): `Decoration.get(i).impulseSway(amplitude, frequency)` — same frequency scale as continuous sway (`dPhase/dt_ms = 0.002 * freq`). No-op if already looping or mid-impulse. Modes: `SWAY_OFF` / `SWAY_LOOP` / `SWAY_IMPULSE`.
+
 ```javascript
 onSpawned() {
   this.addDecoration('_whiteCircle', 0, -16, 0.25, 0.25, -32, { alpha: 0.35 }); // negative innerZ: behind parent sprite

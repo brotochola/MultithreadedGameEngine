@@ -5,6 +5,14 @@ import { ParticleComponent } from '../components/ParticleComponent.js';
 import { ParticleEmitter } from '../core/ParticleEmitter.js';
 import { DecorationComponent } from '../components/DecorationComponent.js';
 import { DecorationPool, DECORATION_NO_PARENT } from '../core/DecorationPool.js';
+import {
+  SWAY_LOOP,
+  SWAY_IMPULSE,
+  SWAY_OFF,
+  SWAY_ANGLE_PER_MS,
+  IMPULSE_DONE,
+  advanceImpulsePhase,
+} from '../core/decorationSway.js';
 import { BulletPool } from '../core/BulletPool.js';
 import { BulletComponent } from '../components/BulletComponent.js';
 import { Ray } from '../core/Ray.js';
@@ -604,7 +612,7 @@ class ParticleWorker extends AbstractWorker {
 
     // Parented decorations: world x/y/rotation (before culling uses x/y)
     this.refreshActiveDecorationSnapshot();
-    this.resolveAttachedDecorations();
+    this.resolveAttachedDecorations(deltaTime);
 
     // Update screen visibility for decorations (entities done in pre_render_worker)
     this.updateDecorationScreenVisibility();
@@ -630,8 +638,9 @@ class ParticleWorker extends AbstractWorker {
     // Update decoration sway (with decimation)
     this._swayFrameCounter++;
     if (this._swayFrameCounter >= this.swayDecimation) {
+      const stepDt = deltaTime * this.swayDecimation;
       this._swayFrameCounter = 0;
-      this.updateDecorationSway();
+      this.updateDecorationSway(stepDt);
     }
 
     // Process navigation requests
@@ -882,7 +891,7 @@ class ParticleWorker extends AbstractWorker {
    * Resolve world position/rotation for decorations parented to entities.
    * Runs every frame before culling. Orphan parent → despawn.
    */
-  resolveAttachedDecorations() {
+  resolveAttachedDecorations(deltaTime = 0) {
     if (!this.maxDecorations || this.maxDecorations === 0 || !DecorationComponent.active) return;
 
     const activeData = this._activeDecorationSnapshot;
@@ -903,6 +912,7 @@ class ParticleWorker extends AbstractWorker {
     const sway = DecorationComponent.sway;
     const swayAmplitude = DecorationComponent.swayAmplitude;
     const swayFrequency = DecorationComponent.swayFrequency;
+    const swayPhase = DecorationComponent.swayPhase;
     const tx = Transform.x;
     const ty = Transform.y;
     const tActive = Transform.active;
@@ -912,7 +922,7 @@ class ParticleWorker extends AbstractWorker {
     const poseY = this._poseY;
     const poseRot = this._poseRot;
 
-    const swayBaseAngle = this.accumulatedTime * 0.002;
+    const swayBaseAngle = this.accumulatedTime * SWAY_ANGLE_PER_MS;
 
     for (let idx = 0; idx < activeCount; idx++) {
       const i = activeData[idx];
@@ -943,9 +953,20 @@ class ParticleWorker extends AbstractWorker {
       }
 
       const worldBase = inherit[i] ? pr + baseRotation[i] : baseRotation[i];
-      if (sway[i]) {
+      const mode = sway[i];
+      if (mode === SWAY_LOOP) {
         rotation[i] =
           worldBase + Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
+      } else if (mode === SWAY_IMPULSE) {
+        const nextPhase = advanceImpulsePhase(swayPhase[i], deltaTime, swayFrequency[i]);
+        if (nextPhase === IMPULSE_DONE) {
+          sway[i] = SWAY_OFF;
+          swayPhase[i] = 0;
+          rotation[i] = worldBase;
+        } else {
+          swayPhase[i] = nextPhase;
+          rotation[i] = worldBase + Math.sin(nextPhase) * swayAmplitude[i];
+        }
       } else {
         rotation[i] = worldBase;
       }
@@ -1404,7 +1425,7 @@ class ParticleWorker extends AbstractWorker {
   // DECORATION SWAY
   // ========================================
 
-  updateDecorationSway() {
+  updateDecorationSway(deltaTime = 0) {
     if (!this.maxDecorations || this.maxDecorations === 0 || !DecorationComponent.active) return;
 
     const activeData = this._activeDecorationSnapshot;
@@ -1415,10 +1436,11 @@ class ParticleWorker extends AbstractWorker {
     const sway = DecorationComponent.sway;
     const swayAmplitude = DecorationComponent.swayAmplitude;
     const swayFrequency = DecorationComponent.swayFrequency;
+    const swayPhase = DecorationComponent.swayPhase;
     const rotation = DecorationComponent.rotation;
     const baseRotation = DecorationComponent.baseRotation;
 
-    const swayBaseAngle = this.accumulatedTime * 0.002;
+    const swayBaseAngle = this.accumulatedTime * SWAY_ANGLE_PER_MS;
 
     const parentEntityIndex = DecorationComponent.parentEntityIndex;
 
@@ -1428,8 +1450,20 @@ class ParticleWorker extends AbstractWorker {
       if (!active[i]) continue;
       if (parentEntityIndex[i] !== DECORATION_NO_PARENT) continue;
 
-      if (sway[i]) {
-        rotation[i] = baseRotation[i] + Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
+      const mode = sway[i];
+      if (mode === SWAY_LOOP) {
+        rotation[i] =
+          baseRotation[i] + Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
+      } else if (mode === SWAY_IMPULSE) {
+        const nextPhase = advanceImpulsePhase(swayPhase[i], deltaTime, swayFrequency[i]);
+        if (nextPhase === IMPULSE_DONE) {
+          sway[i] = SWAY_OFF;
+          swayPhase[i] = 0;
+          rotation[i] = baseRotation[i];
+        } else {
+          swayPhase[i] = nextPhase;
+          rotation[i] = baseRotation[i] + Math.sin(nextPhase) * swayAmplitude[i];
+        }
       }
     }
   }

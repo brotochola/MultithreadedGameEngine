@@ -2302,6 +2302,7 @@ export declare class DecorationComponent extends Component {
     sway: typeof Uint8Array;
     swayAmplitude: typeof Float32Array;
     swayFrequency: typeof Float32Array;
+    swayPhase: typeof Float32Array;
     layerId: typeof Uint8Array;
     parentEntityIndex: typeof Uint16Array;
     localX: typeof Float32Array;
@@ -2328,6 +2329,7 @@ export declare class DecorationComponent extends Component {
   static sway: Uint8Array;
   static swayAmplitude: Float32Array;
   static swayFrequency: Float32Array;
+  static swayPhase: Float32Array;
   static layerId: Uint8Array;
   static parentEntityIndex: Uint16Array;
   static localX: Float32Array;
@@ -2515,6 +2517,9 @@ export declare const DECORATION_INNER_Z_MIN: number;
 export declare const DECORATION_INNER_Z_MAX: number;
 export declare const ENTITY_GLOW_SORT_BIAS: number;
 export declare const DECORATION_NO_PARENT: number;
+export declare const SWAY_OFF: 0;
+export declare const SWAY_LOOP: 1;
+export declare const SWAY_IMPULSE: 2;
 
 export declare class DecorationPool extends SharedAtomicPool {
   static poolName: string;
@@ -2590,6 +2595,10 @@ export declare class Decoration {
   set swayAmplitude(v: number);
   get swayFrequency(): number;
   set swayFrequency(v: number);
+  /** One-shot half-sine (0→π) then settle; no-op if already swaying. */
+  impulseSway(amplitude: number, frequency: number): void;
+  get rotation(): number;
+  set rotation(v: number);
   get baseRotation(): number;
   set baseRotation(v: number);
 }
@@ -2809,6 +2818,9 @@ export interface WeedNamespace {
   Decoration: typeof Decoration;
   DecorationComponent: typeof DecorationComponent;
   DecorationSpatial: typeof DecorationSpatial;
+  SWAY_OFF: 0;
+  SWAY_LOOP: 1;
+  SWAY_IMPULSE: 2;
   BulletPool: typeof BulletPool;
   BulletComponent: typeof BulletComponent;
   Joint: typeof Joint;
