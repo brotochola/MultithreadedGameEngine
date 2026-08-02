@@ -6,10 +6,10 @@ const { GameObject, Keyboard, Mouse, RigidBody, Collider, SpriteRenderer, rng } 
 class Ball extends GameObject {
   // Auto-detected by GameEngine - no manual path needed in registerEntityClass!
   static scriptUrl = import.meta.url;
-
+  static serializable = true;
   // entityType auto-assigned during registration (no manual ID needed!)
   static instances = []; // Instance tracking for this class
-
+  static mousePower = 90600000;
   // Define components this entity uses
   static components = [RigidBody, Collider, SpriteRenderer];
 
@@ -108,7 +108,7 @@ class Ball extends GameObject {
       if (dist2 > 300000) return; // Only affect nearby balls
 
       // Apply repulsion (px/s²)
-      this.addAcceleration(3600000 * (dx / dist2), 3600000 * (dy / dist2));
+      this.addAcceleration(Ball.mousePower * (dx / dist2), Ball.mousePower * (dy / dist2));
     }
 
     if (Keyboard.m) {

@@ -97,8 +97,6 @@ export class BallsScene extends Scene {
     // Spawn initial entities
     console.log('🎬 BallsScene: Spawning balls...');
 
-    this.spawnBalls(9000);
-
     // Initialize camera at world center
     this.cameraFollowX = this.config.worldWidth / 2;
     this.cameraFollowY = this.config.worldHeight / 2;
@@ -106,6 +104,9 @@ export class BallsScene extends Scene {
 
     console.log('✅ BallsScene: Balls spawned!');
     // Camera.setZoom(0.5);
+  }
+  createNewGame() {
+    this.spawnBalls(9000);
   }
 
   update(dtRatio, deltaTime, accumulatedTime, frameNumber) {
