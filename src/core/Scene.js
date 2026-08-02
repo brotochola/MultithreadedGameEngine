@@ -1171,7 +1171,7 @@ class Scene {
     const canvas = document.createElement('canvas');
     canvas.width = imageBitmap.width;
     canvas.height = imageBitmap.height;
-    canvas.getContext('2d').drawImage(imageBitmap, 0, 0);
+    canvas.getContext('2d', { willReadFrequently: true }).drawImage(imageBitmap, 0, 0);
     return canvas;
   }
 

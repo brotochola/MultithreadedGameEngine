@@ -166,7 +166,7 @@ export class Person extends Lootable {
     if (damage < 0.1) return;
 
     ParticleEmitter.emit({
-      count: Math.floor(damage * (Math.random() * 5 + 3)),
+      count: Math.floor(damage * (Math.random() * 10 + 4)),
       texture: 'blood',
       x: this.x,
       y: this.y,

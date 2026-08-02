@@ -1171,8 +1171,9 @@ class SpriteSheetRegistry {
     }
 
     // Create canvas and draw packed atlas
+    // willReadFrequently: first getContext locks attrs; extractDecalTextures reads via getImageData
     const canvas = create2dCanvas(actualWidth, actualHeight);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     ctx.clearRect(0, 0, actualWidth, actualHeight);
 
