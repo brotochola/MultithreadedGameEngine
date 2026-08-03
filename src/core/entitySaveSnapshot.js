@@ -325,13 +325,12 @@ export function decodeSaveUncompressed(data) {
  * @returns {Promise<Uint8Array>}
  */
 export async function deflateBytes(input) {
-  if (typeof CompressionStream !== 'undefined') {
-    const stream = new Blob([input]).stream().pipeThrough(new CompressionStream('deflate'));
-    const buf = await new Response(stream).arrayBuffer();
-    return new Uint8Array(buf);
+  if (typeof CompressionStream === 'undefined') {
+    throw new Error('deflateBytes requires CompressionStream (browser or Node 18+)');
   }
-  const { deflateSync } = await import('node:zlib');
-  return new Uint8Array(deflateSync(input));
+  const stream = new Blob([input]).stream().pipeThrough(new CompressionStream('deflate'));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 /**
@@ -339,13 +338,12 @@ export async function deflateBytes(input) {
  * @returns {Promise<Uint8Array>}
  */
 export async function inflateBytes(input) {
-  if (typeof DecompressionStream !== 'undefined') {
-    const stream = new Blob([input]).stream().pipeThrough(new DecompressionStream('deflate'));
-    const buf = await new Response(stream).arrayBuffer();
-    return new Uint8Array(buf);
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('inflateBytes requires DecompressionStream (browser or Node 18+)');
   }
-  const { inflateSync } = await import('node:zlib');
-  return new Uint8Array(inflateSync(input));
+  const stream = new Blob([input]).stream().pipeThrough(new DecompressionStream('deflate'));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 /**

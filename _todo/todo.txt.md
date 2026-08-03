@@ -2,8 +2,6 @@
 
 ## --componente tipo CollisionListener, pero para buscar vecinos por visualRange, por ej: ContinuousNeighborSearch
 
-## poner entidades en celdas, por entityType, asi podemos tipo getNeighbors(entityType)
-
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar
 
