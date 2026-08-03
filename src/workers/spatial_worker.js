@@ -133,6 +133,10 @@ class SpatialWorker extends AbstractWorker {
 
     /** Fraction of visualRange (0 = off). */
     this._neighborReuseSkin = 0;
+    /** Full candidate rebuild every N frames (1 = every frame). */
+    this._neighborTickInterval = 1;
+    /** Countdown to next full rebuild when neighborTickInterval > 1. */
+    this._entityNeighborNextTick = null;
     /** Per-entity expanded candidate lists: [count, id0, ...] stride = 1+maxNeighbors */
     this._neighborCandidateData = null;
     this._neighborCandidateTruncated = null;
@@ -217,6 +221,18 @@ class SpatialWorker extends AbstractWorker {
     // Max frames to keep a candidate list (bounds B drift). Override via spatial.neighborReuseMaxFrames.
     const maxFrames = Number(spatialCfg.neighborReuseMaxFrames);
     this._maxReuseFrames = maxFrames > 0 ? maxFrames | 0 : this._neighborReuseSkin > 0 ? 15 : 0;
+    const tickInterval = Number(spatialCfg.neighborTickInterval);
+    this._neighborTickInterval = tickInterval > 1 ? tickInterval | 0 : 1;
+    if (this._neighborTickInterval > 1) {
+      const nextTick = new Uint8Array(this.globalEntityCount);
+      const interval = this._neighborTickInterval;
+      for (let i = 0; i < this.globalEntityCount; i++) {
+        nextTick[i] = (i % interval) + 1;
+      }
+      this._entityNeighborNextTick = nextTick;
+    } else {
+      this._entityNeighborNextTick = null;
+    }
     const candStride = 1 + Grid.maxNeighbors;
     this._neighborCandidateData = new Uint16Array(this.globalEntityCount * candStride);
     this._neighborCandidateTruncated = new Uint8Array(this.globalEntityCount);
@@ -583,6 +599,10 @@ class SpatialWorker extends AbstractWorker {
     const stride = Grid._stride;
     const workerId = this.workerId;
     const skinFrac = this._neighborReuseSkin;
+    const tickInterval = this._neighborTickInterval;
+    const nextTick = this._entityNeighborNextTick;
+    const maxReuseFrames = this._maxReuseFrames;
+    const framesSinceBuild = this._entityFramesSinceBuild;
     const candStride = 1 + maxNeighbors;
     const candData = this._neighborCandidateData;
 
@@ -655,8 +675,32 @@ class SpatialWorker extends AbstractWorker {
           const entityCellIndex = homeRow * gridWidth + homeCol;
           const cellRadius = ((searchRange * invCellSize) | 0) + 1;
 
-          // Fast reuse check BEFORE cell-pattern work (skin>0 only)
-          const canReuse =
+          // Schedule stagger: only ~1/tickInterval entities full-rebuild per frame
+          let scheduleSkipRebuild = false;
+          if (tickInterval > 1) {
+            if (--nextTick[entityA] > 0) {
+              scheduleSkipRebuild = true;
+            } else {
+              nextTick[entityA] = tickInterval;
+            }
+          }
+
+          const candBaseA = entityA * candStride;
+
+          // True tickInterval: off-tick keeps last neighborData (no cell-walk, no re-filter).
+          // Logic already decimates AI; stale neighbors for N frames is the point.
+          if (
+            scheduleSkipRebuild &&
+            candData[candBaseA] > 0 &&
+            framesSinceBuild[entityA] < maxReuseFrames
+          ) {
+            this.neighborsReusedThisFrame++;
+            framesSinceBuild[entityA]++;
+            continue;
+          }
+
+          // Verlet skin reuse: re-filter expanded candidates into published set
+          const skinCanReuse =
             skinFrac > 0 &&
             this._canReuseNeighbors(
               entityA,
@@ -669,9 +713,9 @@ class SpatialWorker extends AbstractWorker {
               0
             );
 
-          if (canReuse) {
+          if (skinCanReuse) {
             this.neighborsReusedThisFrame++;
-            this._entityFramesSinceBuild[entityA]++;
+            framesSinceBuild[entityA]++;
             this._publishFilteredNeighbors(
               entityA,
               myX,
@@ -754,7 +798,9 @@ class SpatialWorker extends AbstractWorker {
                 dependencyHash
               );
             } else {
+              // Skin reuse stays off (incomplete list), but schedule stagger needs age reset
               this._entityReuseInitialized[entityA] = 0;
+              framesSinceBuild[entityA] = 0;
             }
           }
         }

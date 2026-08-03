@@ -198,6 +198,11 @@ export const SPATIAL_DEFAULTS = Object.freeze({
   neighborReuseSkin: 0.04,
   /** Max frames a Verlet candidate list may be reused before forced rebuild. */
   neighborReuseMaxFrames: 15,
+  /**
+   * Full candidate rebuild every N frames, staggered by entity index.
+   * 1 = every frame (off). >1 amortizes cell-walk like logic tickInterval.
+   */
+  neighborTickInterval: 1,
 });
 
 // ============================================================================

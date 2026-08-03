@@ -118,6 +118,7 @@ Spatial workers write into `spatialStats` (multi-worker layout). Relevant keys f
 - **`maxNeighbors`** — bounds stride and buffer sizes (`totalEntityCount * (1 + maxNeighbors) * 2` bytes). Default is **128**; dense flocks may need 512–1024 via scene `spatial.maxNeighbors`. Must stay consistent across `Grid` initialization.
 - **`neighborReuseSkin`** — fraction of `visualRange` (default **0.04**). `0` disables Verlet reuse.
 - **`neighborReuseMaxFrames`** — max frames to keep a candidate list (default **15**). Dense/fast scenes may override; e.g. Predator uses **0.01 / 30**.
+- **`neighborTickInterval`** — full candidate rebuild every N frames, staggered by entity index (default **1** = every frame). Off-tick **keeps the last published `neighborData`** (no cell-walk, no re-filter). On-tick still uses Verlet skin reuse when enabled.
 
 ---
 

@@ -80,6 +80,8 @@ export class PredatorScene extends WEED.Scene {
       // Dense/fast flocks: smaller skin + longer reuse than engine defaults (0.04 / 15)
       neighborReuseSkin: 0.01,
       neighborReuseMaxFrames: 30,
+      // Amortize neighbor rebuild like logic tickInterval (off-tick keeps last neighborData)
+      neighborTickInterval: 15,
     },
 
     particle: {

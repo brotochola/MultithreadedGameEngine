@@ -16,7 +16,7 @@ export class MySoldier extends Person {
   /** Opt into sparse SaveGame (active instances only). */
   static serializable = true;
 
-  static tickInterval = 4; // Tick every 4 frames (staggered across entities)
+  static tickInterval = 6; // Tick every 6 frames (staggered across entities)
 
   // Static properties for soldier behavior
   static punchRangeSq = 35 ** 2; // Distance to start punching
