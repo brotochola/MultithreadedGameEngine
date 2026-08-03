@@ -1,6 +1,6 @@
 -use the who moved function of box2d for networking
 
----
+## --componente tipo CollisionListener, pero para buscar vecinos por visualRange, por ej: ContinuousNeighborSearch
 
 - shader de lightOccluders q use el sprite para mask.
 - lightoccluder rectangluar

@@ -190,6 +190,16 @@ export const SPATIAL_DEFAULTS = Object.freeze({
   rowsPerBlock: 2,
   noLimitFPS: false,
   fixedFps: 0,
+  /**
+   * Fraction of visualRange used as Verlet skin for neighbor reuse.
+   * 0 = baseline (exact-position reuse only; search radius = visualRange).
+   * >0 = search at visualRange + 2*skin, reuse while |ΔA| ≤ skin, re-filter published set each frame.
+   */
+  neighborReuseSkin: 0.1,
+  /** When true, spatial worker brute-force verifies published neighbor sets (FN/FP stats). */
+  verifyNeighborSets: false,
+  /** Max frames a Verlet candidate list may be reused before forced rebuild (0 = unused when skin=0). */
+  neighborReuseMaxFrames: 20,
 });
 
 // ============================================================================

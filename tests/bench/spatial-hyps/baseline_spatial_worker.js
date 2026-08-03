@@ -130,21 +130,6 @@ class SpatialWorker extends AbstractWorker {
     this.rebuildTimeThisFrame = 0;
     this.neighborSearchTimeThisFrame = 0;
     this.neighborsReusedThisFrame = 0;
-    this.falseNegativesThisFrame = 0;
-    this.falsePositivesThisFrame = 0;
-    /** Cumulative over worker lifetime (for correctness gates across sample intervals). */
-    this.falseNegativesTotal = 0;
-    this.falsePositivesTotal = 0;
-
-    /** Fraction of visualRange (0 = baseline exact reuse). */
-    this._neighborReuseSkin = 0;
-    this._verifyNeighborSets = false;
-    /** Per-entity expanded candidate lists: [count, id0, ...] stride = 1+maxNeighbors */
-    this._neighborCandidateData = null;
-    this._neighborCandidateTruncated = null;
-    this._verifyMarker = null;
-    this._verifyFrameCounter = 0;
-    this._entityFramesSinceBuild = null;
 
   }
 
@@ -219,21 +204,6 @@ class SpatialWorker extends AbstractWorker {
     this._entityLastCellRadius = new Uint16Array(this.globalEntityCount);
     this._entityLastDependencyHash = new Uint32Array(this.globalEntityCount);
     this._entityReuseInitialized = new Uint8Array(this.globalEntityCount);
-
-    const spatialCfg = this.config?.spatial || {};
-    this._neighborReuseSkin = Number(spatialCfg.neighborReuseSkin) > 0 ? Number(spatialCfg.neighborReuseSkin) : 0;
-    this._verifyNeighborSets = spatialCfg.verifyNeighborSets === true;
-    // Max frames to keep a candidate list (bounds B drift). Override via spatial.neighborReuseMaxFrames.
-    const maxFrames = Number(spatialCfg.neighborReuseMaxFrames);
-    this._maxReuseFrames = maxFrames > 0 ? maxFrames | 0 : this._neighborReuseSkin > 0 ? 10 : 0;
-    const candStride = 1 + Grid.maxNeighbors;
-    this._neighborCandidateData = new Uint16Array(this.globalEntityCount * candStride);
-    this._neighborCandidateTruncated = new Uint8Array(this.globalEntityCount);
-    this._entityFramesSinceBuild = new Uint16Array(this.globalEntityCount);
-    if (this._verifyNeighborSets) {
-      this._verifyMarker = new Uint32Array(this.globalEntityCount);
-      this._verifyFrameCounter = 0;
-    }
 
     // Precompute circle patterns for all possible cellRadius values (0 to maxCellRadius)
     this._precomputeCirclePatterns();
@@ -353,9 +323,6 @@ class SpatialWorker extends AbstractWorker {
     this.rebuildTimeThisFrame = 0;
     this.neighborSearchTimeThisFrame = 0;
     this.neighborsReusedThisFrame = 0;
-    this.falseNegativesThisFrame = 0;
-    this.falsePositivesThisFrame = 0;
-    // Note: falseNegativesTotal / falsePositivesTotal are cumulative (not reset)
 
     // STEP 1: Rebuild grid (only owned rows)
     let startTime = this.stats ? performance.now() : 0;
@@ -527,22 +494,17 @@ class SpatialWorker extends AbstractWorker {
     return hash;
   }
 
-  /**
-   * Verlet-style reuse: A within skin of build position, same vr/extent,
-   * and list age below cap (bounds B drift without cell-hash thrashing).
-   */
   _canReuseNeighbors(entityId, myX, myY, myHalfExtent, myVisualRange, entityCellIndex, cellRadius, dependencyHash) {
-    if (this._entityReuseInitialized[entityId] !== 1) return false;
-    if (this._neighborCandidateTruncated[entityId]) return false;
-    if (this._entityLastHalfExtent[entityId] !== myHalfExtent) return false;
-    if (this._entityLastVisualRange[entityId] !== myVisualRange) return false;
-    // Cap list age so B cannot drift more than ~skin at scene max speed before rebuild.
-    if (this._entityFramesSinceBuild[entityId] >= this._maxReuseFrames) return false;
-    const skin = myVisualRange * this._neighborReuseSkin;
-    const skinSq = skin * skin;
-    const dx = myX - this._entityLastX[entityId];
-    const dy = myY - this._entityLastY[entityId];
-    return dx * dx + dy * dy <= skinSq;
+    return (
+      this._entityReuseInitialized[entityId] === 1 &&
+      this._entityLastX[entityId] === myX &&
+      this._entityLastY[entityId] === myY &&
+      this._entityLastHalfExtent[entityId] === myHalfExtent &&
+      this._entityLastVisualRange[entityId] === myVisualRange &&
+      this._entityLastCellIndex[entityId] === entityCellIndex &&
+      this._entityLastCellRadius[entityId] === cellRadius &&
+      this._entityLastDependencyHash[entityId] === dependencyHash
+    );
   }
 
   _storeNeighborReuseSignature(entityId, myX, myY, myHalfExtent, myVisualRange, entityCellIndex, cellRadius, dependencyHash) {
@@ -554,88 +516,6 @@ class SpatialWorker extends AbstractWorker {
     this._entityLastCellIndex[entityId] = entityCellIndex;
     this._entityLastCellRadius[entityId] = cellRadius;
     this._entityLastDependencyHash[entityId] = dependencyHash;
-    this._entityFramesSinceBuild[entityId] = 0;
-  }
-
-  /**
-   * Filter expanded candidate list into published neighborData at exact visualRange.
-   * @returns {number} published count
-   */
-  _publishFilteredNeighbors(entityA, myX, myY, myVisualRange, neighborOffset, maxNeighbors, entityPosData, neighborData) {
-    const candStride = 1 + maxNeighbors;
-    const candBase = entityA * candStride;
-    const cand = this._neighborCandidateData;
-    const candCount = cand[candBase];
-    let published = 0;
-    for (let i = 0; i < candCount; i++) {
-      const entityB = cand[candBase + 1 + i];
-      const baseIdxB = entityB * 4;
-      const bX = entityPosData[baseIdxB];
-      const bY = entityPosData[baseIdxB + 1];
-      const bHalfExtent = entityPosData[baseIdxB + 2];
-      const dx = bX - myX;
-      const dy = bY - myY;
-      const effectiveRange = myVisualRange + bHalfExtent;
-      if (dx * dx + dy * dy < effectiveRange * effectiveRange) {
-        if (published < maxNeighbors) {
-          neighborData[neighborOffset + 1 + published] = entityB;
-          published++;
-          this.neighborsFoundThisFrame++;
-        }
-      }
-    }
-    neighborData[neighborOffset] = published;
-    return published;
-  }
-
-  /**
-   * Brute-force oracle: count FN/FP of published neighborData vs current positions.
-   */
-  _verifyPublishedNeighbors(entityA, myX, myY, myVisualRange, neighborOffset, neighborData, entityPosData, active) {
-    const marker = this._verifyMarker;
-    this._verifyFrameCounter++;
-    if (this._verifyFrameCounter >= 0xffffff) {
-      this._verifyFrameCounter = 1;
-      marker.fill(0);
-    }
-    const stamp = this._verifyFrameCounter;
-
-    const publishedCount = neighborData[neighborOffset];
-    for (let i = 0; i < publishedCount; i++) {
-      marker[neighborData[neighborOffset + 1 + i]] = stamp;
-    }
-
-    const activeEntitiesData = this.activeEntitiesData;
-    const totalActive = activeEntitiesData ? activeEntitiesData[0] : 0;
-    let gtCount = 0;
-    for (let a = 0; a < totalActive; a++) {
-      const entityB = activeEntitiesData[1 + a];
-      if (entityB === entityA || !active[entityB]) continue;
-      const baseIdxB = entityB * 4;
-      const bX = entityPosData[baseIdxB];
-      const bY = entityPosData[baseIdxB + 1];
-      const bHalfExtent = entityPosData[baseIdxB + 2];
-      const dx = bX - myX;
-      const dy = bY - myY;
-      const effectiveRange = myVisualRange + bHalfExtent;
-      if (dx * dx + dy * dy < effectiveRange * effectiveRange) {
-        gtCount++;
-        if (marker[entityB] !== stamp) {
-          this.falseNegativesThisFrame++;
-          this.falseNegativesTotal++;
-        } else marker[entityB] = stamp | 0x80000000; // mark as matched GT
-      }
-    }
-
-    // FP: published but not in GT (still stamped without high bit)
-    for (let i = 0; i < publishedCount; i++) {
-      const entityB = neighborData[neighborOffset + 1 + i];
-      if (marker[entityB] === stamp) {
-        this.falsePositivesThisFrame++;
-        this.falsePositivesTotal++;
-      }
-    }
-    void gtCount;
   }
 
   findNeighborsForOwnedEntities() {
@@ -647,17 +527,19 @@ class SpatialWorker extends AbstractWorker {
     const invCellSize = this.invCellSize;
     const maxNeighbors = Grid.maxNeighbors;
     const stride = Grid._stride;
+    const totalSpatialWorkers = this.totalSpatialWorkers;
     const workerId = this.workerId;
-    const skinFrac = this._neighborReuseSkin;
-    const verify = this._verifyNeighborSets;
-    const candStride = 1 + maxNeighbors;
-    const candData = this._neighborCandidateData;
 
+    // Single buffer - direct access (row ownership eliminates races)
     const neighborData = Grid.neighborData;
     const entityPosData = this.entityPosData;
+
+    // Direct grid buffer access
     const gridCounts = Grid._gridCounts;
     const gridEntities = Grid._gridEntities;
 
+    // O(1) duplicate detection for neighbor search (prevents counting same neighbor twice)
+    // Uses packed stamp (frameCounter << 16 | entityA) to avoid fill() every frame
     const processedMarker = this.processedMarker;
     this._processedFrameCounter++;
     if (this._processedFrameCounter >= 65536) {
@@ -666,6 +548,7 @@ class SpatialWorker extends AbstractWorker {
     }
     const processedFrameStamp = this._processedFrameCounter << 16;
 
+    // Frame counter for entityA deduplication (avoids fill() every frame)
     this._entityFrameCounter++;
     const entityFrameMarker = this._entityFrameCounter;
     const entityProcessedMarker = this._entityProcessedMarker;
@@ -673,8 +556,13 @@ class SpatialWorker extends AbstractWorker {
     const ownedRows = this.ownedRows;
     const ownedRowCount = this.ownedRowCount;
     const rowOwnership = this.rowOwnership;
+
+    // Clamp helpers for home row calculation
     const maxRow = gridHeight - 1;
 
+    // =========================================================================
+    // Iterate through all owned cells
+    // =========================================================================
     for (let r = 0; r < ownedRowCount; r++) {
       const row = ownedRows[r];
       const rowBase = row * gridWidth;
@@ -683,160 +571,143 @@ class SpatialWorker extends AbstractWorker {
         const cellIndex = rowBase + col;
         const byteOffset = cellIndex * Grid.cellByteSize;
         const cellCount = gridCounts[byteOffset];
+
+        // Skip empty cells
         if (cellCount === 0) continue;
 
+        // Process each entity in this cell
         const cellEntityBase = Grid.getCellBase(cellIndex);
 
         for (let k = 0; k < cellCount; k++) {
           const entityA = gridEntities[cellEntityBase + k];
+
+          // Sanity check (shouldn't happen but safety)
           if (!active[entityA]) continue;
+
+          // O(1) deduplication: skip if this entity was already processed this frame
+          // (entity can appear in multiple cells due to bounding box spanning cells)
           if (entityProcessedMarker[entityA] === entityFrameMarker) continue;
           entityProcessedMarker[entityA] = entityFrameMarker;
 
+          // =====================================================================
+          // ENTITY OWNERSHIP CHECK: Only process if this worker owns entity's home row
+          // This prevents race conditions when entities span multiple rows
+          // Home row = row containing entity's center Y position
+          // =====================================================================
+          // Read perfectly contiguous cache (built immediately prior by this worker)
           const baseIdxA = entityA * 4;
           const myX = entityPosData[baseIdxA];
           const myY = entityPosData[baseIdxA + 1];
           const myHalfExtent = entityPosData[baseIdxA + 2];
 
           let homeRow = (myY * invCellSize) | 0;
+          // Clamp to grid bounds
           homeRow = homeRow < 0 ? 0 : homeRow > maxRow ? maxRow : homeRow;
+
+          // Skip if another worker owns this entity's home row (O(1) lookup)
           if (rowOwnership[homeRow] !== workerId) continue;
 
           this.entitiesProcessedThisFrame++;
 
           const stampedA = processedFrameStamp | entityA;
           const myVisualRange = visualRange[entityA];
+
+          // Neighbor write offset
           const neighborOffset = entityA * stride;
 
+          // Skip entities with no visual range
           if (myVisualRange <= 0) {
-            neighborData[neighborOffset] = 0;
+            neighborData[neighborOffset] = 0; // totalCount
             continue;
           }
 
-          const skin = myVisualRange * skinFrac;
-          const searchRange = myVisualRange + 2 * skin;
+          // Calculate cell search radius (bitwise ceiling - avoids Math.ceil overhead in hot path)
+          // Using (x | 0) + 1 always rounds up, may add one extra cell ring but negligible impact
+          const cellRadius = ((myVisualRange * invCellSize) | 0) + 1;
 
+          // Calculate entity's actual cell position (based on center, not storage cell)
           let homeCol = (myX * invCellSize) | 0;
           const maxCol = gridWidth - 1;
           homeCol = homeCol < 0 ? 0 : homeCol > maxCol ? maxCol : homeCol;
           const entityCellIndex = homeRow * gridWidth + homeCol;
-          const cellRadius = ((searchRange * invCellSize) | 0) + 1;
 
-          // Fast reuse check BEFORE cell-pattern work (skin>0 only)
-          const canReuse =
-            skinFrac > 0 &&
-            this._canReuseNeighbors(
-              entityA,
-              myX,
-              myY,
-              myHalfExtent,
-              myVisualRange,
-              entityCellIndex,
-              cellRadius,
-              0
-            );
+          // Get neighbor cells using precomputed circle pattern (cached per cell+radius)
+          const neighborCells = this._getNeighborCells(entityCellIndex, cellRadius, homeRow, homeCol);
+          const neighborCellsLength = neighborCells.length;
+          const dependencyHash = this._computeDependencyHash(neighborCells);
 
-          if (canReuse) {
+          if (this._canReuseNeighbors(
+            entityA,
+            myX,
+            myY,
+            myHalfExtent,
+            myVisualRange,
+            entityCellIndex,
+            cellRadius,
+            dependencyHash
+          )) {
             this.neighborsReusedThisFrame++;
-            this._entityFramesSinceBuild[entityA]++;
-            this._publishFilteredNeighbors(
-              entityA,
-              myX,
-              myY,
-              myVisualRange,
-              neighborOffset,
-              maxNeighbors,
-              entityPosData,
-              neighborData
-            );
-          } else {
-            const neighborCells = this._getNeighborCells(entityCellIndex, cellRadius, homeRow, homeCol);
-            const neighborCellsLength = neighborCells.length;
-            const dependencyHash = this._computeDependencyHash(neighborCells);
+            continue;
+          }
 
-            // Miss: rebuild expanded candidate list at searchRange
-            const candBase = entityA * candStride;
-            let candCount = 0;
-            let truncated = false;
-            const searchRangeWithExtentBase = searchRange;
+          // STOP 5: visual-range neighbors only (no collision-candidate partition)
+          let neighborCount = 0;
 
-            for (let i = 0; i < neighborCellsLength; i++) {
-              const checkCellIndex = neighborCells[i];
-              const checkByteOffset = checkCellIndex * Grid.cellByteSize;
-              const checkCellCount = gridCounts[checkByteOffset];
-              if (checkCellCount === 0) continue;
+          for (let i = 0; i < neighborCellsLength; i++) {
+            const checkCellIndex = neighborCells[i];
+            const checkByteOffset = checkCellIndex * Grid.cellByteSize;
+            const checkCellCount = gridCounts[checkByteOffset];
 
-              this.cellsCheckedThisFrame++;
-              const checkEntityBase = Grid.getCellBase(checkCellIndex);
+            if (checkCellCount === 0) continue;
 
-              for (let j = 0; j < checkCellCount; j++) {
-                const entityB = gridEntities[checkEntityBase + j];
-                if (entityA === entityB) continue;
-                if (processedMarker[entityB] === stampedA) continue;
-                processedMarker[entityB] = stampedA;
+            this.cellsCheckedThisFrame++;
 
-                const baseIdxB = entityB * 4;
-                const bX = entityPosData[baseIdxB];
-                const bY = entityPosData[baseIdxB + 1];
-                const bHalfExtent = entityPosData[baseIdxB + 2];
-                const dxAB = bX - myX;
-                const dyAB = bY - myY;
-                const effectiveRange = searchRangeWithExtentBase + bHalfExtent;
-                if (dxAB * dxAB + dyAB * dyAB < effectiveRange * effectiveRange) {
-                  if (candCount < maxNeighbors) {
-                    candData[candBase + 1 + candCount] = entityB;
-                    candCount++;
-                  } else {
-                    truncated = true;
-                    break;
-                  }
+            const checkEntityBase = Grid.getCellBase(checkCellIndex);
+
+            for (let j = 0; j < checkCellCount; j++) {
+              const entityB = gridEntities[checkEntityBase + j];
+
+              if (entityA === entityB) continue;
+
+              if (processedMarker[entityB] === stampedA) continue;
+              processedMarker[entityB] = stampedA;
+
+              const baseIdxB = entityB * 4;
+              const bX = entityPosData[baseIdxB];
+              const bY = entityPosData[baseIdxB + 1];
+              const bHalfExtent = entityPosData[baseIdxB + 2];
+
+              const dxAB = bX - myX;
+              const dyAB = bY - myY;
+              const distSq = dxAB * dxAB + dyAB * dyAB;
+
+              const effectiveRange = myVisualRange + bHalfExtent;
+              const effectiveRangeSq = effectiveRange * effectiveRange;
+
+              if (distSq < effectiveRangeSq) {
+                if (neighborCount < maxNeighbors) {
+                  neighborData[neighborOffset + 1 + neighborCount] = entityB;
+                  neighborCount++;
+                  this.neighborsFoundThisFrame++;
                 }
+                if (neighborCount >= maxNeighbors) break;
               }
-              if (truncated) break;
             }
 
-            candData[candBase] = candCount;
-            this._neighborCandidateTruncated[entityA] = truncated ? 1 : 0;
-
-            this._publishFilteredNeighbors(
-              entityA,
-              myX,
-              myY,
-              myVisualRange,
-              neighborOffset,
-              maxNeighbors,
-              entityPosData,
-              neighborData
-            );
-
-            if (!truncated) {
-              this._storeNeighborReuseSignature(
-                entityA,
-                myX,
-                myY,
-                myHalfExtent,
-                myVisualRange,
-                entityCellIndex,
-                cellRadius,
-                dependencyHash
-              );
-            } else {
-              this._entityReuseInitialized[entityA] = 0;
-            }
+            if (neighborCount >= maxNeighbors) break;
           }
 
-          if (verify) {
-            this._verifyPublishedNeighbors(
-              entityA,
-              myX,
-              myY,
-              myVisualRange,
-              neighborOffset,
-              neighborData,
-              entityPosData,
-              active
-            );
-          }
+          neighborData[neighborOffset] = neighborCount;
+          this._storeNeighborReuseSignature(
+            entityA,
+            myX,
+            myY,
+            myHalfExtent,
+            myVisualRange,
+            entityCellIndex,
+            cellRadius,
+            dependencyHash
+          );
         }
       }
     }
@@ -856,8 +727,6 @@ class SpatialWorker extends AbstractWorker {
       this.stats[SPATIAL_STATS.NEIGHBOR_MS] = this.neighborSearchTimeThisFrame;
       this.stats[SPATIAL_STATS.MSG_MS] = this.messageTimeThisFrame;
       this.stats[SPATIAL_STATS.NEIGHBORS_REUSED] = this.neighborsReusedThisFrame;
-      this.stats[SPATIAL_STATS.FALSE_NEGATIVES] = this.falseNegativesTotal;
-      this.stats[SPATIAL_STATS.FALSE_POSITIVES] = this.falsePositivesTotal;
     }
   }
 }
