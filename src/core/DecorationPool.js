@@ -305,8 +305,10 @@ export class DecorationPool extends SharedAtomicPool {
     const offsetY = DecorationComponent.offsetY;
     const scaleX = DecorationComponent.scaleX;
     const scaleY = DecorationComponent.scaleY;
-    const rotation = DecorationComponent.rotation;
-    const baseRotation = DecorationComponent.baseRotation;
+    const rotC = DecorationComponent.rotC;
+    const rotS = DecorationComponent.rotS;
+    const baseRotC = DecorationComponent.baseRotC;
+    const baseRotS = DecorationComponent.baseRotS;
     const alpha = DecorationComponent.alpha;
     const tint = DecorationComponent.tint;
     const anchorX = DecorationComponent.anchorX;
@@ -367,8 +369,15 @@ export class DecorationPool extends SharedAtomicPool {
     scaleX[i] = randomRange(config.scaleX, 1);
     scaleY[i] = randomRange(config.scaleY, 1);
 
-    baseRotation[i] = config.rotation ?? 0;
-    rotation[i] = baseRotation[i];
+    {
+      const a = config.rotation ?? 0;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      baseRotC[i] = c;
+      baseRotS[i] = s;
+      rotC[i] = c;
+      rotS[i] = s;
+    }
     alpha[i] = randomRange(config.alpha, 1);
     tint[i] = config.tint ?? 0xffffff;
     anchorX[i] = config.anchorX ?? 0.5;

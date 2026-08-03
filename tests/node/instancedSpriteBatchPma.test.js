@@ -22,3 +22,10 @@ test('normal fragment scales PMA rgb by instance alpha without re-multiplying te
 test('additive fragment scales PMA rgb by instance alpha, alpha forced 0', () => {
   assert.match(src, /gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, 0\.0\);/);
 });
+
+test('vertex shader uses aInstRotCS without cos/sin of angle', () => {
+  assert.match(src, /in vec2 aInstRotCS/);
+  assert.match(src, /float c = aInstRotCS\.x/);
+  assert.doesNotMatch(src, /cos\(aInstRot\)/);
+  assert.match(src, /INSTANCED_SPRITE_FLOATS = 23/);
+});

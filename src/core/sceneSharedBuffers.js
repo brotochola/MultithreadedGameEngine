@@ -304,7 +304,8 @@ function initializeLightingAndRenderBuffers(scene) {
   const maxLights = config.lighting.maxLights || 128;
   if (config.lighting.shadowsEnabled && maxShadowSprites > 0) {
     const maxShadowRenderItems = maxShadowSprites + maxLights;
-    const shadowQueueItemSize = 40;
+    // x,y,scaleX,scaleY,rotC,rotS,alpha,tint,textureId(+pad),anchorX,anchorY
+    const shadowQueueItemSize = 44;
     const shadowQueueBufferSize = 4 + maxShadowRenderItems * shadowQueueItemSize;
 
     buffers.shadowRenderQueueDataA = new SharedArrayBuffer(shadowQueueBufferSize);
@@ -320,6 +321,14 @@ function initializeLightingAndRenderBuffers(scene) {
     buffers.visibilityPolygonDataA = new SharedArrayBuffer(visPolyBufferSize);
     buffers.visibilityPolygonDataB = new SharedArrayBuffer(visPolyBufferSize);
     scene.maxPolygonVertices = maxPolyVerts;
+
+    const maxSelfLit = config.lighting.maxOccluderSelfLit || 512;
+    // header(4) + entries: entityIdx(i32) lightIdx(i32) textureId(u16) maskMode(u8) pad(u8) = 12
+    const selfLitItemBytes = 12;
+    const selfLitBufferSize = 4 + maxSelfLit * selfLitItemBytes;
+    buffers.occluderSelfLitDataA = new SharedArrayBuffer(selfLitBufferSize);
+    buffers.occluderSelfLitDataB = new SharedArrayBuffer(selfLitBufferSize);
+    scene.maxOccluderSelfLit = maxSelfLit;
   }
 
   if (config.particle.decals) {
@@ -349,9 +358,9 @@ function initializeLightingAndRenderBuffers(scene) {
   new Int32Array(buffers.renderQueueSync)[1] = 0;
   scene.maxVisibleRenderables = maxVisibleRenderables;
 
-  // Physics pose publish (post-step snapshot for visuals) — SoA x,y,rotation × 2 buffers
+  // Physics pose publish (post-step snapshot for visuals) — SoA x,y,rotC,rotS × 2 buffers
   const poseN = scene.totalEntityCount;
-  const poseBufBytes = poseN * 3 * 4;
+  const poseBufBytes = poseN * 4 * 4;
   buffers.poseDataA = new SharedArrayBuffer(Math.max(poseBufBytes, 12));
   buffers.poseDataB = new SharedArrayBuffer(Math.max(poseBufBytes, 12));
   buffers.poseSync = new SharedArrayBuffer(8);

@@ -1,6 +1,9 @@
 import WEED from '/src/index.js';
 
-const { GameObject, Collider, SpriteRenderer, RigidBody, ShadowCaster, LightOccluder, enums } = WEED;
+const {
+  GameObject, Collider, SpriteRenderer, RigidBody, LightOccluder,
+  LIGHT_OCCLUDER_MASK_SPRITE, enums,
+} = WEED;
 const { ShapeType } = enums;
 
 export class ZenithalCar extends GameObject {
@@ -11,16 +14,14 @@ export class ZenithalCar extends GameObject {
   setup() {
     this.setSprite('zenithal_car');
 
-    this.collider.shapeType = ShapeType.Circle;
-    this.collider.radius = 22;
+    this.collider.shapeType = ShapeType.Box;
+    this.collider.width = 63;
+    this.collider.height = 160;
     this.collider.visualRange = 100;
 
     this.rigidBody.linearDamping = 0.9;
-    this.setAnchor(0.5, 0.5)
-
-    // this.shadowCaster.heightMultiplier = 1.5;
-
-    this.lightOccluder.radius = 0.5 * Math.sqrt(this.spriteRenderer.originalHeight * this.spriteRenderer.originalWidth);
+    this.setAnchor(0.5, 0.5);
+    this.lightOccluder.maskMode = LIGHT_OCCLUDER_MASK_SPRITE
   }
 
   onSpawned(spawnConfig = {}) { }

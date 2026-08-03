@@ -67,6 +67,41 @@ export class Ray {
   static _checkedEntities = new Set(); // Reused Set for castAll
   static _traverseResult = { entityIndex: -1, distance: Infinity }; // Reused by _traverseGrid
 
+  // Per-worker SAB stats (outermost public call only — nested Ray.* not double-counted)
+  static _statsMs = 0;
+  static _statsCount = 0;
+  static _statsDepth = 0;
+  static _statsT0 = 0;
+  static _statsOut = { ms: 0, count: 0 };
+
+  static beginFrame() {
+    this._statsMs = 0;
+    this._statsCount = 0;
+    this._statsDepth = 0;
+  }
+
+  /** @returns {{ ms: number, count: number }} borrowed — consume before next consumeStats */
+  static consumeStats() {
+    const out = this._statsOut;
+    out.ms = this._statsMs;
+    out.count = this._statsCount;
+    this._statsMs = 0;
+    this._statsCount = 0;
+    this._statsDepth = 0;
+    return out;
+  }
+
+  static _enterStats() {
+    if (this._statsDepth++ === 0) this._statsT0 = performance.now();
+  }
+
+  static _leaveStats() {
+    if (--this._statsDepth === 0) {
+      this._statsMs += performance.now() - this._statsT0;
+      this._statsCount++;
+    }
+  }
+
   /**
    * Cast a ray from (xFrom, yFrom) to (xTo, yTo)
    * Returns the index of the first entity hit, or -1 if no collision
@@ -80,6 +115,15 @@ export class Ray {
    * @returns {number} Entity index or -1
    */
   static cast(xFrom, yFrom, xTo, yTo, maxDist = Infinity, mask = 0xFFFFFFFF) {
+    Ray._enterStats();
+    try {
+      return Ray._castImpl(xFrom, yFrom, xTo, yTo, maxDist, mask);
+    } finally {
+      Ray._leaveStats();
+    }
+  }
+
+  static _castImpl(xFrom, yFrom, xTo, yTo, maxDist, mask) {
     // Calculate ray direction and length
     const dx = xTo - xFrom;
     const dy = yTo - yFrom;
@@ -221,43 +265,48 @@ export class Ray {
    *   }
    */
   static castWithInfo(xFrom, yFrom, xTo, yTo, maxDist = Infinity, mask = 0xFFFFFFFF, out = null) {
-    // Reset temp result
-    const info = out || Ray._tempHitInfo;
-    info.hit = false;
-    info.entityIndex = -1;
-    info.distance = Infinity;
-    info.hitX = xTo;
-    info.hitY = yTo;
+    Ray._enterStats();
+    try {
+      // Reset temp result
+      const info = out || Ray._tempHitInfo;
+      info.hit = false;
+      info.entityIndex = -1;
+      info.distance = Infinity;
+      info.hitX = xTo;
+      info.hitY = yTo;
 
-    // Calculate ray direction and length
-    const dx = xTo - xFrom;
-    const dy = yTo - yFrom;
-    const distSq = dx * dx + dy * dy; // OPTIMIZED: Calculate distSq first for early exit check
+      // Calculate ray direction and length
+      const dx = xTo - xFrom;
+      const dy = yTo - yFrom;
+      const distSq = dx * dx + dy * dy; // OPTIMIZED: Calculate distSq first for early exit check
 
-    // Early exit if ray is too short or too long (avoid sqrt if possible)
-    if (distSq === 0 || (maxDist !== Infinity && distSq > maxDist * maxDist)) {
+      // Early exit if ray is too short or too long (avoid sqrt if possible)
+      if (distSq === 0 || (maxDist !== Infinity && distSq > maxDist * maxDist)) {
+        return info;
+      }
+
+      // Calculate length only if we pass the early exit (OPTIMIZED: avoid sqrt in early exit path)
+      const rayLength = Math.sqrt(distSq);
+
+      // Normalize direction
+      const dirX = dx / rayLength;
+      const dirY = dy / rayLength;
+
+      // Use internal traversal
+      const result = Ray._traverseGrid(xFrom, yFrom, xTo, yTo, dirX, dirY, rayLength, maxDist, null, mask);
+
+      if (result.entityIndex !== -1) {
+        info.hit = true;
+        info.entityIndex = result.entityIndex;
+        info.distance = result.distance;
+        info.hitX = xFrom + dirX * result.distance;
+        info.hitY = yFrom + dirY * result.distance;
+      }
+
       return info;
+    } finally {
+      Ray._leaveStats();
     }
-
-    // Calculate length only if we pass the early exit (OPTIMIZED: avoid sqrt in early exit path)
-    const rayLength = Math.sqrt(distSq);
-
-    // Normalize direction
-    const dirX = dx / rayLength;
-    const dirY = dy / rayLength;
-
-    // Use internal traversal
-    const result = Ray._traverseGrid(xFrom, yFrom, xTo, yTo, dirX, dirY, rayLength, maxDist, null, mask);
-
-    if (result.entityIndex !== -1) {
-      info.hit = true;
-      info.entityIndex = result.entityIndex;
-      info.distance = result.distance;
-      info.hitX = xFrom + dirX * result.distance;
-      info.hitY = yFrom + dirY * result.distance;
-    }
-
-    return info;
   }
 
   /**
@@ -282,46 +331,51 @@ export class Ray {
    *   }
    */
   static linecast(x1, y1, x2, y2, excludeEntities = null, mask = 0xFFFFFFFF, out = null) {
-    const result = out || Ray._tempLinecastResult;
-    result.blocked = false;
-    result.entityIndex = -1;
-    result.distance = Infinity;
+    Ray._enterStats();
+    try {
+      const result = out || Ray._tempLinecastResult;
+      result.blocked = false;
+      result.entityIndex = -1;
+      result.distance = Infinity;
 
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const distSq = dx * dx + dy * dy; // OPTIMIZED: Calculate distSq first
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const distSq = dx * dx + dy * dy; // OPTIMIZED: Calculate distSq first
 
-    if (distSq === 0) {
+      if (distSq === 0) {
+        return result;
+      }
+
+      // Calculate length only if we pass the early exit (OPTIMIZED: avoid sqrt in early exit path)
+      const rayLength = Math.sqrt(distSq);
+
+      const dirX = dx / rayLength;
+      const dirY = dy / rayLength;
+
+      // Use traversal with exclusion set
+      const hitResult = Ray._traverseGrid(
+        x1,
+        y1,
+        x2,
+        y2,
+        dirX,
+        dirY,
+        rayLength,
+        rayLength,
+        excludeEntities,
+        mask
+      );
+
+      if (hitResult.entityIndex !== -1) {
+        result.blocked = true;
+        result.entityIndex = hitResult.entityIndex;
+        result.distance = hitResult.distance;
+      }
+
       return result;
+    } finally {
+      Ray._leaveStats();
     }
-
-    // Calculate length only if we pass the early exit (OPTIMIZED: avoid sqrt in early exit path)
-    const rayLength = Math.sqrt(distSq);
-
-    const dirX = dx / rayLength;
-    const dirY = dy / rayLength;
-
-    // Use traversal with exclusion set
-    const hitResult = Ray._traverseGrid(
-      x1,
-      y1,
-      x2,
-      y2,
-      dirX,
-      dirY,
-      rayLength,
-      rayLength,
-      excludeEntities,
-      mask
-    );
-
-    if (hitResult.entityIndex !== -1) {
-      result.blocked = true;
-      result.entityIndex = hitResult.entityIndex;
-      result.distance = hitResult.distance;
-    }
-
-    return result;
   }
 
   /**
@@ -343,20 +397,63 @@ export class Ray {
    *     predator.chase(preyIdx);
    *   }
    */
-  // Static reusable Set for zero-allocation linecast between entities
+  // Static reusable Set for zero-allocation linecast between entities (legacy callers)
   static _excludeSet = new Set();
 
-  static linecastBetweenEntities(entityIndexA, entityIndexB, mask = 0xFFFFFFFF, out = null) {
+  /**
+   * Entity↔entity linecast without stats wrap. Scalar excludeA/B (no Set).
+   * @private
+   */
+  static _linecastBetweenEntitiesImpl(entityIndexA, entityIndexB, mask, out) {
+    const result = out || Ray._tempLinecastResult;
+    result.blocked = false;
+    result.entityIndex = -1;
+    result.distance = Infinity;
+
     const x1 = Transform.x[entityIndexA];
     const y1 = Transform.y[entityIndexA];
     const x2 = Transform.x[entityIndexB];
     const y2 = Transform.y[entityIndexB];
 
-    Ray._excludeSet.clear();
-    Ray._excludeSet.add(entityIndexA);
-    Ray._excludeSet.add(entityIndexB);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distSq = dx * dx + dy * dy;
+    if (distSq === 0) return result;
 
-    return Ray.linecast(x1, y1, x2, y2, Ray._excludeSet, mask, out);
+    const rayLength = Math.sqrt(distSq);
+    const dirX = dx / rayLength;
+    const dirY = dy / rayLength;
+
+    const hitResult = Ray._traverseGrid(
+      x1,
+      y1,
+      x2,
+      y2,
+      dirX,
+      dirY,
+      rayLength,
+      rayLength,
+      null,
+      mask,
+      entityIndexA,
+      entityIndexB
+    );
+
+    if (hitResult.entityIndex !== -1) {
+      result.blocked = true;
+      result.entityIndex = hitResult.entityIndex;
+      result.distance = hitResult.distance;
+    }
+    return result;
+  }
+
+  static linecastBetweenEntities(entityIndexA, entityIndexB, mask = 0xFFFFFFFF, out = null) {
+    Ray._enterStats();
+    try {
+      return Ray._linecastBetweenEntitiesImpl(entityIndexA, entityIndexB, mask, out);
+    } finally {
+      Ray._leaveStats();
+    }
   }
 
   /**
@@ -368,7 +465,12 @@ export class Ray {
    * @returns {boolean} true if clear line of sight, false if blocked
    */
   static hasLineOfSight(entityIndexA, entityIndexB, mask = 0xFFFFFFFF) {
-    return !Ray.linecastBetweenEntities(entityIndexA, entityIndexB, mask).blocked;
+    Ray._enterStats();
+    try {
+      return !Ray._linecastBetweenEntitiesImpl(entityIndexA, entityIndexB, mask, null).blocked;
+    } finally {
+      Ray._leaveStats();
+    }
   }
 
   /**
@@ -410,6 +512,15 @@ export class Ray {
    *   }
    */
   static castAll(xFrom, yFrom, xTo, yTo, maxDist = Infinity, maxHits = 10, mask = 0xFFFFFFFF, out = null) {
+    Ray._enterStats();
+    try {
+      return Ray._castAllImpl(xFrom, yFrom, xTo, yTo, maxDist, maxHits, mask, out);
+    } finally {
+      Ray._leaveStats();
+    }
+  }
+
+  static _castAllImpl(xFrom, yFrom, xTo, yTo, maxDist, maxHits, mask, out) {
     const outHits = out || Ray._tempHitsArray;
     outHits.length = 0;
     Ray._tempAllHitsArray.length = 0;
@@ -557,7 +668,9 @@ export class Ray {
     rayLength,
     maxDist,
     excludeEntities = null,
-    rayMask = 0xFFFFFFFF
+    rayMask = 0xFFFFFFFF,
+    excludeA = -1,
+    excludeB = -1
   ) {
     const invCellSize = Grid.invCellSize;
     const gridCols = Grid.gridWidth;
@@ -621,7 +734,9 @@ export class Ray {
           rayLength,
           closestDist,
           excludeEntities,
-          rayMask
+          rayMask,
+          excludeA,
+          excludeB
         );
 
         const result = Ray._tempResult;
@@ -670,9 +785,8 @@ export class Ray {
     const ty = Transform.y[entityIndex];
 
     if (shapeType === Ray.SHAPE_POLYGON) {
-      const th = Transform.rotation[entityIndex];
-      const c = Math.cos(th);
-      const s = Math.sin(th);
+      const c = Transform.rotC ? Transform.rotC[entityIndex] : 1;
+      const s = Transform.rotS ? Transform.rotS[entityIndex] : 0;
       const entityX = tx + c * ox - s * oy;
       const entityY = ty + s * ox + c * oy;
       const count = Collider.polyCount[entityIndex];
@@ -757,7 +871,9 @@ export class Ray {
     rayLength,
     currentClosest,
     excludeEntities = null,
-    rayMask = 0xFFFFFFFF
+    rayMask = 0xFFFFFFFF,
+    excludeA = -1,
+    excludeB = -1
   ) {
     Ray._tempResult.entityIndex = -1;
     Ray._tempResult.distance = Infinity;
@@ -777,22 +893,32 @@ export class Ray {
     let closestIndex = -1;
     let closestDist = currentClosest;
 
+    const useScalarExclude = excludeA >= 0 || excludeB >= 0;
+    let excludeSet = null;
+    let excludeArr = null;
+    if (!useScalarExclude && excludeEntities) {
+      if (excludeEntities instanceof Set) excludeSet = excludeEntities;
+      else if (Array.isArray(excludeEntities)) excludeArr = excludeEntities;
+    }
+
     for (let i = 0; i < count; i++) {
       const entityIndex = gridEntities[cellBase + i];
 
-      if (excludeEntities) {
-        if (excludeEntities instanceof Set) {
-          if (excludeEntities.has(entityIndex)) continue;
-        } else if (Array.isArray(excludeEntities)) {
-          if (excludeEntities.includes(entityIndex)) continue;
-        }
+      if (useScalarExclude) {
+        if (entityIndex === excludeA || entityIndex === excludeB) continue;
+      } else if (excludeSet) {
+        if (excludeSet.has(entityIndex)) continue;
+      } else if (excludeArr) {
+        if (excludeArr.includes(entityIndex)) continue;
       }
 
       if (!active[entityIndex]) continue;
       if (!colliderActive[entityIndex]) continue;
       if (!((1 << (cCollisionLayer[entityIndex] & 31)) & rayMask)) continue;
 
-      const distance = Ray._shapeRayDistance(entityIndex, rayX, rayY, dirX, dirY, rayLength);
+      // Tighten shape maxDist to running closest so later candidates early-out
+      const shapeMax = closestDist < rayLength ? closestDist : rayLength;
+      const distance = Ray._shapeRayDistance(entityIndex, rayX, rayY, dirX, dirY, shapeMax);
 
       // Track closest hit in this cell
       if (distance >= 0 && distance < closestDist) {

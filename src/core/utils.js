@@ -857,6 +857,17 @@ export function getDirectionFromAngle(angle) {
   }
 }
 
+/**
+ * Cardinal facing from world delta (no atan2).
+ * Same octants as getDirectionFromAngle(atan2(dy,dx)+PI/2).
+ */
+export function getDirectionFromVector(dx, dy) {
+  const ax = dx < 0 ? -dx : dx;
+  const ay = dy < 0 ? -dy : dy;
+  if (ay >= ax) return dy >= 0 ? 'down' : 'up';
+  return dx >= 0 ? 'right' : 'left';
+}
+
 export function seededRandom(seed) {
   let t = seed;
   const fn = function () {

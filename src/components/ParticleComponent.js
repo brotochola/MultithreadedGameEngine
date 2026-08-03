@@ -34,7 +34,8 @@ export class ParticleComponent extends Component {
     tint: Uint32Array, // Color tint (0xRRGGBB) - modified by lighting
     baseTint: Uint32Array, // Original color set by emitter (preserved for lighting calculation)
     textureId: Uint16Array, // Index into texture atlas (NOT spritesheetId)
-    rotation: Float32Array, // Rotation in radians
+    rotC: Float32Array, // Facing cos
+    rotS: Float32Array, // Facing sin
     flipX: Uint8Array, // 0 = normal, 1 = flip horizontally
     flipY: Uint8Array, // 0 = normal, 1 = flip vertically
 
@@ -79,4 +80,9 @@ export class ParticleComponent extends Component {
 
   // Static pool tracking (set during initialization)
   static particleCount = 0;
+
+  static initializeArrays(buffer, count) {
+    super.initializeArrays(buffer, count);
+    if (this.rotC) this.rotC.fill(1);
+  }
 }

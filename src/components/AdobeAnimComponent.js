@@ -16,7 +16,8 @@ export class AdobeAnimComponent extends Component {
     scaleY: Float32Array,
     anchorX: Float32Array,
     anchorY: Float32Array,
-    rotation: Float32Array,
+    rotC: Float32Array,
+    rotS: Float32Array,
     alpha: Float32Array,
     tint: Uint32Array,
     layerId: Uint8Array,
@@ -163,7 +164,16 @@ export class AdobeAnimComponent extends Component {
       o.anchorX ?? (Number.isFinite(AdobeAnimComponent.anchorX[i]) ? AdobeAnimComponent.anchorX[i] : Number.NaN);
     AdobeAnimComponent.anchorY[i] =
       o.anchorY ?? (Number.isFinite(AdobeAnimComponent.anchorY[i]) ? AdobeAnimComponent.anchorY[i] : Number.NaN);
-    AdobeAnimComponent.rotation[i] = o.rotation ?? AdobeAnimComponent.rotation[i] ?? 0;
+    {
+      const a = o.rotation;
+      if (a != null) {
+        AdobeAnimComponent.rotC[i] = Math.cos(a);
+        AdobeAnimComponent.rotS[i] = Math.sin(a);
+      } else if (AdobeAnimComponent.rotC[i] === 0 && AdobeAnimComponent.rotS[i] === 0) {
+        AdobeAnimComponent.rotC[i] = 1;
+        AdobeAnimComponent.rotS[i] = 0;
+      }
+    }
     AdobeAnimComponent.alpha[i] = o.alpha ?? AdobeAnimComponent.alpha[i] ?? 1;
     AdobeAnimComponent.tint[i] = o.tint ?? AdobeAnimComponent.tint[i] ?? 0xffffff;
     AdobeAnimComponent.renderVisible[i] = o.visible === false ? 0 : 1;
@@ -211,5 +221,20 @@ export class AdobeAnimComponent extends Component {
   resume() {
     AdobeAnimComponent.playing[this.index] = 1;
     return this;
+  }
+
+  get rotation() {
+    const i = this.index;
+    return Math.atan2(AdobeAnimComponent.rotS[i], AdobeAnimComponent.rotC[i]);
+  }
+  set rotation(v) {
+    const i = this.index;
+    AdobeAnimComponent.rotC[i] = Math.cos(v);
+    AdobeAnimComponent.rotS[i] = Math.sin(v);
+  }
+
+  static initializeArrays(buffer, count) {
+    super.initializeArrays(buffer, count);
+    if (this.rotC) this.rotC.fill(1);
   }
 }

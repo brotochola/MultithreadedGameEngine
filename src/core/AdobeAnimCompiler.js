@@ -527,6 +527,8 @@ export class AdobeAnimCompiler {
     const pieceX = [];
     const pieceY = [];
     const pieceRotation = [];
+    const pieceRotC = [];
+    const pieceRotS = [];
     const pieceScaleX = [];
     const pieceScaleY = [];
     const pieceAlpha = [];
@@ -573,6 +575,8 @@ export class AdobeAnimCompiler {
           pieceX.push(piece.x);
           pieceY.push(piece.y);
           pieceRotation.push(piece.rotation);
+          pieceRotC.push(Math.cos(piece.rotation));
+          pieceRotS.push(Math.sin(piece.rotation));
           pieceScaleX.push(piece.scaleX);
           pieceScaleY.push(piece.scaleY);
           pieceAlpha.push(piece.alpha);
@@ -696,6 +700,8 @@ export class AdobeAnimCompiler {
       pieceX: Float32Array.from(pieceX),
       pieceY: Float32Array.from(pieceY),
       pieceRotation: Float32Array.from(pieceRotation),
+      pieceRotC: Float32Array.from(pieceRotC),
+      pieceRotS: Float32Array.from(pieceRotS),
       pieceScaleX: Float32Array.from(pieceScaleX),
       pieceScaleY: Float32Array.from(pieceScaleY),
       pieceAlpha: Float32Array.from(pieceAlpha),

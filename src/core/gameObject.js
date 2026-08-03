@@ -1,6 +1,7 @@
 // GameObject.js - Base class for all game entities using component composition
 // Entities are composed of components (Transform, RigidBody, Collider, etc.)
 
+import { syncRotCSFromAngle } from '../box2d/box2dHotFields.js';
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
@@ -477,7 +478,13 @@ export class GameObject {
     const i = this.index;
     Transform.x[i] = value;
     if (isCommandRingBound() && this._hasComponents.RigidBody) {
-      enqueueSetTransform(i, value, Transform.y[i], Transform.rotation[i]);
+      enqueueSetTransform(
+        i,
+        value,
+        Transform.y[i],
+        Transform.rotC ? Transform.rotC[i] : 1,
+        Transform.rotS ? Transform.rotS[i] : 0,
+      );
     }
   }
 
@@ -491,19 +498,30 @@ export class GameObject {
     const i = this.index;
     Transform.y[i] = value;
     if (isCommandRingBound() && this._hasComponents.RigidBody) {
-      enqueueSetTransform(i, Transform.x[i], value, Transform.rotation[i]);
+      enqueueSetTransform(
+        i,
+        Transform.x[i],
+        value,
+        Transform.rotC ? Transform.rotC[i] : 1,
+        Transform.rotS ? Transform.rotS[i] : 0,
+      );
     }
   }
 
-  /** Rotation in radians */
+  /** Rotation in radians (HEAP channel written by WASM via b2Atan2; set syncs CS + cmd). */
   get rotation() {
     return Transform.rotation[this.index];
   }
   set rotation(value) {
     const i = this.index;
-    Transform.rotation[i] = value;
+    if (Transform.rotation) Transform.rotation[i] = value;
+    syncRotCSFromAngle(i, value);
     if (isCommandRingBound() && this._hasComponents.RigidBody) {
-      enqueueSetAngle(i, value);
+      enqueueSetAngle(
+        i,
+        Transform.rotC ? Transform.rotC[i] : Math.cos(value),
+        Transform.rotS ? Transform.rotS[i] : Math.sin(value),
+      );
     }
   }
 
@@ -593,16 +611,15 @@ export class GameObject {
   }
 
   /**
-   * Body heading unit X (from Transform.rotation / Box2D angle).
-   * Weed does not publish Box2D b2Rot cos/sin on HEAP — derive from angle.
+   * Body heading unit X (from Transform.rotC / Box2D b2Rot).
    */
   get forwardX() {
-    return Math.cos(Transform.rotation[this.index]);
+    return Transform.rotC ? Transform.rotC[this.index] : Math.cos(Transform.rotation[this.index]);
   }
 
   /** Body heading unit Y */
   get forwardY() {
-    return Math.sin(Transform.rotation[this.index]);
+    return Transform.rotS ? Transform.rotS[this.index] : Math.sin(Transform.rotation[this.index]);
   }
 
   /** Right unit X (rotate forward by -90°) */
@@ -622,10 +639,9 @@ export class GameObject {
    * @returns {typeof out}
    */
   static getHeadingAxes(index, out) {
-    const a = Transform.rotation[index];
-    const frontX = Math.cos(a);
-    const frontY = Math.sin(a);
-    out.angle = a;
+    const frontX = Transform.rotC ? Transform.rotC[index] : 1;
+    const frontY = Transform.rotS ? Transform.rotS[index] : 0;
+    out.angle = Transform.rotation ? Transform.rotation[index] : 0;
     out.frontX = frontX;
     out.frontY = frontY;
     out.rightX = frontY;
@@ -1000,7 +1016,13 @@ export class GameObject {
     Transform.x[i] = x;
     Transform.y[i] = y;
     if (isCommandRingBound() && this._hasComponents.RigidBody) {
-      enqueueSetTransform(i, x, y, Transform.rotation[i]);
+      enqueueSetTransform(
+        i,
+        x,
+        y,
+        Transform.rotC ? Transform.rotC[i] : 1,
+        Transform.rotS ? Transform.rotS[i] : 0,
+      );
     }
     return this;
   }
@@ -1960,6 +1982,8 @@ export class GameObject {
     Transform.x[i] = 0;
     Transform.y[i] = 0;
     Transform.rotation[i] = 0;
+    if (Transform.rotC) Transform.rotC[i] = 1;
+    if (Transform.rotS) Transform.rotS[i] = 0;
 
     if (has.Collider) {
       Collider.active[i] = 1;
@@ -2008,6 +2032,7 @@ export class GameObject {
 
     if (has.LightOccluder) {
       LightOccluder.active[i] = 1;
+      LightOccluder.maskMode[i] = 0; // LIGHT_OCCLUDER_MASK_COLLIDER
     }
 
     if (has.SpriteRenderer) {
@@ -2022,7 +2047,8 @@ export class GameObject {
       SpriteRenderer.anchorX[i] = 0.5;
       SpriteRenderer.anchorY[i] = 1.0;
       SpriteRenderer.inheritTransformRotation[i] = 1;
-      SpriteRenderer.spriteRotation[i] = 0;
+      SpriteRenderer.spriteRotC[i] = 1;
+      SpriteRenderer.spriteRotS[i] = 0;
       SpriteRenderer.renderVisible[i] = 1;
       SpriteRenderer.isItOnScreen[i] = 0;
       SpriteRenderer.animationState[i] = -1;
@@ -2043,7 +2069,8 @@ export class GameObject {
       AdobeAnimComponent.scaleY[i] = 1;
       AdobeAnimComponent.anchorX[i] = Number.NaN;
       AdobeAnimComponent.anchorY[i] = Number.NaN;
-      AdobeAnimComponent.rotation[i] = 0;
+      AdobeAnimComponent.rotC[i] = 1;
+      AdobeAnimComponent.rotS[i] = 0;
       AdobeAnimComponent.alpha[i] = 1;
       AdobeAnimComponent.tint[i] = 0xffffff;
       AdobeAnimComponent.layerId[i] = 0;

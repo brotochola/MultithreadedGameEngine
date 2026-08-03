@@ -369,7 +369,8 @@ class ParticleWorker extends AbstractWorker {
     this.poseCapacity = 0;
     this._poseX = null;
     this._poseY = null;
-    this._poseRot = null;
+    this._poseRotC = null;
+    this._poseRotS = null;
     this._rbActive = null;
 
     // Active particle tracking
@@ -426,7 +427,8 @@ class ParticleWorker extends AbstractWorker {
         this.poseBuffers[i] = {
           x: new Float32Array(sab, 0, n),
           y: new Float32Array(sab, n * 4, n),
-          rotation: new Float32Array(sab, n * 8, n),
+          rotC: new Float32Array(sab, n * 8, n),
+          rotS: new Float32Array(sab, n * 12, n),
         };
       }
     }
@@ -876,7 +878,8 @@ class ParticleWorker extends AbstractWorker {
   _latchPose() {
     this._poseX = null;
     this._poseY = null;
-    this._poseRot = null;
+    this._poseRotC = null;
+    this._poseRotS = null;
     this._rbActive = RigidBody.active;
     if (!this.poseSync || !this.poseBuffers[0]) return;
     const ready = Atomics.load(this.poseSync, 0);
@@ -884,11 +887,12 @@ class ParticleWorker extends AbstractWorker {
     const buf = this.poseBuffers[(ready - 1) % 2];
     this._poseX = buf.x;
     this._poseY = buf.y;
-    this._poseRot = buf.rotation;
+    this._poseRotC = buf.rotC;
+    this._poseRotS = buf.rotS;
   }
 
   /**
-   * Resolve world position/rotation for decorations parented to entities.
+   * Resolve world position/facing for decorations parented to entities.
    * Runs every frame before culling. Orphan parent → despawn.
    */
   resolveAttachedDecorations(deltaTime = 0) {
@@ -907,8 +911,10 @@ class ParticleWorker extends AbstractWorker {
     const inherit = DecorationComponent.inheritParentRotation;
     const x = DecorationComponent.x;
     const y = DecorationComponent.y;
-    const baseRotation = DecorationComponent.baseRotation;
-    const rotation = DecorationComponent.rotation;
+    const baseRotC = DecorationComponent.baseRotC;
+    const baseRotS = DecorationComponent.baseRotS;
+    const rotC = DecorationComponent.rotC;
+    const rotS = DecorationComponent.rotS;
     const sway = DecorationComponent.sway;
     const swayAmplitude = DecorationComponent.swayAmplitude;
     const swayFrequency = DecorationComponent.swayFrequency;
@@ -916,11 +922,13 @@ class ParticleWorker extends AbstractWorker {
     const tx = Transform.x;
     const ty = Transform.y;
     const tActive = Transform.active;
-    const tRot = Transform.rotation;
+    const tRotC = Transform.rotC;
+    const tRotS = Transform.rotS;
     const rbActive = this._rbActive;
     const poseX = this._poseX;
     const poseY = this._poseY;
-    const poseRot = this._poseRot;
+    const poseRotC = this._poseRotC;
+    const poseRotS = this._poseRotS;
 
     const swayBaseAngle = this.accumulatedTime * SWAY_ANGLE_PER_MS;
 
@@ -938,37 +946,51 @@ class ParticleWorker extends AbstractWorker {
       const usePose = poseX && rbActive && rbActive[p];
       const px = usePose ? poseX[p] : tx[p];
       const py = usePose ? poseY[p] : ty[p];
-      const pr = usePose ? poseRot[p] : tRot[p];
+      const pc = usePose && poseRotC ? poseRotC[p] : tRotC ? tRotC[p] : 1;
+      const ps = usePose && poseRotS ? poseRotS[p] : tRotS ? tRotS[p] : 0;
       const lx = localX[i];
       const ly = localY[i];
+      const bc = baseRotC[i];
+      const bs = baseRotS[i];
 
+      let wc;
+      let ws;
       if (inherit[i]) {
-        const cos = Math.cos(pr);
-        const sin = Math.sin(pr);
-        x[i] = px + cos * lx - sin * ly;
-        y[i] = py + sin * lx + cos * ly;
+        x[i] = px + pc * lx - ps * ly;
+        y[i] = py + ps * lx + pc * ly;
+        wc = pc * bc - ps * bs;
+        ws = ps * bc + pc * bs;
       } else {
         x[i] = px + lx;
         y[i] = py + ly;
+        wc = bc;
+        ws = bs;
       }
 
-      const worldBase = inherit[i] ? pr + baseRotation[i] : baseRotation[i];
       const mode = sway[i];
+      let delta = 0;
       if (mode === SWAY_LOOP) {
-        rotation[i] =
-          worldBase + Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
+        delta = Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
       } else if (mode === SWAY_IMPULSE) {
         const nextPhase = advanceImpulsePhase(swayPhase[i], deltaTime, swayFrequency[i]);
         if (nextPhase === IMPULSE_DONE) {
           sway[i] = SWAY_OFF;
           swayPhase[i] = 0;
-          rotation[i] = worldBase;
+          delta = 0;
         } else {
           swayPhase[i] = nextPhase;
-          rotation[i] = worldBase + Math.sin(nextPhase) * swayAmplitude[i];
+          delta = Math.sin(nextPhase) * swayAmplitude[i];
         }
+      }
+      if (delta !== 0) {
+        const ad = delta < 0 ? -delta : delta;
+        const dc = ad < 0.08 ? 1 : Math.cos(delta);
+        const ds = ad < 0.08 ? delta : Math.sin(delta);
+        rotC[i] = wc * dc - ws * ds;
+        rotS[i] = ws * dc + wc * ds;
       } else {
-        rotation[i] = worldBase;
+        rotC[i] = wc;
+        rotS[i] = ws;
       }
     }
   }
@@ -1437,8 +1459,10 @@ class ParticleWorker extends AbstractWorker {
     const swayAmplitude = DecorationComponent.swayAmplitude;
     const swayFrequency = DecorationComponent.swayFrequency;
     const swayPhase = DecorationComponent.swayPhase;
-    const rotation = DecorationComponent.rotation;
-    const baseRotation = DecorationComponent.baseRotation;
+    const rotC = DecorationComponent.rotC;
+    const rotS = DecorationComponent.rotS;
+    const baseRotC = DecorationComponent.baseRotC;
+    const baseRotS = DecorationComponent.baseRotS;
 
     const swayBaseAngle = this.accumulatedTime * SWAY_ANGLE_PER_MS;
 
@@ -1451,19 +1475,33 @@ class ParticleWorker extends AbstractWorker {
       if (parentEntityIndex[i] !== DECORATION_NO_PARENT) continue;
 
       const mode = sway[i];
+      if (mode === SWAY_OFF) continue;
+      const bc = baseRotC[i];
+      const bs = baseRotS[i];
+      let delta = 0;
       if (mode === SWAY_LOOP) {
-        rotation[i] =
-          baseRotation[i] + Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
+        delta = Math.sin(swayBaseAngle * swayFrequency[i] + i * 0.1) * swayAmplitude[i];
       } else if (mode === SWAY_IMPULSE) {
         const nextPhase = advanceImpulsePhase(swayPhase[i], deltaTime, swayFrequency[i]);
         if (nextPhase === IMPULSE_DONE) {
           sway[i] = SWAY_OFF;
           swayPhase[i] = 0;
-          rotation[i] = baseRotation[i];
-        } else {
-          swayPhase[i] = nextPhase;
-          rotation[i] = baseRotation[i] + Math.sin(nextPhase) * swayAmplitude[i];
+          rotC[i] = bc;
+          rotS[i] = bs;
+          continue;
         }
+        swayPhase[i] = nextPhase;
+        delta = Math.sin(nextPhase) * swayAmplitude[i];
+      }
+      if (delta !== 0) {
+        const ad = delta < 0 ? -delta : delta;
+        const dc = ad < 0.08 ? 1 : Math.cos(delta);
+        const ds = ad < 0.08 ? delta : Math.sin(delta);
+        rotC[i] = bc * dc - bs * ds;
+        rotS[i] = bs * dc + bc * ds;
+      } else {
+        rotC[i] = bc;
+        rotS[i] = bs;
       }
     }
   }

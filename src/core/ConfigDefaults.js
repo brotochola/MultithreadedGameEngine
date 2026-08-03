@@ -340,6 +340,8 @@ export const LIGHTING_DEFAULTS = Object.freeze({
   shadowResolution: 0.5,
   raycasted: false,
   maxPolygonVertices: 128,
+  /** Cap for self-lit occluder fills per frame (collider/sprite into lighting RT). */
+  maxOccluderSelfLit: 512,
   sun: SUN_DEFAULTS,
 });
 

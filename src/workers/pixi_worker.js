@@ -21,9 +21,20 @@ import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 
 import { LightEmitter } from '../components/LightEmitter.js';
+import { LightOccluder, LIGHT_OCCLUDER_MASK_SPRITE } from '../components/LightOccluder.js';
+import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { Sun } from '../core/Sun.js';
 
-import { DEFAULT_LAYERS, RENDERER_DEFAULTS } from '../core/ConfigDefaults.js';
+import {
+  DEFAULT_LAYERS,
+  RENDERER_DEFAULTS,
+  ShapeType,
+  MAX_POLYGON_VERTICES,
+} from '../core/ConfigDefaults.js';
+import {
+  writeOrientedBoxVerts,
+  writePolygonVerts,
+} from './visibility/AngularSweep.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
@@ -237,7 +248,8 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueY = null;      // Float32Array - interpolated Y
     this.renderQueueScaleX = null; // Float32Array
     this.renderQueueScaleY = null; // Float32Array
-    this.renderQueueRotation = null; // Float32Array
+    this.renderQueueRotC = null; // Float32Array
+    this.renderQueueRotS = null; // Float32Array
     this.renderQueueAlpha = null;  // Float32Array
     this.renderQueueTint = null;   // Uint32Array
     this.renderQueueTextureId = null; // Uint16Array (encoded)
@@ -336,7 +348,8 @@ class PixiRenderer extends AbstractWorker {
     this.shadowRenderQueueY = null;
     this.shadowRenderQueueScaleX = null;
     this.shadowRenderQueueScaleY = null;
-    this.shadowRenderQueueRotation = null;
+    this.shadowRenderQueueRotC = null;
+    this.shadowRenderQueueRotS = null;
     this.shadowRenderQueueAlpha = null;
     this.shadowRenderQueueTint = null;
     this.shadowRenderQueueTextureId = null;
@@ -369,6 +382,16 @@ class PixiRenderer extends AbstractWorker {
     this._visPolyMeshes = [];        // Reusable PIXI.Mesh pool
     this._visPolyRT = null;          // RenderTexture for visibility lighting
     this._visPolyDisplaySprite = null; // Sprite displaying the RT with multiply blend
+    this._selfLitBuffers = [null, null];
+    this._selfLitItemBytes = 12;
+    this._selfLitContainer = null;
+    this._selfLitColliderMesh = null;
+    this._selfLitSpriteMeshes = [];
+    this._selfLitCircleSegs = 16;
+    this._selfLitPosScratch = null;
+    this._selfLitIdxScratch = null;
+    this._selfLitBoxScratchX = new Float32Array(8);
+    this._selfLitBoxScratchY = new Float32Array(8);
 
     // Reusable matrices for low-res rendering
     this._shadowTransform = new PIXI.Matrix();
@@ -389,7 +412,8 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueY = buffer.y;
     this.renderQueueScaleX = buffer.scaleX;
     this.renderQueueScaleY = buffer.scaleY;
-    this.renderQueueRotation = buffer.rotation;
+    this.renderQueueRotC = buffer.rotC;
+    this.renderQueueRotS = buffer.rotS;
     this.renderQueueAlpha = buffer.alpha;
     this.renderQueueTint = buffer.tint;
     this.renderQueueTextureId = buffer.textureId;
@@ -413,7 +437,8 @@ class PixiRenderer extends AbstractWorker {
     this.shadowRenderQueueY = buffer.y;
     this.shadowRenderQueueScaleX = buffer.scaleX;
     this.shadowRenderQueueScaleY = buffer.scaleY;
-    this.shadowRenderQueueRotation = buffer.rotation;
+    this.shadowRenderQueueRotC = buffer.rotC;
+    this.shadowRenderQueueRotS = buffer.rotS;
     this.shadowRenderQueueAlpha = buffer.alpha;
     this.shadowRenderQueueTint = buffer.tint;
     this.shadowRenderQueueTextureId = buffer.textureId;
@@ -622,7 +647,8 @@ class PixiRenderer extends AbstractWorker {
       y: this.renderQueueY,
       scaleX: this.renderQueueScaleX,
       scaleY: this.renderQueueScaleY,
-      rotation: this.renderQueueRotation,
+      rotC: this.renderQueueRotC,
+      rotS: this.renderQueueRotS,
       alpha: this.renderQueueAlpha,
       tint: this.renderQueueTint,
       textureId: this.renderQueueTextureId,
@@ -1183,8 +1209,24 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
       };
     }
 
+    // Self-lit queue (collider / sprite fill under occluders)
+    this._selfLitItemBytes = 12;
+    const selfLitSabs = [vpConfig.selfLitDataA, vpConfig.selfLitDataB];
+    if (selfLitSabs[0] && selfLitSabs[1]) {
+      for (let b = 0; b < 2; b++) {
+        const sab = selfLitSabs[b];
+        this._selfLitBuffers[b] = {
+          header: new Int32Array(sab, 0, 1),
+          i32: new Int32Array(sab),
+          u16: new Uint16Array(sab),
+          u8: new Uint8Array(sab),
+        };
+      }
+    }
+
     // Container for all light meshes (additive blend)
     this._visPolyContainer = new PIXI.Container();
+    this._selfLitContainer = new PIXI.Container();
 
     // RenderTexture for the visibility-polygon lighting
     const res = this.lightingResolution || 1.0;
@@ -1211,6 +1253,39 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
       vertex: this._visPolyVertexShader,
       fragment: this._visPolyFragmentShader,
     });
+
+    // Collider self-lit reuses vis-poly program (attenuation, no texture)
+    {
+      const maxFillVerts = 256 * 20;
+      this._selfLitMaxFillVerts = maxFillVerts;
+      const geometry = new PIXI.Geometry({
+        attributes: { aPosition: { buffer: new Float32Array(maxFillVerts * 2), size: 2 } },
+        indexBuffer: new Uint16Array(maxFillVerts * 3),
+      });
+      const shader = new PIXI.Shader({
+        glProgram: this._visPolyGlProgram,
+        resources: {
+          uniforms: {
+            uCameraPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
+            uZoom: { value: 1.0, type: 'f32' },
+            uCanvasSize: { value: new Float32Array([this.canvasWidth, this.canvasHeight]), type: 'vec2<f32>' },
+            uLightPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
+            uLightIntensity: { value: 1000, type: 'f32' },
+            uLightColor: { value: new Float32Array([1, 1, 1]), type: 'vec3<f32>' },
+          },
+        },
+      });
+      const mesh = new PIXI.Mesh({ geometry, shader });
+      mesh.blendMode = 'add';
+      this._selfLitColliderMesh = { mesh, geometry, shader };
+    }
+
+    if (this._selfLitSpriteVertShader && this._selfLitSpriteFragShader) {
+      this._selfLitSpriteGlProgram = new PIXI.GlProgram({
+        vertex: this._selfLitSpriteVertShader,
+        fragment: this._selfLitSpriteFragShader,
+      });
+    }
 
     console.log(`PIXI WORKER: Visibility polygon system initialized (${this._visPolyMaxLights} lights, ${this._visPolyMaxVerts} verts, RT: ${rtW}x${rtH})`);
   }
@@ -1362,6 +1437,320 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
       clear: true,
       clearColor: [clampedAmbient, clampedAmbient, clampedAmbient, 1.0],
     });
+
+    // Restore unoccluded light under occluder footprints (no self-darken)
+    this._renderOccluderSelfLit(readBufferIdx);
+  }
+
+  /**
+   * ADD unoccluded light attenuation into the lighting RT under each occluder.
+   * Default: Collider footprint. maskMode=sprite: sprite alpha mask.
+   */
+  _renderOccluderSelfLit(readBufferIdx) {
+    const buf = this._selfLitBuffers[readBufferIdx];
+    if (!buf || !this._visPolyRT || !LightOccluder.active || !Collider.active) return;
+
+    const count = buf.header[0] | 0;
+    if (count <= 0) return;
+
+    const i32 = buf.i32;
+    const u16 = buf.u16;
+    const u8 = buf.u8;
+    const itemBytes = this._selfLitItemBytes;
+    const lightIntensityArr = LightEmitter.lightIntensity;
+    const lightColor = LightEmitter.lightColor;
+    const lightHeight = LightEmitter.height;
+    const rgb = this._rgbResult;
+    const zoom = this._renderZoom;
+    const cameraX = this._renderCameraX;
+    const cameraY = this._renderCameraY;
+
+    // Process contiguous runs sharing the same lightIdx (collector writes per-light)
+    let i = 0;
+    while (i < count) {
+      const byte0 = 4 + i * itemBytes;
+      const lightIdx = i32[(byte0 >> 2) + 1];
+      let j = i + 1;
+      while (j < count) {
+        const b = 4 + j * itemBytes;
+        if (i32[(b >> 2) + 1] !== lightIdx) break;
+        j++;
+      }
+
+      const lx = Transform.x[lightIdx];
+      const ly = Transform.y[lightIdx] - (lightHeight[lightIdx] || 0);
+      const intensity = lightIntensityArr[lightIdx];
+      extractRGBNormalizedMut(lightColor[lightIdx], rgb);
+
+      // --- Collider fills for this light (batched) ---
+      let vertCount = 0;
+      let idxCount = 0;
+      const colliderEntry = this._selfLitColliderMesh;
+      if (!colliderEntry) { i = j; continue; }
+      const posBuf = colliderEntry.geometry.attributes.aPosition.buffer;
+      const idxBuf = colliderEntry.geometry.indexBuffer;
+      const positions = posBuf.data;
+      const indices = idxBuf.data;
+      const maxVerts = this._selfLitMaxFillVerts;
+      const segs = this._selfLitCircleSegs;
+      const boxX = this._selfLitBoxScratchX;
+      const boxY = this._selfLitBoxScratchY;
+
+      for (let e = i; e < j; e++) {
+        const byteOff = 4 + e * itemBytes;
+        const maskMode = u8[byteOff + 10];
+        if (maskMode === LIGHT_OCCLUDER_MASK_SPRITE) continue;
+
+        const entityIdx = i32[byteOff >> 2];
+        if (!Transform.active[entityIdx] || !Collider.active[entityIdx]) continue;
+
+        const shape = Collider.shapeType[entityIdx];
+        const ox = Collider.offsetX[entityIdx] || 0;
+        const oy = Collider.offsetY[entityIdx] || 0;
+        const c = Transform.rotC ? (Transform.rotC[entityIdx] ?? 1) : 1;
+        const s = Transform.rotS ? (Transform.rotS[entityIdx] ?? 0) : 0;
+        const ex = Transform.x[entityIdx];
+        const ey = Transform.y[entityIdx];
+
+        if (shape === ShapeType.Circle) {
+          const r = Collider.radius[entityIdx];
+          if (!(r > 0)) continue;
+          const cx = ex + ox;
+          const cy = ey + oy;
+          if (vertCount + segs + 1 > maxVerts) break;
+          const center = vertCount;
+          positions[vertCount * 2] = cx;
+          positions[vertCount * 2 + 1] = cy;
+          vertCount++;
+          for (let si = 0; si < segs; si++) {
+            const a = (si / segs) * Math.PI * 2;
+            positions[vertCount * 2] = cx + Math.cos(a) * r;
+            positions[vertCount * 2 + 1] = cy + Math.sin(a) * r;
+            vertCount++;
+          }
+          for (let si = 0; si < segs; si++) {
+            indices[idxCount++] = center;
+            indices[idxCount++] = center + 1 + si;
+            indices[idxCount++] = center + 1 + ((si + 1) % segs);
+          }
+        } else {
+          let vc = 0;
+          if (shape === ShapeType.Box) {
+            const w = Collider.width[entityIdx];
+            const h = Collider.height[entityIdx];
+            if (!(w > 0) || !(h > 0)) continue;
+            writeOrientedBoxVerts(boxX, boxY, 0, ex, ey, w, h, c, s, ox, oy);
+            vc = 4;
+          } else {
+            const pc = Collider.polyCount[entityIdx] | 0;
+            if (pc >= 3) {
+              const base = entityIdx * MAX_POLYGON_VERTICES;
+              writePolygonVerts(
+                boxX, boxY, 0, ex, ey, c, s, ox, oy,
+                Collider.polyVertexX, Collider.polyVertexY, base, pc
+              );
+              vc = pc;
+            } else {
+              const w = Collider.width[entityIdx];
+              const h = Collider.height[entityIdx];
+              if (!(w > 0) || !(h > 0)) continue;
+              writeOrientedBoxVerts(boxX, boxY, 0, ex, ey, w, h, c, s, ox, oy);
+              vc = 4;
+            }
+          }
+          if (vertCount + vc > maxVerts) break;
+          const baseV = vertCount;
+          for (let v = 0; v < vc; v++) {
+            positions[vertCount * 2] = boxX[v];
+            positions[vertCount * 2 + 1] = boxY[v];
+            vertCount++;
+          }
+          for (let v = 1; v < vc - 1; v++) {
+            indices[idxCount++] = baseV;
+            indices[idxCount++] = baseV + v;
+            indices[idxCount++] = baseV + v + 1;
+          }
+        }
+      }
+
+      if (idxCount > 0 && this._selfLitColliderMesh) {
+        const { mesh, geometry, shader } = this._selfLitColliderMesh;
+        const prevIdx = this._selfLitLastIdxCount || 0;
+        for (let k = idxCount; k < prevIdx; k++) indices[k] = 0;
+        this._selfLitLastIdxCount = idxCount;
+
+        posBuf.update();
+        idxBuf.update();
+
+        const uniforms = shader.resources.uniforms.uniforms;
+        uniforms.uCameraPos[0] = cameraX;
+        uniforms.uCameraPos[1] = cameraY;
+        uniforms.uZoom = zoom;
+        uniforms.uCanvasSize[0] = this.canvasWidth;
+        uniforms.uCanvasSize[1] = this.canvasHeight;
+        uniforms.uLightPos[0] = lx;
+        uniforms.uLightPos[1] = ly;
+        uniforms.uLightIntensity = intensity;
+        uniforms.uLightColor[0] = rgb.r;
+        uniforms.uLightColor[1] = rgb.g;
+        uniforms.uLightColor[2] = rgb.b;
+
+        const container = this._selfLitContainer;
+        container.removeChildren();
+        container.addChild(mesh);
+
+        this.pixiApp.renderer.render({
+          container,
+          target: this._visPolyRT,
+          clear: false,
+        });
+      }
+
+      // --- Sprite mask fills for this light ---
+      if (this._selfLitSpriteGlProgram) {
+        let spriteMeshIdx = 0;
+        const container = this._selfLitContainer;
+        container.removeChildren();
+
+        for (let e = i; e < j; e++) {
+          const byteOff = 4 + e * itemBytes;
+          const maskMode = u8[byteOff + 10];
+          if (maskMode !== LIGHT_OCCLUDER_MASK_SPRITE) continue;
+
+          const entityIdx = i32[byteOff >> 2];
+          const texId = u16[(byteOff >> 1) + 4];
+          if (texId === 0xFFFF || !this.flatTextures || !this.flatTextures[texId]) continue;
+          if (!Transform.active[entityIdx] || !SpriteRenderer.active?.[entityIdx]) continue;
+
+          const tex = this.flatTextures[texId];
+          const entry = this._getSelfLitSpriteMesh(spriteMeshIdx++, tex);
+          if (!entry) continue;
+
+          const { mesh, geometry, shader } = entry;
+          const ox = Transform.x[entityIdx];
+          const oy = Transform.y[entityIdx];
+          const sx = SpriteRenderer.scaleX[entityIdx];
+          const sy = SpriteRenderer.scaleY[entityIdx];
+          const ax = SpriteRenderer.anchorX[entityIdx];
+          const ay = SpriteRenderer.anchorY[entityIdx];
+          const inherit = SpriteRenderer.inheritTransformRotation[entityIdx];
+          let c, s;
+          if (inherit) {
+            c = Transform.rotC ? (Transform.rotC[entityIdx] ?? 1) : 1;
+            s = Transform.rotS ? (Transform.rotS[entityIdx] ?? 0) : 0;
+          } else {
+            c = SpriteRenderer.spriteRotC[entityIdx];
+            s = SpriteRenderer.spriteRotS[entityIdx];
+          }
+
+          const orig = tex.orig;
+          const ow = (orig && orig.width) || tex.width || 0;
+          const oh = (orig && orig.height) || tex.height || 0;
+          const hw = ow * sx;
+          const hh = oh * sy;
+
+          // Local corners relative to anchor, then rotate+translate
+          const x0 = -ax * hw;
+          const y0 = -ay * hh;
+          const x1 = (1 - ax) * hw;
+          const y1 = (1 - ay) * hh;
+          const corners = [
+            x0, y0,
+            x1, y0,
+            x1, y1,
+            x0, y1,
+          ];
+          const uvs = tex.uvs || { x0: 0, y0: 0, x1: 1, y1: 0, x2: 1, y2: 1, x3: 0, y3: 1 };
+          const uvArr = [
+            uvs.x0, uvs.y0,
+            uvs.x1 !== undefined ? uvs.x1 : uvs.x2, uvs.y0,
+            uvs.x2, uvs.y2,
+            uvs.x3 !== undefined ? uvs.x3 : uvs.x0, uvs.y3 !== undefined ? uvs.y3 : uvs.y2,
+          ];
+
+          const posBuf = geometry.attributes.aPosition.buffer;
+          const uvBuf = geometry.attributes.aUV.buffer;
+          const pos = posBuf.data;
+          const uv = uvBuf.data;
+          for (let v = 0; v < 4; v++) {
+            const lxocal = corners[v * 2];
+            const lyocal = corners[v * 2 + 1];
+            pos[v * 2] = ox + c * lxocal - s * lyocal;
+            pos[v * 2 + 1] = oy + s * lxocal + c * lyocal;
+            uv[v * 2] = uvArr[v * 2];
+            uv[v * 2 + 1] = uvArr[v * 2 + 1];
+          }
+          posBuf.update();
+          uvBuf.update();
+
+          const uniforms = shader.resources.uniforms.uniforms;
+          uniforms.uCameraPos[0] = cameraX;
+          uniforms.uCameraPos[1] = cameraY;
+          uniforms.uZoom = zoom;
+          uniforms.uCanvasSize[0] = this.canvasWidth;
+          uniforms.uCanvasSize[1] = this.canvasHeight;
+          uniforms.uLightPos[0] = lx;
+          uniforms.uLightPos[1] = ly;
+          uniforms.uLightIntensity = intensity;
+          uniforms.uLightColor[0] = rgb.r;
+          uniforms.uLightColor[1] = rgb.g;
+          uniforms.uLightColor[2] = rgb.b;
+
+          container.addChild(mesh);
+        }
+
+        if (container.children.length > 0) {
+          this.pixiApp.renderer.render({
+            container,
+            target: this._visPolyRT,
+            clear: false,
+          });
+        }
+      }
+
+      i = j;
+    }
+  }
+
+  _getSelfLitSpriteMesh(index, texture) {
+    if (!this._selfLitSpriteGlProgram) return null;
+
+    if (!this._selfLitSpriteMeshes[index]) {
+      const geometry = new PIXI.Geometry({
+        attributes: {
+          aPosition: { buffer: new Float32Array(8), size: 2 },
+          aUV: { buffer: new Float32Array(8), size: 2 },
+        },
+        indexBuffer: new Uint16Array([0, 1, 2, 0, 2, 3]),
+      });
+
+      // Texture resource name must be unique per mesh when swapping textures
+      const shader = new PIXI.Shader({
+        glProgram: this._selfLitSpriteGlProgram,
+        resources: {
+          uTexture: texture.source,
+          uniforms: {
+            uCameraPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
+            uZoom: { value: 1.0, type: 'f32' },
+            uCanvasSize: { value: new Float32Array([this.canvasWidth, this.canvasHeight]), type: 'vec2<f32>' },
+            uLightPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
+            uLightIntensity: { value: 1000, type: 'f32' },
+            uLightColor: { value: new Float32Array([1, 1, 1]), type: 'vec3<f32>' },
+          },
+        },
+      });
+
+      const mesh = new PIXI.Mesh({ geometry, shader });
+      mesh.blendMode = 'add';
+      this._selfLitSpriteMeshes[index] = { mesh, geometry, shader, texture };
+    }
+
+    const entry = this._selfLitSpriteMeshes[index];
+    if (entry.texture !== texture) {
+      entry.shader.resources.uTexture = texture.source;
+      entry.texture = texture;
+    }
+    return entry;
   }
 
   /* =====================
@@ -1640,7 +2029,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         y: this.shadowRenderQueueY,
         scaleX: this.shadowRenderQueueScaleX,
         scaleY: this.shadowRenderQueueScaleY,
-        rotation: this.shadowRenderQueueRotation,
+        rotC: this.shadowRenderQueueRotC,
+        rotS: this.shadowRenderQueueRotS,
         alpha: this.shadowRenderQueueAlpha,
         tint: this.shadowRenderQueueTint,
         textureId: this.shadowRenderQueueTextureId,
@@ -2330,14 +2720,18 @@ UPDATE LIGHTING (NO ZOOM SCALING)
   async initialize(data) {
     // console.log("PIXI WORKER: Initializing with component system", data);
 
-    // Fetch external shader sources (visibility polygon lighting)
+    // Fetch external shader sources (visibility polygon lighting + self-lit sprite)
     if (data.visibilityPolygons && data.visibilityPolygons.enabled) {
-      const [vertSrc, fragSrc] = await Promise.all([
+      const [vertSrc, fragSrc, spriteVert, spriteFrag] = await Promise.all([
         fetch('/src/shaders/visibility_polygon.vert.glsl').then(r => r.text()),
         fetch('/src/shaders/visibility_polygon.frag.glsl').then(r => r.text()),
+        fetch('/src/shaders/occluder_self_lit_sprite.vert.glsl').then(r => r.text()),
+        fetch('/src/shaders/occluder_self_lit_sprite.frag.glsl').then(r => r.text()),
       ]);
       this._visPolyVertexShader = vertSrc;
       this._visPolyFragmentShader = fragSrc;
+      this._selfLitSpriteVertShader = spriteVert;
+      this._selfLitSpriteFragShader = spriteFrag;
     }
 
     // Initialize stats buffer for writing metrics
@@ -2845,7 +3239,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           y: ref.y,
           scaleX: ref.scaleX,
           scaleY: ref.scaleY,
-          rotation: ref.rotation,
+          rotC: ref.rotC,
+          rotS: ref.rotS,
           alpha: ref.alpha,
           tint: ref.tint,
           textureId: ref.textureId,
@@ -2977,7 +3372,10 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         buffer.scaleY = new Float32Array(sab, offset, maxItems);
         offset += maxItems * 4;
 
-        buffer.rotation = new Float32Array(sab, offset, maxItems);
+        buffer.rotC = new Float32Array(sab, offset, maxItems);
+        offset += maxItems * 4;
+
+        buffer.rotS = new Float32Array(sab, offset, maxItems);
         offset += maxItems * 4;
 
         buffer.alpha = new Float32Array(sab, offset, maxItems);

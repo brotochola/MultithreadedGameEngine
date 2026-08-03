@@ -72,12 +72,14 @@ export class BulletPool extends SharedAtomicPool {
     const scale = BulletComponent.scale;
     const alpha = BulletComponent.alpha;
     const tint = BulletComponent.tint;
-    const spriteRotation = BulletComponent.spriteRotation;
+    const spriteRotC = BulletComponent.spriteRotC;
+    const spriteRotS = BulletComponent.spriteRotS;
+    const bulletRotC = BulletComponent.bulletRotC;
+    const bulletRotS = BulletComponent.bulletRotS;
     const anchorX = BulletComponent.anchorX;
     const anchorY = BulletComponent.anchorY;
     const offsetY = BulletComponent.offsetY;
     const trailWidth = BulletComponent.trailWidth;
-    const bulletAngle = BulletComponent.bulletAngle;
     const px = config.x;
     const py = config.y;
     x[i] = px;
@@ -114,8 +116,28 @@ export class BulletPool extends SharedAtomicPool {
     scale[i] = config.scale ?? 1;
     alpha[i] = config.alpha ?? 1;
     tint[i] = config.tint ?? 0xffffff;
-    spriteRotation[i] = config.spriteRotation ?? config.rotation ?? 0;
-    bulletAngle[i] = Math.atan2(config.vy, config.vx);
+    {
+      const speedSq = config.vx * config.vx + config.vy * config.vy;
+      if (speedSq > 1e-12) {
+        const inv = 1 / Math.sqrt(speedSq);
+        bulletRotC[i] = config.vx * inv;
+        bulletRotS[i] = config.vy * inv;
+      } else {
+        bulletRotC[i] = 1;
+        bulletRotS[i] = 0;
+      }
+    }
+    if (config.spriteRotC != null && config.spriteRotS != null) {
+      spriteRotC[i] = config.spriteRotC;
+      spriteRotS[i] = config.spriteRotS;
+    } else if (config.spriteRotation == null && config.rotation == null) {
+      spriteRotC[i] = bulletRotC[i];
+      spriteRotS[i] = bulletRotS[i];
+    } else {
+      const a = config.spriteRotation ?? config.rotation ?? 0;
+      spriteRotC[i] = Math.cos(a);
+      spriteRotS[i] = Math.sin(a);
+    }
     anchorX[i] = config.anchorX ?? 0;
     anchorY[i] = config.anchorY ?? 0.5;
     offsetY[i] = config.offsetY ?? 0;

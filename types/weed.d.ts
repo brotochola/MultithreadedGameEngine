@@ -229,6 +229,8 @@ export interface QuerySystemPrecomputeComponentMap {
   ShadowCaster: typeof ShadowCaster;
   FlashComponent: typeof FlashComponent;
   LightOccluder: typeof LightOccluder;
+  LIGHT_OCCLUDER_MASK_COLLIDER: typeof LIGHT_OCCLUDER_MASK_COLLIDER;
+  LIGHT_OCCLUDER_MASK_SPRITE: typeof LIGHT_OCCLUDER_MASK_SPRITE;
   CameraInOutListener: typeof CameraInOutListener;
   CollisionListener: typeof CollisionListener;
 }
@@ -1983,7 +1985,11 @@ export declare class Transform extends Component {
   /** HEAP-bound after `box2dReady`. */
   static x: Float32Array;
   static y: Float32Array;
+  /** Scratch / legacy radians channel (unused by physics export). Prefer rotC/rotS. */
   static rotation: Float32Array;
+  /** Cos/sin of body angle (`b2Rot`); SoA truth for facing. */
+  static rotC: Float32Array;
+  static rotS: Float32Array;
 }
 
 export declare class RigidBody extends Component {
@@ -2108,6 +2114,9 @@ export declare class SpriteRenderer extends Component {
     renderDirty: typeof Uint8Array;
     screenX: typeof Float32Array;
     screenY: typeof Float32Array;
+    inheritTransformRotation: typeof Uint8Array;
+    spriteRotC: typeof Float32Array;
+    spriteRotS: typeof Float32Array;
   };
   static active: Uint8Array;
   static isAnimated: Uint8Array;
@@ -2131,6 +2140,11 @@ export declare class SpriteRenderer extends Component {
   static renderDirty: Uint8Array;
   static screenX: Float32Array;
   static screenY: Float32Array;
+  static inheritTransformRotation: Uint8Array;
+  static spriteRotC: Float32Array;
+  static spriteRotS: Float32Array;
+  get spriteRotation(): number;
+  set spriteRotation(v: number);
   static getOriginalWidth(entityIndex: number): number;
   static getOriginalHeight(entityIndex: number): number;
   static updateBounds(entityIndex: number): void;
@@ -2166,7 +2180,8 @@ export declare class AdobeAnimComponent extends Component {
     scaleY: typeof Float32Array;
     anchorX: typeof Float32Array;
     anchorY: typeof Float32Array;
-    rotation: typeof Float32Array;
+    rotC: typeof Float32Array;
+    rotS: typeof Float32Array;
     alpha: typeof Float32Array;
     tint: typeof Uint32Array;
     layerId: typeof Uint8Array;
@@ -2188,7 +2203,8 @@ export declare class AdobeAnimComponent extends Component {
   static scaleY: Float32Array;
   static anchorX: Float32Array;
   static anchorY: Float32Array;
-  static rotation: Float32Array;
+  static rotC: Float32Array;
+  static rotS: Float32Array;
   static alpha: Float32Array;
   static tint: Uint32Array;
   static layerId: Uint8Array;
@@ -2233,7 +2249,8 @@ export declare class ParticleComponent extends Component {
     tint: typeof Uint32Array;
     baseTint: typeof Uint32Array;
     textureId: typeof Uint16Array;
-    rotation: typeof Float32Array;
+    rotC: typeof Float32Array;
+    rotS: typeof Float32Array;
     flipX: typeof Uint8Array;
     flipY: typeof Uint8Array;
     fadeOnTheFloor: typeof Uint16Array;
@@ -2264,7 +2281,8 @@ export declare class ParticleComponent extends Component {
   static tint: Uint32Array;
   static baseTint: Uint32Array;
   static textureId: Uint16Array;
-  static rotation: Float32Array;
+  static rotC: Float32Array;
+  static rotS: Float32Array;
   static flipX: Uint8Array;
   static flipY: Uint8Array;
   static fadeOnTheFloor: Uint16Array;
@@ -2292,8 +2310,10 @@ export declare class DecorationComponent extends Component {
     textureId: typeof Uint16Array;
     scaleX: typeof Float32Array;
     scaleY: typeof Float32Array;
-    baseRotation: typeof Float32Array;
-    rotation: typeof Float32Array;
+    baseRotC: typeof Float32Array;
+    baseRotS: typeof Float32Array;
+    rotC: typeof Float32Array;
+    rotS: typeof Float32Array;
     alpha: typeof Float32Array;
     tint: typeof Uint32Array;
     anchorX: typeof Float32Array;
@@ -2319,8 +2339,10 @@ export declare class DecorationComponent extends Component {
   static textureId: Uint16Array;
   static scaleX: Float32Array;
   static scaleY: Float32Array;
-  static baseRotation: Float32Array;
-  static rotation: Float32Array;
+  static baseRotC: Float32Array;
+  static baseRotS: Float32Array;
+  static rotC: Float32Array;
+  static rotS: Float32Array;
   static alpha: Float32Array;
   static tint: Uint32Array;
   static anchorX: Float32Array;
@@ -2395,13 +2417,16 @@ export declare class ShadowCaster extends Component {
   static shadowCount: number;
 }
 
+export declare const LIGHT_OCCLUDER_MASK_COLLIDER = 0;
+export declare const LIGHT_OCCLUDER_MASK_SPRITE = 1;
+
 export declare class LightOccluder extends Component {
   static readonly ARRAY_SCHEMA: {
     active: typeof Uint8Array;
-    radius: typeof Float32Array;
+    maskMode: typeof Uint8Array;
   };
   static active: Uint8Array;
-  static radius: Float32Array;
+  static maskMode: Uint8Array;
 }
 
 export declare class FlashComponent extends Component {
@@ -2435,7 +2460,8 @@ export declare class BulletComponent extends Component {
     prevY: typeof Float32Array;
     vx: typeof Float32Array;
     vy: typeof Float32Array;
-    bulletAngle: typeof Float32Array;
+    bulletRotC: typeof Float32Array;
+    bulletRotS: typeof Float32Array;
     damage: typeof Float32Array;
     ownerId: typeof Uint16Array;
     shooterEntityType: typeof Uint8Array;
@@ -2443,7 +2469,8 @@ export declare class BulletComponent extends Component {
     scale: typeof Float32Array;
     alpha: typeof Float32Array;
     tint: typeof Uint32Array;
-    spriteRotation: typeof Float32Array;
+    spriteRotC: typeof Float32Array;
+    spriteRotS: typeof Float32Array;
     anchorX: typeof Float32Array;
     anchorY: typeof Float32Array;
     offsetY: typeof Float32Array;
@@ -2460,7 +2487,8 @@ export declare class BulletComponent extends Component {
   static prevY: Float32Array;
   static vx: Float32Array;
   static vy: Float32Array;
-  static bulletAngle: Float32Array;
+  static bulletRotC: Float32Array;
+  static bulletRotS: Float32Array;
   static damage: Float32Array;
   static ownerId: Uint16Array;
   static shooterEntityType: Uint8Array;
@@ -2468,7 +2496,8 @@ export declare class BulletComponent extends Component {
   static scale: Float32Array;
   static alpha: Float32Array;
   static tint: Uint32Array;
-  static spriteRotation: Float32Array;
+  static spriteRotC: Float32Array;
+  static spriteRotS: Float32Array;
   static anchorX: Float32Array;
   static anchorY: Float32Array;
   static offsetY: Float32Array;
@@ -2810,6 +2839,8 @@ export interface WeedNamespace {
   LightEmitter: typeof LightEmitter;
   ShadowCaster: typeof ShadowCaster;
   LightOccluder: typeof LightOccluder;
+  LIGHT_OCCLUDER_MASK_COLLIDER: typeof LIGHT_OCCLUDER_MASK_COLLIDER;
+  LIGHT_OCCLUDER_MASK_SPRITE: typeof LIGHT_OCCLUDER_MASK_SPRITE;
   FlashComponent: typeof FlashComponent;
   CameraInOutListener: typeof CameraInOutListener;
   CollisionListener: typeof CollisionListener;

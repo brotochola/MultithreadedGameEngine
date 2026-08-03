@@ -114,6 +114,8 @@ export class AdobeAnimRegistry {
         pieceX: asset.pieceX,
         pieceY: asset.pieceY,
         pieceRotation: asset.pieceRotation,
+        pieceRotC: asset.pieceRotC,
+        pieceRotS: asset.pieceRotS,
         pieceScaleX: asset.pieceScaleX,
         pieceScaleY: asset.pieceScaleY,
         pieceAlpha: asset.pieceAlpha,

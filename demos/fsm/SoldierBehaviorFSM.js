@@ -21,6 +21,14 @@ const _navVec = { x: 0, y: 0 };
 const ENABLE_TEAM_DATA_THROTTLE = true;
 const TEAM_DATA_INTERVAL_MS = 16;
 
+/** Max LOS rays per findACivilianToShoot scan (closest-first). */
+const SHOOT_LOS_CANDIDATE_K = 4;
+const _shootCandIndex = new Int32Array(SHOOT_LOS_CANDIDATE_K);
+const _shootCandDistSq = new Float64Array(SHOOT_LOS_CANDIDATE_K);
+
+/** Reuse LOS for same target this many logic frames. */
+const LOS_CACHE_FRAMES = 4;
+
 // ==========================================
 // HELPER: Find closest civilian in neighbors
 // ==========================================
@@ -61,26 +69,52 @@ function findACivilianToShoot(owner) {
   const ownerX = Transform.x[owner.index] + (Collider.offsetX[owner.index] || 0);
   const ownerY = Transform.y[owner.index] + (Collider.offsetY[owner.index] || 0);
 
+  // Pass 1: keep K nearest living civilians (no LOS yet)
+  let candCount = 0;
+  for (let k = 0; k < SHOOT_LOS_CANDIDATE_K; k++) {
+    _shootCandDistSq[k] = Infinity;
+    _shootCandIndex[k] = -1;
+  }
+
   for (let n = 0; n < owner.neighborCount; n++) {
     const neighborIndex = owner.getNeighbor(n);
     if (Transform.entityType[neighborIndex] !== civilianType) continue;
     if (LootableComponent.health[neighborIndex] <= 0) continue;
-    const hasLOS = Ray.hasLineOfSight(owner.index, neighborIndex);
-
-    // DebugDraw.drawLine(
-    //   ownerX, ownerY,
-    //   Transform.x[neighborIndex] + (Collider.offsetX[neighborIndex] || 0),
-    //   Transform.y[neighborIndex] + (Collider.offsetY[neighborIndex] || 0),
-    //   hasLOS ? 0x00FF00 : 0xFF0000, 3
-    // );
-    if (!hasLOS) continue;
 
     const neighborX = Transform.x[neighborIndex] + (Collider.offsetX[neighborIndex] || 0);
     const neighborY = Transform.y[neighborIndex] + (Collider.offsetY[neighborIndex] || 0);
     const dx = neighborX - ownerX;
     const dy = neighborY - ownerY;
+    const distSq = dx * dx + dy * dy;
+
+    // Insert into sorted ascending distSq (small fixed K)
+    if (candCount < SHOOT_LOS_CANDIDATE_K) {
+      let slot = candCount++;
+      while (slot > 0 && distSq < _shootCandDistSq[slot - 1]) {
+        _shootCandDistSq[slot] = _shootCandDistSq[slot - 1];
+        _shootCandIndex[slot] = _shootCandIndex[slot - 1];
+        slot--;
+      }
+      _shootCandDistSq[slot] = distSq;
+      _shootCandIndex[slot] = neighborIndex;
+    } else if (distSq < _shootCandDistSq[SHOOT_LOS_CANDIDATE_K - 1]) {
+      let slot = SHOOT_LOS_CANDIDATE_K - 1;
+      while (slot > 0 && distSq < _shootCandDistSq[slot - 1]) {
+        _shootCandDistSq[slot] = _shootCandDistSq[slot - 1];
+        _shootCandIndex[slot] = _shootCandIndex[slot - 1];
+        slot--;
+      }
+      _shootCandDistSq[slot] = distSq;
+      _shootCandIndex[slot] = neighborIndex;
+    }
+  }
+
+  // Pass 2: LOS only on closest-first shortlist (≤ K rays)
+  for (let k = 0; k < candCount; k++) {
+    const neighborIndex = _shootCandIndex[k];
+    if (!Ray.hasLineOfSight(owner.index, neighborIndex)) continue;
     _closestResult.index = neighborIndex;
-    _closestResult.distSq = dx * dx + dy * dy;
+    _closestResult.distSq = _shootCandDistSq[k];
     return _closestResult;
   }
   return null;
@@ -117,15 +151,22 @@ function clearTarget(i) {
 
 function canShootTarget(owner, targetIndex, targetDistSq) {
   if (!owner.hasGun()) return false;
-  const hasLOS = Ray.hasLineOfSight(owner.index, targetIndex);
-  DebugDraw.drawLine(
-    Transform.x[owner.index], Transform.y[owner.index],
-    Transform.x[targetIndex], Transform.y[targetIndex],
-    hasLOS ? 0x00FF00 : 0xFF0000, 0
-  );
-  if (!hasLOS) return false;
   const weapon = owner.getBestWeapon();
-  return targetDistSq <= weapon.rangeSq;
+  if (targetDistSq > weapon.rangeSq) return false;
+
+  const frame = owner._logicFrame | 0;
+  if (
+    owner._losCacheTarget === targetIndex &&
+    frame < (owner._losCacheUntilFrame | 0)
+  ) {
+    return owner._losCacheClear === 1;
+  }
+
+  const hasLOS = Ray.hasLineOfSight(owner.index, targetIndex);
+  owner._losCacheTarget = targetIndex;
+  owner._losCacheClear = hasLOS ? 1 : 0;
+  owner._losCacheUntilFrame = frame + LOS_CACHE_FRAMES;
+  return hasLOS;
 }
 
 // ==========================================

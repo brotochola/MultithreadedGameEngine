@@ -61,7 +61,7 @@ export class Tree extends GameObject {
 
   tick(dtRatio, deltaTime, accumulatedTime, frameNumber) {
     const factor = this.scaleY * 0.005
-    this.rotation = factor * Math.sin(accumulatedTime * factor * 0.33 + this.index);
+    // this.rotation = factor * Math.sin(accumulatedTime * factor * 0.33 + this.index);
   }
 
   onSpawned(spawnConfig = {}) { }

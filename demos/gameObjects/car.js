@@ -153,7 +153,10 @@ export class Car extends GameObject {
 
         this.carComponent.vx = RigidBody.vx[i];
         this.carComponent.vy = RigidBody.vy[i];
-        this.carComponent.angle = Transform.rotation[i];
+        this.carComponent.angle = Math.atan2(
+            Transform.rotS ? Transform.rotS[i] : 0,
+            Transform.rotC ? Transform.rotC[i] : 1,
+        );
 
         this._updateFriction();
         this._emitDust();

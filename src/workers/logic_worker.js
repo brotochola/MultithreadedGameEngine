@@ -21,6 +21,7 @@ import { SpriteSheetRegistry } from '../core/SpriteSheetRegistry.js';
 import { AbstractWorker } from './AbstractWorker.js';
 
 import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
+import { Ray } from '../core/Ray.js';
 import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
@@ -477,6 +478,10 @@ class LogicWorker extends AbstractWorker {
     // Reset stats for this frame
     this.entitiesProcessedThisFrame = 0;
     this.systemsExecutedThisFrame = 0;
+    this.entityTimeThisFrame = 0;
+    this.raycastMsThisFrame = 0;
+    this.raycastCountThisFrame = 0;
+    Ray.beginFrame();
 
     // Process bullet impacts from particle_worker (SAB poll - no message needed)
     // Gated on the batch sequence so each batch is processed exactly once,
@@ -528,6 +533,8 @@ class LogicWorker extends AbstractWorker {
     const accTime = this.accumulatedTime;
     const frameNum = this.frameNumber;
     const transformActive = Transform.active; // Cache for active check
+
+    const tEntity0 = performance.now();
 
     // ========================================
     // PHASE 1: NON-DECIMATED ENTITIES (FAST PATH)
@@ -618,6 +625,11 @@ class LogicWorker extends AbstractWorker {
         }
       }
     }
+
+    this.entityTimeThisFrame = performance.now() - tEntity0;
+    const rayStats = Ray.consumeStats();
+    this.raycastMsThisFrame = rayStats.ms;
+    this.raycastCountThisFrame = rayStats.count;
 
     // Entity processing system executed
     if (this.entitiesProcessedThisFrame > 0) {
@@ -1178,6 +1190,9 @@ class LogicWorker extends AbstractWorker {
       this.stats[LOGIC_STATS.ENTITIES_PROCESSED] = this.entitiesProcessedThisFrame;
       this.stats[LOGIC_STATS.SYSTEMS_EXECUTED] = this.systemsExecutedThisFrame;
       this.stats[LOGIC_STATS.MSG_MS] = this.messageTimeThisFrame;
+      this.stats[LOGIC_STATS.RAYCAST_MS] = this.raycastMsThisFrame || 0;
+      this.stats[LOGIC_STATS.RAYCAST_COUNT] = this.raycastCountThisFrame || 0;
+      this.stats[LOGIC_STATS.ENTITY_MS] = this.entityTimeThisFrame || 0;
     }
   }
 }

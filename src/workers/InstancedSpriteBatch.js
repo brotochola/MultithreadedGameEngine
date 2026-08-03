@@ -20,7 +20,7 @@ import {
 
 import { DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
 
-export const INSTANCED_SPRITE_FLOATS = 22;
+export const INSTANCED_SPRITE_FLOATS = 23;
 export const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 const Y_SORT_K = DECORATION_Y_SORT_SCALE;
@@ -32,7 +32,7 @@ in vec2 aInstXY;
 in vec2 aInstScale;
 in vec2 aInstSize;
 in vec2 aInstAnchor;
-in float aInstRot;
+in vec2 aInstRotCS;
 in float aInstDepth;
 in vec4 aInstUV;
 in vec4 aInstColor;
@@ -48,8 +48,8 @@ out vec4 vColor;
 void main() {
   vec2 content = aInstTrim.xy + aQuad * aInstTrim.zw;
   vec2 local = (content - aInstAnchor * aInstSize) * aInstScale;
-  float c = cos(aInstRot);
-  float s = sin(aInstRot);
+  float c = aInstRotCS.x;
+  float s = aInstRotCS.y;
   vec2 rotated = vec2(local.x * c - local.y * s, local.x * s + local.y * c);
   vec2 world = rotated + aInstXY;
   mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
@@ -171,11 +171,11 @@ export class InstancedSpriteBatch {
         aInstScale: { buffer: buf, format: 'float32x2', stride, offset: 8, instance: true },
         aInstSize: { buffer: buf, format: 'float32x2', stride, offset: 16, instance: true },
         aInstAnchor: { buffer: buf, format: 'float32x2', stride, offset: 24, instance: true },
-        aInstRot: { buffer: buf, format: 'float32', stride, offset: 32, instance: true },
-        aInstDepth: { buffer: buf, format: 'float32', stride, offset: 36, instance: true },
-        aInstUV: { buffer: buf, format: 'float32x4', stride, offset: 40, instance: true },
-        aInstColor: { buffer: buf, format: 'float32x4', stride, offset: 56, instance: true },
-        aInstTrim: { buffer: buf, format: 'float32x4', stride, offset: 72, instance: true },
+        aInstRotCS: { buffer: buf, format: 'float32x2', stride, offset: 32, instance: true },
+        aInstDepth: { buffer: buf, format: 'float32', stride, offset: 40, instance: true },
+        aInstUV: { buffer: buf, format: 'float32x4', stride, offset: 44, instance: true },
+        aInstColor: { buffer: buf, format: 'float32x4', stride, offset: 60, instance: true },
+        aInstTrim: { buffer: buf, format: 'float32x4', stride, offset: 76, instance: true },
       },
       indexBuffer: [0, 1, 2, 0, 2, 3],
     });
@@ -263,7 +263,8 @@ export class InstancedSpriteBatch {
     const rqY = q.y;
     const rqScaleX = q.scaleX;
     const rqScaleY = q.scaleY;
-    const rqRotation = q.rotation;
+    const rqRotC = q.rotC;
+    const rqRotS = q.rotS;
     const rqAlpha = q.alpha;
     const rqTint = q.tint;
     const rqTextureId = q.textureId;
@@ -370,20 +371,21 @@ export class InstancedSpriteBatch {
       data[base + 5] = oh;
       data[base + 6] = rqAnchorX[i];
       data[base + 7] = rqAnchorY[i];
-      data[base + 8] = rqRotation[i];
-      data[base + 9] = depth;
-      data[base + 10] = u0;
-      data[base + 11] = v0;
-      data[base + 12] = u1;
-      data[base + 13] = v1;
-      data[base + 14] = ((tint >> 16) & 0xff) / 255;
-      data[base + 15] = ((tint >> 8) & 0xff) / 255;
-      data[base + 16] = (tint & 0xff) / 255;
-      data[base + 17] = rqAlpha[i];
-      data[base + 18] = trimX;
-      data[base + 19] = trimY;
-      data[base + 20] = trimW;
-      data[base + 21] = trimH;
+      data[base + 8] = rqRotC[i];
+      data[base + 9] = rqRotS[i];
+      data[base + 10] = depth;
+      data[base + 11] = u0;
+      data[base + 12] = v0;
+      data[base + 13] = u1;
+      data[base + 14] = v1;
+      data[base + 15] = ((tint >> 16) & 0xff) / 255;
+      data[base + 16] = ((tint >> 8) & 0xff) / 255;
+      data[base + 17] = (tint & 0xff) / 255;
+      data[base + 18] = rqAlpha[i];
+      data[base + 19] = trimX;
+      data[base + 20] = trimY;
+      data[base + 21] = trimW;
+      data[base + 22] = trimH;
       base += INSTANCED_SPRITE_FLOATS;
       out++;
     }

@@ -15,7 +15,13 @@ import { ShadowCaster } from '../components/ShadowCaster.js';
 import { FlashComponent } from '../components/FlashComponent.js';
 import { LightOccluder } from '../components/LightOccluder.js';
 import { AbstractWorker } from './AbstractWorker.js';
-import { buildVisibilityPolygon } from './visibility/AngularSweep.js';
+import {
+    buildVisibilityPolygon,
+    OCC_CIRCLE,
+    OCC_POLY,
+    writeOrientedBoxVerts,
+    writePolygonVerts,
+} from './visibility/AngularSweep.js';
 import { Grid } from '../core/Grid.js';
 import { Sun } from '../core/Sun.js';
 import {
@@ -27,7 +33,14 @@ import {
     lightGlowScale,
 } from '../core/utils.js';
 import { PRE_RENDER_STATS, createStatsWriter } from './workers-utils.js';
-import { RENDERER_DEFAULTS, CAMERA_TYPES, DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
+import {
+    RENDERER_DEFAULTS,
+    CAMERA_TYPES,
+    DECORATION_Y_SORT_SCALE,
+    ENTITY_GLOW_SORT_BIAS,
+    ShapeType,
+    MAX_POLYGON_VERTICES,
+} from '../core/ConfigDefaults.js';
 import { Layer } from '../core/Layer.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
 import { DECORATION_NO_PARENT } from '../core/DecorationPool.js';
@@ -109,7 +122,8 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueY = null;
         this.renderQueueScaleX = null;
         this.renderQueueScaleY = null;
-        this.renderQueueRotation = null;
+        this.renderQueueRotC = null;
+        this.renderQueueRotS = null;
         this.renderQueueAlpha = null;
         this.renderQueueTint = null;
         this.renderQueueTextureId = null;
@@ -130,7 +144,7 @@ class PreRenderWorker extends AbstractWorker {
         this.entityFrameAccumulator = null;
 
         // Scratch for published physics pose / Transform (no per-call alloc)
-        this._displayPoseOut = { x: 0, y: 0, rotation: 0 };
+        this._displayPoseOut = { x: 0, y: 0, rotC: 1, rotS: 0 };
         this.backpressure = true;
 
         // Physics pose publish latch (mirror renderQueueSync)
@@ -139,7 +153,8 @@ class PreRenderWorker extends AbstractWorker {
         this.poseCapacity = 0;
         this._poseX = null;
         this._poseY = null;
-        this._poseRot = null;
+        this._poseRotC = null;
+        this._poseRotS = null;
         this._rbActive = null;
 
         // Texture metadata
@@ -171,7 +186,7 @@ class PreRenderWorker extends AbstractWorker {
         // Pre-allocated ref for _emitAdobePieces (avoids per-frame alloc in buildRenderQueue)
         this._emitRef = {
             x: null, y: null, scaleX: null, scaleY: null,
-            rotation: null, alpha: null, tint: null, textureId: null,
+            rotC: null, rotS: null, alpha: null, tint: null, textureId: null,
             anchorX: null, anchorY: null, type: null, entityIndex: null,
         };
 
@@ -210,7 +225,8 @@ class PreRenderWorker extends AbstractWorker {
         this.shadowRenderQueueY = null;
         this.shadowRenderQueueScaleX = null;
         this.shadowRenderQueueScaleY = null;
-        this.shadowRenderQueueRotation = null;
+        this.shadowRenderQueueRotC = null;
+        this.shadowRenderQueueRotS = null;
         this.shadowRenderQueueAlpha = null;
         this.shadowRenderQueueTint = null;
         this.shadowRenderQueueTextureId = null;
@@ -320,7 +336,8 @@ class PreRenderWorker extends AbstractWorker {
                 this.poseBuffers[i] = {
                     x: new Float32Array(sab, 0, n),
                     y: new Float32Array(sab, n * 4, n),
-                    rotation: new Float32Array(sab, n * 8, n),
+                    rotC: new Float32Array(sab, n * 8, n),
+                    rotS: new Float32Array(sab, n * 12, n),
                 };
             }
         }
@@ -490,7 +507,10 @@ class PreRenderWorker extends AbstractWorker {
                 buffer.scaleY = new Float32Array(sab, offset, maxItems);
                 offset += maxItems * 4;
 
-                buffer.rotation = new Float32Array(sab, offset, maxItems);
+                buffer.rotC = new Float32Array(sab, offset, maxItems);
+                offset += maxItems * 4;
+
+                buffer.rotS = new Float32Array(sab, offset, maxItems);
                 offset += maxItems * 4;
 
                 buffer.alpha = new Float32Array(sab, offset, maxItems);
@@ -573,19 +593,48 @@ class PreRenderWorker extends AbstractWorker {
                 };
             }
             this._vpWriteBuffer = this._vpBuffers[0];
+            if (this._selfLitBuffers) {
+                this._selfLitWriteBuffer = this._selfLitBuffers[0];
+            }
 
-            // Scratch arrays for collecting nearby occluder circles
+            // Scratch arrays for collecting nearby occluders (circle + convex)
             const maxOccluders = 256;
+            this._vpOccKind = new Uint8Array(maxOccluders);
             this._vpCircleX = new Float32Array(maxOccluders);
             this._vpCircleY = new Float32Array(maxOccluders);
             this._vpCircleR = new Float32Array(maxOccluders);
+            this._vpVertStart = new Int32Array(maxOccluders);
+            this._vpVertCount = new Uint8Array(maxOccluders);
+            // Max verts: 4 per box, MAX_POLYGON_VERTICES per poly, rare all-poly worst case
+            this._vpVertsX = new Float32Array(maxOccluders * MAX_POLYGON_VERTICES);
+            this._vpVertsY = new Float32Array(maxOccluders * MAX_POLYGON_VERTICES);
             this._vpMaxOccluders = maxOccluders;
 
             // Output scratch for polygon vertices
             this._vpOutX = new Float32Array(maxVerts);
             this._vpOutY = new Float32Array(maxVerts);
 
-            console.log(`[PRE_RENDER WORKER] Visibility polygons initialized (max ${maxLts} lights, ${maxVerts} verts/polygon)`);
+            // Self-lit queue (entity under own occluder fill)
+            this._selfLitMax = data.visibilityPolygons.maxOccluderSelfLit || 512;
+            this._selfLitItemBytes = 12;
+            const selfLitSabs = [
+                data.visibilityPolygons.selfLitDataA,
+                data.visibilityPolygons.selfLitDataB,
+            ];
+            this._selfLitBuffers = [null, null];
+            if (selfLitSabs[0] && selfLitSabs[1]) {
+                for (let b = 0; b < 2; b++) {
+                    const sab = selfLitSabs[b];
+                    this._selfLitBuffers[b] = {
+                        header: new Int32Array(sab, 0, 1),
+                        i32: new Int32Array(sab),
+                        u16: new Uint16Array(sab),
+                        u8: new Uint8Array(sab),
+                    };
+                }
+            }
+
+            console.log(`[PRE_RENDER WORKER] Visibility polygons initialized (max ${maxLts} lights, ${maxVerts} verts/polygon, selfLit ${this._selfLitMax})`);
         }
 
         console.log('[PRE_RENDER WORKER] ✅ Initialize() completed!');
@@ -604,7 +653,8 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueY = buffer.y;
         this.renderQueueScaleX = buffer.scaleX;
         this.renderQueueScaleY = buffer.scaleY;
-        this.renderQueueRotation = buffer.rotation;
+        this.renderQueueRotC = buffer.rotC;
+        this.renderQueueRotS = buffer.rotS;
         this.renderQueueAlpha = buffer.alpha;
         this.renderQueueTint = buffer.tint;
         this.renderQueueTextureId = buffer.textureId;
@@ -638,7 +688,8 @@ class PreRenderWorker extends AbstractWorker {
         this.shadowRenderQueueY = buffer.y;
         this.shadowRenderQueueScaleX = buffer.scaleX;
         this.shadowRenderQueueScaleY = buffer.scaleY;
-        this.shadowRenderQueueRotation = buffer.rotation;
+        this.shadowRenderQueueRotC = buffer.rotC;
+        this.shadowRenderQueueRotS = buffer.rotS;
         this.shadowRenderQueueAlpha = buffer.alpha;
         this.shadowRenderQueueTint = buffer.tint;
         this.shadowRenderQueueTextureId = buffer.textureId;
@@ -678,6 +729,9 @@ class PreRenderWorker extends AbstractWorker {
             // Visibility polygon buffer uses same swap
             if (this.visibilityPolygonsEnabled) {
                 this._vpWriteBuffer = this._vpBuffers[writeBufferIdx];
+                if (this._selfLitBuffers) {
+                    this._selfLitWriteBuffer = this._selfLitBuffers[writeBufferIdx];
+                }
             }
         }
 
@@ -914,9 +968,9 @@ class PreRenderWorker extends AbstractWorker {
             this._entityShadowIndicesToClearCount = 0;
         }
 
-        let rqX, rqY, rqScaleX, rqScaleY, rqRotation, rqAlpha, rqTint, rqTextureId, rqAnchorX, rqAnchorY;
+        let rqX, rqY, rqScaleX, rqScaleY, rqRotC, rqRotS, rqAlpha, rqTint, rqTextureId, rqAnchorX, rqAnchorY;
         let viewMinX, viewMaxX, viewMinY, viewMaxY;
-        let sunShadowRotation, sunShadowAlpha;
+        let sunShadowRotC, sunShadowRotS, sunShadowAlpha;
         let shadowCasterActive, shadowHeightMultiplier, shadowAnchorOffsetX, shadowAnchorOffsetY;
         let worldX, worldY, transformActive, spriteScaleY, spriteAnchorX, spriteAnchorY;
         let entityShadowCounts, toClear;
@@ -932,12 +986,15 @@ class PreRenderWorker extends AbstractWorker {
             viewMaxY = worldBounds.maxY;
             const si = Sun.intensity;
             sunShadowAlpha = Sun.shadowAlpha * si * (1 - Sun.shadowStretchAlphaFactor * (1 - Sun.shadowMinLengthRatio / Sun.shadowLengthRatio));
-            sunShadowRotation = Sun.shadowAngle - 1.5707963267948966;
+            // Sprite facing = shadowDir rotated -90°: cos(θ-π/2)=sin(θ)=dirY, sin(θ-π/2)=-cos(θ)=-dirX
+            sunShadowRotC = Sun.shadowDirY;
+            sunShadowRotS = -Sun.shadowDirX;
             rqX = this.shadowRenderQueueX;
             rqY = this.shadowRenderQueueY;
             rqScaleX = this.shadowRenderQueueScaleX;
             rqScaleY = this.shadowRenderQueueScaleY;
-            rqRotation = this.shadowRenderQueueRotation;
+            rqRotC = this.shadowRenderQueueRotC;
+            rqRotS = this.shadowRenderQueueRotS;
             rqAlpha = this.shadowRenderQueueAlpha;
             rqTint = this.shadowRenderQueueTint;
             rqTextureId = this.shadowRenderQueueTextureId;
@@ -1026,7 +1083,8 @@ class PreRenderWorker extends AbstractWorker {
                             rqY[sunShadowWriteIdx] = casterY;
                             rqScaleX[sunShadowWriteIdx] = 1;
                             rqScaleY[sunShadowWriteIdx] = lengthScale;
-                            rqRotation[sunShadowWriteIdx] = sunShadowRotation;
+                            rqRotC[sunShadowWriteIdx] = sunShadowRotC;
+                            rqRotS[sunShadowWriteIdx] = sunShadowRotS;
                             rqAlpha[sunShadowWriteIdx] = sunShadowAlpha;
                             rqTint[sunShadowWriteIdx] = 0x000000;
                             rqTextureId[sunShadowWriteIdx] = textureId;
@@ -1319,7 +1377,8 @@ class PreRenderWorker extends AbstractWorker {
     _latchPose() {
         this._poseX = null;
         this._poseY = null;
-        this._poseRot = null;
+        this._poseRotC = null;
+        this._poseRotS = null;
         this._rbActive = RigidBody.active;
         if (!this.poseSync || !this.poseBuffers[0]) return;
         const ready = Atomics.load(this.poseSync, 0);
@@ -1327,7 +1386,8 @@ class PreRenderWorker extends AbstractWorker {
         const buf = this.poseBuffers[(ready - 1) % 2];
         this._poseX = buf.x;
         this._poseY = buf.y;
-        this._poseRot = buf.rotation;
+        this._poseRotC = buf.rotC;
+        this._poseRotS = buf.rotS;
         Atomics.store(this.poseSync, 1, ready);
     }
 
@@ -1335,7 +1395,7 @@ class PreRenderWorker extends AbstractWorker {
      * Display pose: published post-step snapshot when latched, else Transform (boot).
      * Writes into caller-provided `out` (no alloc).
      * @param {number} idx
-     * @param {{ x: number, y: number, rotation: number }} out
+     * @param {{ x: number, y: number, rotC: number, rotS: number }} out
      */
     _displayPose(idx, out) {
         const poseX = this._poseX;
@@ -1343,17 +1403,19 @@ class PreRenderWorker extends AbstractWorker {
         if (poseX && rb && rb[idx]) {
             out.x = poseX[idx];
             out.y = this._poseY[idx];
-            out.rotation = this._poseRot[idx];
+            out.rotC = this._poseRotC[idx];
+            out.rotS = this._poseRotS[idx];
             return;
         }
         out.x = Transform.x[idx];
         out.y = Transform.y[idx];
-        out.rotation = Transform.rotation[idx] || 0;
+        out.rotC = Transform.rotC ? (Transform.rotC[idx] ?? 1) : 1;
+        out.rotS = Transform.rotS ? (Transform.rotS[idx] ?? 0) : 0;
     }
 
     /**
      * World xy for a decoration slot. Parented: compose from parent published pose + local.
-     * Writes x/y into out; rotation left to DecorationComponent.rotation by caller.
+     * Writes x/y into out; facing left to DecorationComponent.rotC/rotS by caller.
      */
     _decorationWorldXY(decoIdx, out) {
         const p = DecorationComponent.parentEntityIndex[decoIdx];
@@ -1364,8 +1426,8 @@ class PreRenderWorker extends AbstractWorker {
             const lx = DecorationComponent.localX[decoIdx];
             const ly = DecorationComponent.localY[decoIdx];
             if (DecorationComponent.inheritParentRotation[decoIdx]) {
-                const c = Math.cos(out.rotation);
-                const s = Math.sin(out.rotation);
+                const c = out.rotC;
+                const s = out.rotS;
                 out.x += c * lx - s * ly + ox;
                 out.y += s * lx + c * ly + oy;
             } else {
@@ -1391,6 +1453,8 @@ class PreRenderWorker extends AbstractWorker {
         const pieceScaleX = asset.pieceScaleX;
         const pieceScaleY = asset.pieceScaleY;
         const pieceRotation = asset.pieceRotation;
+        const pieceRotCArr = asset.pieceRotC;
+        const pieceRotSArr = asset.pieceRotS;
         const pieceAlpha = asset.pieceAlpha;
         const pieceAnchorX = asset.pieceAnchorX;
         const pieceAnchorY = asset.pieceAnchorY;
@@ -1409,15 +1473,17 @@ class PreRenderWorker extends AbstractWorker {
         this._displayPose(entityIndex, pose);
         const rootX = pose.x;
         const rootY = pose.y;
-        const rootRotation = pose.rotation + AdobeAnimComponent.rotation[entityIndex];
+        // body pose CS × AdobeAnimComponent CS
+        const ac = AdobeAnimComponent.rotC[entityIndex];
+        const as = AdobeAnimComponent.rotS[entityIndex];
+        const rootC = pose.rotC * ac - pose.rotS * as;
+        const rootS = pose.rotS * ac + pose.rotC * as;
         const rootScaleX = AdobeAnimComponent.scaleX[entityIndex];
         const rootScaleY = AdobeAnimComponent.scaleY[entityIndex];
         const rootAnchorX = AdobeAnimComponent.anchorX[entityIndex];
         const rootAnchorY = AdobeAnimComponent.anchorY[entityIndex];
         const rootAlpha = AdobeAnimComponent.alpha[entityIndex];
         const rootTint = AdobeAnimComponent.tint[entityIndex];
-        const cos = Math.cos(rootRotation);
-        const sin = Math.sin(rootRotation);
 
         const frameIndex = resolved.frameIndex;
         const absoluteFrame = (clipFrameStart?.[clipId] ?? 0) + frameIndex;
@@ -1444,11 +1510,15 @@ class PreRenderWorker extends AbstractWorker {
             const localX = (pieceX[p] - pivotX) * rootScaleX;
             const localY = (pieceY[p] - pivotY) * rootScaleY;
 
-            ref.x[writeIndex] = rootX + cos * localX - sin * localY;
-            ref.y[writeIndex] = rootY + sin * localX + cos * localY;
+            ref.x[writeIndex] = rootX + rootC * localX - rootS * localY;
+            ref.y[writeIndex] = rootY + rootS * localX + rootC * localY;
             ref.scaleX[writeIndex] = pieceScaleX[p] * rootScaleX;
             ref.scaleY[writeIndex] = pieceScaleY[p] * rootScaleY;
-            ref.rotation[writeIndex] = rootRotation + pieceRotation[p] * mirrorSign;
+            // Prebaked piece CS; mirrorSign flips sin under single-axis reflection
+            const pc = pieceRotCArr ? pieceRotCArr[p] : Math.cos(pieceRotation[p]);
+            const ps = (pieceRotSArr ? pieceRotSArr[p] : Math.sin(pieceRotation[p])) * mirrorSign;
+            ref.rotC[writeIndex] = rootC * pc - rootS * ps;
+            ref.rotS[writeIndex] = rootS * pc + rootC * ps;
             ref.alpha[writeIndex] = pieceAlpha[p] * rootAlpha;
             ref.tint[writeIndex] = rootTint;
             ref.textureId[writeIndex] = textureIds[p];
@@ -1572,7 +1642,8 @@ class PreRenderWorker extends AbstractWorker {
         const rqY = this.renderQueueY;
         const rqScaleX = this.renderQueueScaleX;
         const rqScaleY = this.renderQueueScaleY;
-        const rqRotation = this.renderQueueRotation;
+        const rqRotC = this.renderQueueRotC;
+        const rqRotS = this.renderQueueRotS;
         const rqAlpha = this.renderQueueAlpha;
         const rqTint = this.renderQueueTint;
         const rqTextureId = this.renderQueueTextureId;
@@ -1598,14 +1669,16 @@ class PreRenderWorker extends AbstractWorker {
         const srLoop = SpriteRenderer.loop;
         const srIsAnimated = SpriteRenderer.isAnimated;
         const srInheritTransformRotation = SpriteRenderer.inheritTransformRotation;
-        const srSpriteRotation = SpriteRenderer.spriteRotation;
+        const srSpriteRotC = SpriteRenderer.spriteRotC;
+        const srSpriteRotS = SpriteRenderer.spriteRotS;
 
         const particleX = ParticleComponent.x;
         const particleY = ParticleComponent.y;
         const particleZ = ParticleComponent.z;
         const particleScaleX = ParticleComponent.scaleX;
         const particleScaleY = ParticleComponent.scaleY;
-        const particleRotation = ParticleComponent.rotation;
+        const particleRotC = ParticleComponent.rotC;
+        const particleRotS = ParticleComponent.rotS;
         const particleAlpha = ParticleComponent.alpha;
         const particleTint = ParticleComponent.tint;
         const particleTextureId = ParticleComponent.textureId;
@@ -1625,7 +1698,8 @@ class PreRenderWorker extends AbstractWorker {
         const decoOffsetY = DecorationComponent.offsetY;
         const decoScaleX = DecorationComponent.scaleX;
         const decoScaleY = DecorationComponent.scaleY;
-        const decoRotation = DecorationComponent.rotation;
+        const decoRotC = DecorationComponent.rotC;
+        const decoRotS = DecorationComponent.rotS;
         const decoAlpha = DecorationComponent.alpha;
         const decoTint = DecorationComponent.tint;
         const decoTextureId = DecorationComponent.textureId;
@@ -1641,9 +1715,9 @@ class PreRenderWorker extends AbstractWorker {
         const bulletAlpha = BulletComponent.alpha;
         const bulletTint = BulletComponent.tint;
         const bulletTextureId = BulletComponent.textureId;
-        const bulletSpriteRotation = BulletComponent.spriteRotation;
+        const bulletSpriteRotC = BulletComponent.spriteRotC;
+        const bulletSpriteRotS = BulletComponent.spriteRotS;
         const bulletTrailWidth = BulletComponent.trailWidth;
-        const bulletAngle = BulletComponent.bulletAngle;
         const bulletAnchorX = BulletComponent.anchorX;
         const bulletAnchorY = BulletComponent.anchorY;
         const bulletActive = BulletComponent.active;
@@ -1657,7 +1731,7 @@ class PreRenderWorker extends AbstractWorker {
         const deltaSeconds = deltaTime / 1000;
         const ref = this._emitRef;
         ref.x = rqX; ref.y = rqY; ref.scaleX = rqScaleX; ref.scaleY = rqScaleY;
-        ref.rotation = rqRotation; ref.alpha = rqAlpha; ref.tint = rqTint;
+        ref.rotC = rqRotC; ref.rotS = rqRotS; ref.alpha = rqAlpha; ref.tint = rqTint;
         ref.textureId = rqTextureId; ref.anchorX = rqAnchorX; ref.anchorY = rqAnchorY;
         ref.type = rqType; ref.entityIndex = rqEntityIndex;
 
@@ -1685,9 +1759,13 @@ class PreRenderWorker extends AbstractWorker {
                 rqY[out] = currY;
                 rqScaleX[out] = srScaleX[idx];
                 rqScaleY[out] = srScaleY[idx];
-                rqRotation[out] = srInheritTransformRotation[idx]
-                    ? pose.rotation
-                    : srSpriteRotation[idx];
+                if (srInheritTransformRotation[idx]) {
+                    rqRotC[out] = pose.rotC;
+                    rqRotS[out] = pose.rotS;
+                } else {
+                    rqRotC[out] = srSpriteRotC[idx];
+                    rqRotS[out] = srSpriteRotS[idx];
+                }
                 rqAlpha[out] = srAlpha[idx];
                 rqTint[out] = srTint[idx];
                 rqAnchorX[out] = srAnchorX[idx];
@@ -1773,7 +1851,8 @@ class PreRenderWorker extends AbstractWorker {
                     rqScaleY[out] = particleScaleY[idx];
                     rqAlpha[out] = particleAlpha[idx];
                 }
-                rqRotation[out] = particleRotation[idx];
+                rqRotC[out] = particleRotC[idx];
+                rqRotS[out] = particleRotS[idx];
                 rqTint[out] = particleTint[idx];
                 const pAnimIdx = particleTextureId[idx];
                 rqTextureId[out] = this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID;
@@ -1789,7 +1868,8 @@ class PreRenderWorker extends AbstractWorker {
                 rqY[out] = pose.y;
                 rqScaleX[out] = decoScaleX[idx];
                 rqScaleY[out] = decoScaleY[idx];
-                rqRotation[out] = decoRotation[idx];
+                rqRotC[out] = decoRotC[idx];
+                rqRotS[out] = decoRotS[idx];
                 rqAlpha[out] = decoAlpha[idx] * this._decorationZoomAlpha;
                 rqTint[out] = decoTint[idx];
                 const dAnimIdx = decoTextureId[idx];
@@ -1811,7 +1891,8 @@ class PreRenderWorker extends AbstractWorker {
                     rqY[out] = bulletY[idx] + (bulletOffsetY[idx] ?? 0);
                     rqScaleX[out] = bulletScale[idx];
                     rqScaleY[out] = bulletScale[idx];
-                    rqRotation[out] = bulletSpriteRotation[idx];
+                    rqRotC[out] = bulletSpriteRotC[idx];
+                    rqRotS[out] = bulletSpriteRotS[idx];
                     rqAlpha[out] = bulletAlpha[idx];
                     rqTint[out] = bulletTint[idx];
                     const bAnimIdx = bulletTextureId[idx];
@@ -1855,7 +1936,10 @@ class PreRenderWorker extends AbstractWorker {
                         rqY[out] = (startY + currY) * 0.5;
                         rqScaleX[out] = lengthApprox / 10;
                         rqScaleY[out] = bulletTrailWidth[idx];
-                        rqRotation[out] = bulletAngle[idx];
+                        // Trail quad faces +X along segment (same as atan2(dy,dx) CS)
+                        const invLen = 1 / Math.sqrt(lenSq);
+                        rqRotC[out] = dx * invLen;
+                        rqRotS[out] = dy * invLen;
                         rqAlpha[out] = bulletAlpha[idx] * 0.9;
                         rqTint[out] = 0xffffff;
                     }
@@ -1884,7 +1968,8 @@ class PreRenderWorker extends AbstractWorker {
                     rqAlpha[out] = glowAlpha;
                     rqTint[out] = lightColor[idx];
                 }
-                rqRotation[out] = 0;
+                rqRotC[out] = 1;
+                rqRotS[out] = 0;
                 rqTextureId[out] = lightGradientTextureId;
                 rqAnchorX[out] = 0.5;
                 rqAnchorY[out] = 0.5;
@@ -1904,7 +1989,7 @@ class PreRenderWorker extends AbstractWorker {
      * entities, particles, decorations, light glows, bullets, and bullet trails.
      *
      * Per-type dispatch mirrors the corresponding branches in buildRenderQueue(),
-     * writing the same fields (x, y, scaleX, scaleY, rotation, alpha, tint,
+     * writing the same fields (x, y, scaleX, scaleY, rotC, rotS, alpha, tint,
      * textureId, anchorX, anchorY, type, entityIndex) into per-layer SABs.
      * The pixi_worker reads these fields generically in updateCustomLayers().
      *
@@ -1928,7 +2013,8 @@ class PreRenderWorker extends AbstractWorker {
         const srLoop = SpriteRenderer.loop;
         const srIsAnimated = SpriteRenderer.isAnimated;
         const srInheritTransformRotation = SpriteRenderer.inheritTransformRotation;
-        const srSpriteRotation = SpriteRenderer.spriteRotation;
+        const srSpriteRotC = SpriteRenderer.spriteRotC;
+        const srSpriteRotS = SpriteRenderer.spriteRotS;
 
         const frameIndex = this.entityFrameIndex;
         const frameAccum = this.entityFrameAccumulator;
@@ -1940,7 +2026,8 @@ class PreRenderWorker extends AbstractWorker {
         const particleZ = ParticleComponent.z;
         const particleScaleX = ParticleComponent.scaleX;
         const particleScaleY = ParticleComponent.scaleY;
-        const particleRotation = ParticleComponent.rotation;
+        const particleRotC = ParticleComponent.rotC;
+        const particleRotS = ParticleComponent.rotS;
         const particleAlpha = ParticleComponent.alpha;
         const particleTint = ParticleComponent.tint;
         const particleTextureId = ParticleComponent.textureId;
@@ -1954,7 +2041,8 @@ class PreRenderWorker extends AbstractWorker {
         const decoOffsetY = DecorationComponent.offsetY;
         const decoScaleX = DecorationComponent.scaleX;
         const decoScaleY = DecorationComponent.scaleY;
-        const decoRotation = DecorationComponent.rotation;
+        const decoRotC = DecorationComponent.rotC;
+        const decoRotS = DecorationComponent.rotS;
         const decoAlpha = DecorationComponent.alpha;
         const decoTint = DecorationComponent.tint;
         const decoTextureId = DecorationComponent.textureId;
@@ -1971,9 +2059,9 @@ class PreRenderWorker extends AbstractWorker {
         const bulletAlpha = BulletComponent.alpha;
         const bulletTint = BulletComponent.tint;
         const bulletTextureId = BulletComponent.textureId;
-        const bulletSpriteRotation = BulletComponent.spriteRotation;
+        const bulletSpriteRotC = BulletComponent.spriteRotC;
+        const bulletSpriteRotS = BulletComponent.spriteRotS;
         const bulletTrailWidth = BulletComponent.trailWidth;
-        const bulletAngle = BulletComponent.bulletAngle;
         const bulletAnchorX = BulletComponent.anchorX;
         const bulletAnchorY = BulletComponent.anchorY;
         const bulletActive = BulletComponent.active;
@@ -2034,7 +2122,8 @@ class PreRenderWorker extends AbstractWorker {
             const rqY = ref.y;
             const rqScaleX = ref.scaleX;
             const rqScaleY = ref.scaleY;
-            const rqRotation = ref.rotation;
+            const rqRotC = ref.rotC;
+            const rqRotS = ref.rotS;
             const rqAlpha = ref.alpha;
             const rqTint = ref.tint;
             const rqTextureId = ref.textureId;
@@ -2044,7 +2133,7 @@ class PreRenderWorker extends AbstractWorker {
             const rqEntityIndex = ref.entityIndex;
             const layerRef = this._emitRef;
             layerRef.x = rqX; layerRef.y = rqY; layerRef.scaleX = rqScaleX; layerRef.scaleY = rqScaleY;
-            layerRef.rotation = rqRotation; layerRef.alpha = rqAlpha; layerRef.tint = rqTint;
+            layerRef.rotC = rqRotC; layerRef.rotS = rqRotS; layerRef.alpha = rqAlpha; layerRef.tint = rqTint;
             layerRef.textureId = rqTextureId; layerRef.anchorX = rqAnchorX; layerRef.anchorY = rqAnchorY;
             layerRef.type = rqType; layerRef.entityIndex = rqEntityIndex;
 
@@ -2069,9 +2158,13 @@ class PreRenderWorker extends AbstractWorker {
                     rqY[out] = pose.y;
                     rqScaleX[out] = srScaleX[idx];
                     rqScaleY[out] = srScaleY[idx];
-                    rqRotation[out] = srInheritTransformRotation[idx]
-                        ? pose.rotation
-                        : srSpriteRotation[idx];
+                    if (srInheritTransformRotation[idx]) {
+                        rqRotC[out] = pose.rotC;
+                        rqRotS[out] = pose.rotS;
+                    } else {
+                        rqRotC[out] = srSpriteRotC[idx];
+                        rqRotS[out] = srSpriteRotS[idx];
+                    }
                     rqAlpha[out] = srAlpha[idx];
                     rqTint[out] = srTint[idx];
                     rqAnchorX[out] = srAnchorX[idx];
@@ -2156,7 +2249,8 @@ class PreRenderWorker extends AbstractWorker {
                         rqScaleY[out] = particleScaleY[idx];
                         rqAlpha[out] = particleAlpha[idx];
                     }
-                    rqRotation[out] = particleRotation[idx];
+                    rqRotC[out] = particleRotC[idx];
+                    rqRotS[out] = particleRotS[idx];
                     rqTint[out] = particleTint[idx];
                     const pAnimIdx = particleTextureId[idx];
                     rqTextureId[out] = this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID;
@@ -2173,7 +2267,8 @@ class PreRenderWorker extends AbstractWorker {
                     rqY[out] = pose.y;
                     rqScaleX[out] = decoScaleX[idx];
                     rqScaleY[out] = decoScaleY[idx];
-                    rqRotation[out] = decoRotation[idx];
+                    rqRotC[out] = decoRotC[idx];
+                    rqRotS[out] = decoRotS[idx];
                     rqAlpha[out] = decoAlpha[idx] * this._decorationZoomAlpha;
                     rqTint[out] = decoTint[idx];
                     const dAnimIdx = decoTextureId[idx];
@@ -2202,7 +2297,8 @@ class PreRenderWorker extends AbstractWorker {
                         rqAlpha[out] = glowAlpha;
                         rqTint[out] = lightColor[idx];
                     }
-                    rqRotation[out] = 0;
+                    rqRotC[out] = 1;
+                    rqRotS[out] = 0;
                     rqTextureId[out] = lightGradientTextureId;
                     rqAnchorX[out] = 0.5;
                     rqAnchorY[out] = 0.5;
@@ -2222,7 +2318,8 @@ class PreRenderWorker extends AbstractWorker {
                         rqY[out] = bulletY[idx] + (bulletOffsetY[idx] ?? 0);
                         rqScaleX[out] = bulletScale[idx];
                         rqScaleY[out] = bulletScale[idx];
-                        rqRotation[out] = bulletSpriteRotation[idx];
+                        rqRotC[out] = bulletSpriteRotC[idx];
+                        rqRotS[out] = bulletSpriteRotS[idx];
                         rqAlpha[out] = bulletAlpha[idx];
                         rqTint[out] = bulletTint[idx];
                         const bAnimIdx = bulletTextureId[idx];
@@ -2267,7 +2364,9 @@ class PreRenderWorker extends AbstractWorker {
                             rqY[out] = (startY + currY) * 0.5;
                             rqScaleX[out] = lengthApprox / 10;
                             rqScaleY[out] = bulletTrailWidth[idx];
-                            rqRotation[out] = bulletAngle[idx];
+                            const invLen = 1 / Math.sqrt(lenSq);
+                            rqRotC[out] = dx * invLen;
+                            rqRotS[out] = dy * invLen;
                             rqAlpha[out] = bulletAlpha[idx] * 0.9;
                             rqTint[out] = 0xffffff;
                         }
@@ -2413,7 +2512,8 @@ class PreRenderWorker extends AbstractWorker {
         const rqY = this.shadowRenderQueueY;
         const rqScaleX = this.shadowRenderQueueScaleX;
         const rqScaleY = this.shadowRenderQueueScaleY;
-        const rqRotation = this.shadowRenderQueueRotation;
+        const rqRotC = this.shadowRenderQueueRotC;
+        const rqRotS = this.shadowRenderQueueRotS;
         const rqAlpha = this.shadowRenderQueueAlpha;
         const rqTint = this.shadowRenderQueueTint;
         const rqTextureId = this.shadowRenderQueueTextureId;
@@ -2639,15 +2739,15 @@ class PreRenderWorker extends AbstractWorker {
                 alpha *= pointShadowAlphaScale * rangeFade;
                 if (alpha < MIN_POINT_SHADOW_ALPHA) continue;
 
-                const angle = Math.atan2(dy, dx);
-
+                // Facing = light→caster dir rotated -90°: cos(θ-π/2)=sin(θ)=dy/r, sin(θ-π/2)=-cos(θ)=-dx/r
+                const invDist = 1 / dist;
                 const shadowIdx = shadowStartIdx + shadowsForThisLight;
                 rqX[shadowIdx] = casterX;
                 rqY[shadowIdx] = casterY;
                 rqScaleX[shadowIdx] = 1;
                 rqScaleY[shadowIdx] = lengthScale;
-                const pointShadowRotation = angle - 1.5707963267948966;
-                rqRotation[shadowIdx] = pointShadowRotation;
+                rqRotC[shadowIdx] = dy * invDist;
+                rqRotS[shadowIdx] = -dx * invDist;
                 rqAlpha[shadowIdx] = alpha;
                 rqTint[shadowIdx] = 0x000000;
                 rqTextureId[shadowIdx] = textureId;
@@ -2673,7 +2773,8 @@ class PreRenderWorker extends AbstractWorker {
             rqY[writeIdx] = lightY - lightH;
             rqScaleX[writeIdx] = gradientScale;
             rqScaleY[writeIdx] = gradientScale;
-            rqRotation[writeIdx] = 0;
+            rqRotC[writeIdx] = 1;
+            rqRotS[writeIdx] = 0;
             rqAlpha[writeIdx] = gradientAlpha;
             rqTint[writeIdx] = 0xFFFFFF;
             rqTextureId[writeIdx] = lightGradientTextureId;
@@ -2689,8 +2790,8 @@ class PreRenderWorker extends AbstractWorker {
 
     /**
      * Build visibility polygons for all visible lights (raycasted light occlusion).
-     * For each light, collects nearby LightOccluder circles, runs Angular Sweep,
-     * and writes the resulting polygon vertices to the shared buffer.
+     * Collects nearby LightOccluder entities, packs Collider shapes (circle / OBB / poly),
+     * runs Angular Sweep, and writes self-lit queue entries for the lighting fill pass.
      */
     buildVisibilityPolygons() {
         if (!this.visibilityPolygonsEnabled) return;
@@ -2698,17 +2799,32 @@ class PreRenderWorker extends AbstractWorker {
         const buf = this._vpWriteBuffer;
         if (!buf) { return; }
 
+        const selfLitBuf = this._selfLitWriteBuffer;
+        if (selfLitBuf) selfLitBuf.header[0] = 0;
+
         // Optional SoA may be absent when scene never registered LightEmitter / LightOccluder
-        if (!LightEmitter.active || !LightOccluder.active) {
+        if (!LightEmitter.active || !LightOccluder.active || !Collider.active) {
             buf.header[0] = 0;
             return;
         }
 
         const worldX = Transform.x;
         const worldY = Transform.y;
+        const worldRotC = Transform.rotC;
+        const worldRotS = Transform.rotS;
         const transformActive = Transform.active;
         const occluderActive = LightOccluder.active;
-        const occluderRadius = LightOccluder.radius;
+        const occluderMaskMode = LightOccluder.maskMode;
+        const colliderActive = Collider.active;
+        const shapeType = Collider.shapeType;
+        const colRadius = Collider.radius;
+        const colWidth = Collider.width;
+        const colHeight = Collider.height;
+        const colOffX = Collider.offsetX;
+        const colOffY = Collider.offsetY;
+        const polyCountArr = Collider.polyCount;
+        const polyVertX = Collider.polyVertexX;
+        const polyVertY = Collider.polyVertexY;
         const lightEnabled = LightEmitter.active;
         const lightIntensity = LightEmitter.lightIntensity;
         const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
@@ -2719,16 +2835,28 @@ class PreRenderWorker extends AbstractWorker {
         const maxVerts = this._vpMaxVerts;
         const maxLts = this._vpMaxLights;
         const slotBytes = this._vpSlotBytes;
+        const kind = this._vpOccKind;
         const cX = this._vpCircleX;
         const cY = this._vpCircleY;
         const cR = this._vpCircleR;
+        const vertStart = this._vpVertStart;
+        const vertCountArr = this._vpVertCount;
+        const vertsX = this._vpVertsX;
+        const vertsY = this._vpVertsY;
         const maxOccluders = this._vpMaxOccluders;
         const outX = this._vpOutX;
         const outY = this._vpOutY;
         const i32 = buf.i32;
         const f32 = buf.f32;
 
-        // Use the same visible lights list that buildShadowRenderQueue already wrote
+        const entityLastTextureId = this.entityLastTextureId;
+        const maxSelfLit = this._selfLitMax || 0;
+        let selfLitCount = 0;
+        const selfLitI32 = selfLitBuf ? selfLitBuf.i32 : null;
+        const selfLitU16 = selfLitBuf ? selfLitBuf.u16 : null;
+        const selfLitU8 = selfLitBuf ? selfLitBuf.u8 : null;
+        const selfLitItemBytes = this._selfLitItemBytes || 12;
+
         const visibleLights = this.visibleLightsData;
         if (!visibleLights) { buf.header[0] = 0; return; }
 
@@ -2754,27 +2882,99 @@ class PreRenderWorker extends AbstractWorker {
             const ly = worldY[lightIdx];
             const influenceRadius = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
 
-            // Collect nearby occluder circles from neighbor data
-            let circleCount = 0;
+            let occCount = 0;
+            let vertPool = 0;
             let occluderLimitHit = false;
 
             if (neighborData && stride > 0) {
                 const offset = lightIdx * stride;
                 const nCount = neighborData[offset];
                 for (let k = 0; k < nCount; k++) {
-                    if (circleCount >= maxOccluders) {
+                    if (occCount >= maxOccluders) {
                         occluderLimitHit = true;
                         break;
                     }
                     const nIdx = neighborData[offset + 1 + k];
-                    if (!transformActive[nIdx] || !occluderActive[nIdx]) continue;
-                    const r = occluderRadius[nIdx];
-                    if (r <= 0) continue;
+                    if (!transformActive[nIdx] || !occluderActive[nIdx] || !colliderActive[nIdx]) continue;
 
-                    cX[circleCount] = worldX[nIdx];
-                    cY[circleCount] = worldY[nIdx];
-                    cR[circleCount] = r;
-                    circleCount++;
+                    const shape = shapeType[nIdx];
+                    const ox = colOffX[nIdx] || 0;
+                    const oy = colOffY[nIdx] || 0;
+                    const c = worldRotC[nIdx];
+                    const s = worldRotS[nIdx];
+                    let packed = false;
+
+                    if (shape === ShapeType.Circle) {
+                        const r = colRadius[nIdx];
+                        if (!(r > 0)) continue;
+                        kind[occCount] = OCC_CIRCLE;
+                        cX[occCount] = worldX[nIdx] + ox;
+                        cY[occCount] = worldY[nIdx] + oy;
+                        cR[occCount] = r;
+                        vertStart[occCount] = 0;
+                        vertCountArr[occCount] = 0;
+                        packed = true;
+                    } else if (shape === ShapeType.Box) {
+                        const w = colWidth[nIdx];
+                        const h = colHeight[nIdx];
+                        if (!(w > 0) || !(h > 0)) continue;
+                        kind[occCount] = OCC_POLY;
+                        vertStart[occCount] = vertPool;
+                        writeOrientedBoxVerts(
+                            vertsX, vertsY, vertPool,
+                            worldX[nIdx], worldY[nIdx], w, h, c, s, ox, oy
+                        );
+                        vertCountArr[occCount] = 4;
+                        vertPool += 4;
+                        packed = true;
+                    } else if (shape === ShapeType.Polygon) {
+                        const pc = polyCountArr[nIdx] | 0;
+                        if (pc >= 3) {
+                            kind[occCount] = OCC_POLY;
+                            vertStart[occCount] = vertPool;
+                            const base = nIdx * MAX_POLYGON_VERTICES;
+                            writePolygonVerts(
+                                vertsX, vertsY, vertPool,
+                                worldX[nIdx], worldY[nIdx], c, s, ox, oy,
+                                polyVertX, polyVertY, base, pc
+                            );
+                            vertCountArr[occCount] = pc;
+                            vertPool += pc;
+                            packed = true;
+                        } else {
+                            // Fallback to box extents when poly not filled
+                            const w = colWidth[nIdx];
+                            const h = colHeight[nIdx];
+                            if (!(w > 0) || !(h > 0)) continue;
+                            kind[occCount] = OCC_POLY;
+                            vertStart[occCount] = vertPool;
+                            writeOrientedBoxVerts(
+                                vertsX, vertsY, vertPool,
+                                worldX[nIdx], worldY[nIdx], w, h, c, s, ox, oy
+                            );
+                            vertCountArr[occCount] = 4;
+                            vertPool += 4;
+                            packed = true;
+                        }
+                    }
+
+                    if (!packed) continue;
+
+                    // Self-lit queue: restore unoccluded light under this occluder
+                    if (selfLitI32 && selfLitCount < maxSelfLit) {
+                        const byteOff = 4 + selfLitCount * selfLitItemBytes;
+                        const i32Off = byteOff >> 2;
+                        selfLitI32[i32Off] = nIdx;
+                        selfLitI32[i32Off + 1] = lightIdx;
+                        const u16Off = byteOff >> 1;
+                        const texId = entityLastTextureId ? entityLastTextureId[nIdx] : INVALID_TEXTURE_ID;
+                        selfLitU16[u16Off + 4] = texId; // after 2×i32 = 8 bytes = 4 u16
+                        selfLitU8[byteOff + 10] = occluderMaskMode[nIdx] | 0;
+                        selfLitU8[byteOff + 11] = 0;
+                        selfLitCount++;
+                    }
+
+                    occCount++;
                 }
             }
             if (occluderLimitHit) {
@@ -2784,16 +2984,14 @@ class PreRenderWorker extends AbstractWorker {
                 );
             }
 
-            // Run angular sweep
             const vertCount = buildVisibilityPolygon(
                 lx, ly, influenceRadius,
-                cX, cY, cR,
-                circleCount, outX, outY, maxVerts
+                kind, cX, cY, cR, vertStart, vertCountArr, vertsX, vertsY,
+                occCount, outX, outY, maxVerts
             );
 
             // Layout: [lightIdx:i32, lightX:f32, lightY:f32, vertexCount:i32, x[N]:f32, y[N]:f32]
-            // The slot is 4-byte aligned, so typed views can bulk-copy vertices.
-            const baseIndex = (4 + lightsWritten * slotBytes) >> 2; // 4 bytes header
+            const baseIndex = (4 + lightsWritten * slotBytes) >> 2;
             i32[baseIndex] = lightIdx;
             f32[baseIndex + 1] = lx;
             f32[baseIndex + 2] = ly;
@@ -2807,6 +3005,7 @@ class PreRenderWorker extends AbstractWorker {
         }
 
         buf.header[0] = lightsWritten;
+        if (selfLitBuf) selfLitBuf.header[0] = selfLitCount;
     }
 
     /**

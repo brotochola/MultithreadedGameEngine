@@ -29,10 +29,11 @@ export class SpriteRenderer extends Component {
     anchorX: Float32Array, // Separate X anchor
     anchorY: Float32Array, // Separate Y anchor
 
-    // Draw rotation: 1 = use Transform.rotation (default); 0 = use spriteRotation
+    // Draw rotation: 1 = use Transform.rotC/rotS (default); 0 = use spriteRotC/S
     // Lets physics/collider angle diverge from pre-baked directional sprites (e.g. cars)
     inheritTransformRotation: Uint8Array,
-    spriteRotation: Float32Array, // radians; used when inheritTransformRotation === 0
+    spriteRotC: Float32Array, // facing cos when inheritTransformRotation === 0
+    spriteRotS: Float32Array, // facing sin
 
     // Layer assignment (0 = default ENTITIES layer, set via GameObject.setLayer())
     layerId: Uint8Array,
@@ -100,5 +101,21 @@ export class SpriteRenderer extends Component {
     const sy = SpriteRenderer.scaleY[entityIndex] || 1;
     SpriteRenderer.boundsHalfW[entityIndex] = (w * sx) * 0.5;
     SpriteRenderer.boundsHalfH[entityIndex] = (h * sy) * 0.5;
+  }
+
+  /** Radians API (storage is spriteRotC/S). */
+  get spriteRotation() {
+    const i = this.index;
+    return Math.atan2(SpriteRenderer.spriteRotS[i], SpriteRenderer.spriteRotC[i]);
+  }
+  set spriteRotation(v) {
+    const i = this.index;
+    SpriteRenderer.spriteRotC[i] = Math.cos(v);
+    SpriteRenderer.spriteRotS[i] = Math.sin(v);
+  }
+
+  static initializeArrays(buffer, count) {
+    super.initializeArrays(buffer, count);
+    if (this.spriteRotC) this.spriteRotC.fill(1);
   }
 }

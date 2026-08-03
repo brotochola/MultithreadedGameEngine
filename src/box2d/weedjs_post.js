@@ -251,6 +251,8 @@
     vxChan = new Float32Array(sab, off[STATE_CHANNELS.VX] << 2, n);
     vyChan = new Float32Array(sab, off[STATE_CHANNELS.VY] << 2, n);
     angChan = new Float32Array(sab, off[STATE_CHANNELS.ANG_VEL] << 2, n);
+    const rotCChan = new Float32Array(sab, off[STATE_CHANNELS.ROT_C] << 2, n);
+    const rotSChan = new Float32Array(sab, off[STATE_CHANNELS.ROT_S] << 2, n);
     sleepingU8 =
       ready.sleepingByteOffset >= 0
         ? new Uint8Array(sab, ready.sleepingByteOffset, n)
@@ -264,11 +266,15 @@
     vxChan.fill(0, 0, count);
     vyChan.fill(0, 0, count);
     angChan.fill(0, 0, count);
+    rotCChan.fill(1, 0, count);
+    rotSChan.fill(0, 0, count);
     if (sleepingU8) sleepingU8.fill(0, 0, count);
 
     views.x = pxChan;
     views.y = pyChan;
     views.rotation = rotChan;
+    views.rotC = rotCChan;
+    views.rotS = rotSChan;
     views.vx = vxChan;
     views.vy = vyChan;
     views.angularVelocity = angChan;
@@ -289,13 +295,14 @@
     if (!(n > 0)) return;
     poseCapacity = n;
     poseSync = new Int32Array(pose.sync);
-    const bytesPerBuf = n * 3 * 4;
+    const bytesPerBuf = n * 4 * 4;
     for (let i = 0; i < 2; i++) {
       const sab = i === 0 ? pose.dataA : pose.dataB;
       poseBuffers[i] = {
         x: new Float32Array(sab, 0, n),
         y: new Float32Array(sab, n * 4, n),
-        rotation: new Float32Array(sab, n * 8, n),
+        rotC: new Float32Array(sab, n * 8, n),
+        rotS: new Float32Array(sab, n * 12, n),
       };
       if (sab.byteLength < bytesPerBuf) {
         console.warn('[weedjs-box2d] pose buffer too small', sab.byteLength, bytesPerBuf);
@@ -307,12 +314,9 @@
     if (!views.px) return;
     const n = count | 0;
     for (let i = 0; i < n; i++) {
-      const x = views.x[i];
-      const y = views.y[i];
-      const rot = views.rotation[i];
-      views.px[i] = x;
-      views.py[i] = y;
-      views.pRotation[i] = rot;
+      views.px[i] = views.x[i];
+      views.py[i] = views.y[i];
+      // pRotation unused by render; leave untouched (no atan2)
     }
   }
 
@@ -325,14 +329,12 @@
       if (rb && !rb[i]) continue;
       views.px[i] = views.x[i];
       views.py[i] = views.y[i];
-      views.pRotation[i] = views.rotation[i];
     }
   }
 
   /**
    * Publish post-step Transform into double-buffered pose SAB (Atomics seq).
-   * Same idiom as renderQueueSync: write buffer frame%2, then store readyFrame.
-   * Iterates dense body list only — typed views only, no alloc.
+   * SoA: x, y, rotC, rotS.
    */
   function publishPose(/* entityCount */) {
     if (!poseSync || !poseBuffers[0] || !denseList) return;
@@ -340,17 +342,20 @@
     const buf = poseBuffers[writeIdx];
     const x = views.x;
     const y = views.y;
-    const rot = views.rotation;
+    const rotC = views.rotC;
+    const rotS = views.rotS;
     const outX = buf.x;
     const outY = buf.y;
-    const outR = buf.rotation;
+    const outC = buf.rotC;
+    const outS = buf.rotS;
     const list = denseList;
     const n = denseCount;
     for (let d = 0; d < n; d++) {
       const i = list[d];
       outX[i] = x[i];
       outY[i] = y[i];
-      outR[i] = rot[i];
+      outC[i] = rotC[i];
+      outS[i] = rotS[i];
     }
     poseFrame++;
     Atomics.store(poseSync, 0, poseFrame);
@@ -577,12 +582,8 @@
           bodySetSleepThresholdFn(i, sleepThreshold);
         }
         if (views.px) {
-          const x = views.x[i];
-          const y = views.y[i];
-          const rot = views.rotation[i];
-          views.px[i] = x;
-          views.py[i] = y;
-          views.pRotation[i] = rot;
+          views.px[i] = views.x[i];
+          views.py[i] = views.y[i];
         }
       } else if (!createFailed[i]) {
         createFailed[i] = 1;
@@ -846,10 +847,15 @@
 
   // Hoisted once — drainCommands must not allocate a fresh handlers object every step
   const cmdHandlers = {
-    setTransform(entity, x, y, angle) {
+    setTransform(entity, x, y, rotC, rotS) {
       if (!hasBody[entity]) return;
-      const a = isFixedRotation(entity) ? 0 : angle;
-      bodySetTransformFn(entity, x, y, a);
+      let c = rotC;
+      let s = rotS;
+      if (isFixedRotation(entity)) {
+        c = 1;
+        s = 0;
+      }
+      bodySetTransformFn(entity, x, y, c, s);
       if (bodySetAwakeFn) bodySetAwakeFn(entity, 1);
       markTeleportMoved(entity);
     },
@@ -857,12 +863,17 @@
       if (!hasBody[entity]) return;
       bodySetLinearVelocityFn(entity, vx, vy);
     },
-    setAngle(entity, angle) {
+    setAngle(entity, rotC, rotS) {
       if (!hasBody[entity]) return;
       const x = pxChan[entity];
       const y = pyChan[entity];
-      const a = isFixedRotation(entity) ? 0 : angle;
-      bodySetTransformFn(entity, x, y, a);
+      let c = rotC;
+      let s = rotS;
+      if (isFixedRotation(entity)) {
+        c = 1;
+        s = 0;
+      }
+      bodySetTransformFn(entity, x, y, c, s);
       if (bodySetAwakeFn) bodySetAwakeFn(entity, 1);
       markTeleportMoved(entity);
     },
@@ -876,6 +887,8 @@
       bodySetFixedRotationFn(entity, f);
       if (f) {
         rotChan[entity] = 0;
+        if (views.rotC) views.rotC[entity] = 1;
+        if (views.rotS) views.rotS[entity] = 0;
         bodySetAngularVelocityFn(entity, 0);
       }
     },
@@ -1233,6 +1246,7 @@
       ['number', 'number', 'number'],
     );
     bodySetTransformFn = Module.cwrap('body_set_transform', null, [
+      'number',
       'number',
       'number',
       'number',

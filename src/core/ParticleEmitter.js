@@ -189,7 +189,8 @@ export class ParticleEmitter extends SharedAtomicPool {
     const stayOnTheFloor = ParticleComponent.stayOnTheFloor;
     const despawnOnGroundContact = ParticleComponent.despawnOnGroundContact;
     const tweenToAlpha0 = ParticleComponent.tweenToAlpha0;
-    const rotation = ParticleComponent.rotation;
+    const rotC = ParticleComponent.rotC;
+    const rotS = ParticleComponent.rotS;
     const flipX = ParticleComponent.flipX;
     const flipY = ParticleComponent.flipY;
     const blendMode = ParticleComponent.blendMode;
@@ -247,8 +248,23 @@ export class ParticleEmitter extends SharedAtomicPool {
       baseTint[i] = particleColor;
       particleTextureId[i] = textureId;
 
-      const rotationDeg = randomRange(cfg.rotation, 0);
-      rotation[i] = (rotationDeg * Math.PI) / 180;
+      if (cfg.rotC != null && cfg.rotS != null) {
+        rotC[i] = cfg.rotC;
+        rotS[i] = cfg.rotS;
+      } else if (cfg.rotation == null) {
+        rotC[i] = 1;
+        rotS[i] = 0;
+      } else {
+        const rotationDeg = randomRange(cfg.rotation, 0);
+        if (rotationDeg === 0) {
+          rotC[i] = 1;
+          rotS[i] = 0;
+        } else {
+          const rotationRad = (rotationDeg * Math.PI) / 180;
+          rotC[i] = Math.cos(rotationRad);
+          rotS[i] = Math.sin(rotationRad);
+        }
+      }
       flipX[i] = cfg.flipX ? 1 : 0;
       flipY[i] = cfg.flipY ? 1 : 0;
       fadeOnTheFloor[i] = flatMode ? 0 : (cfg.fadeOnTheFloor ?? 0);

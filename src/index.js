@@ -58,7 +58,11 @@ export { ParticleComponent } from './components/ParticleComponent.js';
 export { DecorationComponent } from './components/DecorationComponent.js';
 export { LightEmitter } from './components/LightEmitter.js';
 export { ShadowCaster } from './components/ShadowCaster.js';
-export { LightOccluder } from './components/LightOccluder.js';
+export {
+  LightOccluder,
+  LIGHT_OCCLUDER_MASK_COLLIDER,
+  LIGHT_OCCLUDER_MASK_SPRITE,
+} from './components/LightOccluder.js';
 export { FlashComponent } from './components/FlashComponent.js';
 export { CameraInOutListener } from './components/CameraInOutListener.js';
 export { CollisionListener } from './components/CollisionListener.js';
@@ -185,6 +189,7 @@ import {
   containerRadius,
   distanceSq2D,
   getDirectionFromAngle,
+  getDirectionFromVector,
   mixTint,
   randomColor,
   rng,
@@ -207,7 +212,11 @@ import { DecorationComponent } from './components/DecorationComponent.js';
 import { BulletComponent } from './components/BulletComponent.js';
 import { LightEmitter } from './components/LightEmitter.js';
 import { ShadowCaster } from './components/ShadowCaster.js';
-import { LightOccluder } from './components/LightOccluder.js';
+import {
+  LightOccluder,
+  LIGHT_OCCLUDER_MASK_COLLIDER,
+  LIGHT_OCCLUDER_MASK_SPRITE,
+} from './components/LightOccluder.js';
 import { FlashComponent } from './components/FlashComponent.js';
 import { Flash } from './core/Flash.js';
 import { CameraInOutListener } from './components/CameraInOutListener.js';
@@ -289,6 +298,8 @@ const WEED = Object.freeze({
   LightEmitter,
   ShadowCaster,
   LightOccluder,
+  LIGHT_OCCLUDER_MASK_COLLIDER,
+  LIGHT_OCCLUDER_MASK_SPRITE,
   FlashComponent,
   CameraInOutListener,
   CollisionListener,
@@ -337,6 +348,7 @@ const WEED = Object.freeze({
   containerRadius,
   distanceSq2D,
   getDirectionFromAngle,
+  getDirectionFromVector,
   mixTint,
   randomColor,
   rng,

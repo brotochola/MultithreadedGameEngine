@@ -22,8 +22,10 @@ export class DecorationComponent extends Component {
     textureId: Uint16Array, // Index into texture atlas (bigAtlas animation index)
     scaleX: Float32Array, // Scale X
     scaleY: Float32Array, // Scale Y
-    baseRotation: Float32Array, // Base rotation in radians (sway animation adds to this)
-    rotation: Float32Array, // current rotation in radians (sway animation adds to this)
+    baseRotC: Float32Array, // Base facing cos (sway composes onto this)
+    baseRotS: Float32Array, // Base facing sin
+    rotC: Float32Array, // Current world facing cos (after parent compose + sway)
+    rotS: Float32Array, // Current world facing sin
     alpha: Float32Array, // Opacity (0-1)
     tint: Uint32Array, // Color tint (0xRRGGBB)
     anchorX: Float32Array, // Anchor X (0-1, default 0.5)
@@ -60,5 +62,8 @@ export class DecorationComponent extends Component {
     if (this.parentEntityIndex) {
       this.parentEntityIndex.fill(SENT);
     }
+    if (this.baseRotC) this.baseRotC.fill(1);
+    if (this.rotC) this.rotC.fill(1);
+    // baseRotS / rotS default 0
   }
 }

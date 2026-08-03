@@ -23,6 +23,7 @@ import {
   randomColor,
   distanceSq2D,
   getDirectionFromAngle,
+  getDirectionFromVector,
   containerRadius,
 } from '../core/utils.js';
 import { Camera } from '../core/Camera.js';
@@ -813,6 +814,7 @@ export class AbstractWorker {
     self.randomColor = randomColor;
     self.distanceSq2D = distanceSq2D;
     self.getDirectionFromAngle = getDirectionFromAngle;
+    self.getDirectionFromVector = getDirectionFromVector;
     self.containerRadius = containerRadius;
   }
 

@@ -85,6 +85,35 @@ export class Sun {
     static _float32 = null;
     static _uint32 = null;
 
+    /** cos(2π i/N) LUT — day-cycle curves without Math.cos per setTimeOfDay */
+    static _COS_LUT_N = 256;
+    static _cosLut = null;
+
+    static _ensureCosLut() {
+        if (this._cosLut) return this._cosLut;
+        const n = this._COS_LUT_N;
+        const lut = new Float32Array(n + 1);
+        for (let i = 0; i <= n; i++) {
+            lut[i] = Math.cos((i / n) * Math.PI * 2);
+        }
+        this._cosLut = lut;
+        return lut;
+    }
+
+    /** Sample cos(phase * 2π) with phase in [0,1) via LUT */
+    static _cosTau(phase01) {
+        const lut = this._ensureCosLut();
+        const n = this._COS_LUT_N;
+        let t = phase01 - Math.floor(phase01);
+        if (t < 0) t += 1;
+        const x = t * n;
+        const i0 = x | 0;
+        const f = x - i0;
+        const c0 = lut[i0];
+        const c1 = lut[i0 + 1];
+        return c0 + (c1 - c0) * f;
+    }
+
     // ============ Initialization ============
 
     /**
@@ -241,15 +270,13 @@ export class Sun {
         // Offset so sunrise is at ~6am
         this.angle = ((dayProgress - 0.25) * 360 + 360) % 360;
 
-        // Sun elevation: 0° at sunrise/sunset, peak at noon
-        // Using cosine curve centered on noon (hour 12)
+        // Elevation: cos(π * noonOffset) via LUT sample of cos(2π * noonOffset/2)
         const noonOffset = Math.abs(h - 12) / 12; // 0 at noon, 1 at midnight
-        const elevation = Math.max(0, Math.cos(noonOffset * Math.PI) * 90);
+        const elevation = Math.max(0, this._cosTau(noonOffset * 0.5) * 90);
         this.elevation = elevation;
 
-        // Sun intensity: smooth day/night transition using cosine curve
-        // Peak at noon, zero at night
-        this.intensity = Math.max(0, Math.min(1, -Math.cos(dayProgress * Math.PI * 2) * 0.5 + 0.5));
+        // Intensity: (1 - cos(2π dayProgress)) / 2
+        this.intensity = Math.max(0, Math.min(1, -this._cosTau(dayProgress) * 0.5 + 0.5));
 
         // Sun color: interpolate from color table
         this.color = this._getColorForHour(h);
@@ -266,14 +293,19 @@ export class Sun {
     static _updateShadowValues(elevation) {
         if (!this._float32) return;
 
-        const sunAngleRad = this.angle * (Math.PI / 180);
-        // Shadow points opposite to sun direction
-        // shadowAngleOffset adds π for southern hemisphere (shadows point south/down)
-        const shadowAngle = sunAngleRad + Math.PI + this.shadowAngleOffset;
+        // Sun bearing in turns [0,1); shadow = sun + 0.5 turns + offset
+        const sunTurns = this.angle / 360;
+        const offsetTurns = this.shadowAngleOffset / (Math.PI * 2);
+        const shadowTurns = sunTurns + 0.5 + offsetTurns;
+        const shadowAngle = shadowTurns * Math.PI * 2;
 
         this._float32[Sun.F32.SHADOW_ANGLE] = shadowAngle;
-        this._float32[Sun.F32.SHADOW_DIR_X] = Math.cos(shadowAngle);
-        this._float32[Sun.F32.SHADOW_DIR_Y] = Math.sin(shadowAngle);
+        // cos(θ+π)=-cosθ, sin(θ+π)=-sinθ — sample sun bearing then flip
+        const sunC = this._cosTau(sunTurns + offsetTurns);
+        // sin(τ) = cos(τ - 0.25)
+        const sunS = this._cosTau(sunTurns + offsetTurns - 0.25);
+        this._float32[Sun.F32.SHADOW_DIR_X] = -sunC;
+        this._float32[Sun.F32.SHADOW_DIR_Y] = -sunS;
 
         // Shadow length ratio based on elevation (lower sun = longer shadows)
         // Linear interpolation: horizon (0°) = maxLengthRatio, zenith (90°) = minLengthRatio

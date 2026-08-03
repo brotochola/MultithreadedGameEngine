@@ -218,16 +218,30 @@ export class Decoration {
   }
 
   get rotation() {
-    return this._isCurrent() ? DecorationComponent.rotation[this.index] : 0;
+    if (!this._isCurrent()) return 0;
+    const i = this.index;
+    return Math.atan2(DecorationComponent.rotS[i], DecorationComponent.rotC[i]);
   }
   set rotation(v) {
-    if (this._isCurrent()) DecorationComponent.rotation[this.index] = v;
+    if (!this._isCurrent()) return;
+    const i = this.index;
+    DecorationComponent.rotC[i] = Math.cos(v);
+    DecorationComponent.rotS[i] = Math.sin(v);
+    DecorationComponent.baseRotC[i] = DecorationComponent.rotC[i];
+    DecorationComponent.baseRotS[i] = DecorationComponent.rotS[i];
   }
 
   get baseRotation() {
-    return this._isCurrent() ? DecorationComponent.baseRotation[this.index] : 0;
+    if (!this._isCurrent()) return 0;
+    const i = this.index;
+    return Math.atan2(DecorationComponent.baseRotS[i], DecorationComponent.baseRotC[i]);
   }
   set baseRotation(v) {
-    if (this._isCurrent()) DecorationComponent.baseRotation[this.index] = v;
+    if (!this._isCurrent()) return;
+    const i = this.index;
+    DecorationComponent.baseRotC[i] = Math.cos(v);
+    DecorationComponent.baseRotS[i] = Math.sin(v);
+    DecorationComponent.rotC[i] = DecorationComponent.baseRotC[i];
+    DecorationComponent.rotS[i] = DecorationComponent.baseRotS[i];
   }
 }

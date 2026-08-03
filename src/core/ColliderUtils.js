@@ -49,9 +49,8 @@ export function getColliderBounds(idx, result) {
     result.halfW = r;
     result.halfH = r;
   } else if (shape === SHAPE_POLYGON) {
-    const th = Transform.rotation[idx] || 0;
-    const c = Math.cos(th);
-    const s = Math.sin(th);
+    const c = Transform.rotC ? Transform.rotC[idx] : 1;
+    const s = Transform.rotS ? Transform.rotS[idx] : 0;
     const originX = tx + c * ox - s * oy;
     const originY = ty + s * ox + c * oy;
 
@@ -91,9 +90,8 @@ export function getColliderBounds(idx, result) {
     }
   } else {
     // Box — world AABB of oriented width×height (Box2D rotates boxes)
-    const th = Transform.rotation[idx] || 0;
-    const c = Math.cos(th);
-    const s = Math.sin(th);
+    const c = Transform.rotC ? Transform.rotC[idx] : 1;
+    const s = Transform.rotS ? Transform.rotS[idx] : 0;
     result.posX = tx + c * ox - s * oy;
     result.posY = ty + s * ox + c * oy;
     const hw = (Collider.width[idx] || 0) * 0.5;

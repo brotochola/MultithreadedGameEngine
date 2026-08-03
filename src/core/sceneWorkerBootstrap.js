@@ -286,6 +286,9 @@ function buildSceneWorkerInitData(scene, sharedBuffers, scriptsToLoad) {
           maxLights: scene.config.lighting.maxLights || 128,
           dataA: scene.buffers.visibilityPolygonDataA,
           dataB: scene.buffers.visibilityPolygonDataB,
+          selfLitDataA: scene.buffers.occluderSelfLitDataA,
+          selfLitDataB: scene.buffers.occluderSelfLitDataB,
+          maxOccluderSelfLit: scene.maxOccluderSelfLit || scene.config.lighting.maxOccluderSelfLit || 512,
         }
       : null,
     sunData: scene.buffers.sunData || null,

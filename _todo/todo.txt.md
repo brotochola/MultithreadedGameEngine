@@ -1,10 +1,13 @@
 -use the who moved function of box2d for networking
 
-## --componente tipo CollisionListener, pero para buscar vecinos por visualRange, por ej: ContinuousNeighborSearch
+- ~~shader de lightOccluders q use el sprite para mask.~~ (maskMode=sprite)
+- ~~lightoccluder rectangluar~~ (Collider shape: circle/box/poly)
 
-- shader de lightOccluders q use el sprite para mask.
-- lightoccluder rectangluar
+- se mueve mas rapido el shader q el sprite cuando arrastro!
 
+- si no estamos en modo debug, no guardar metricas.
+
+- ajustar lightOccluders y q se vea bien!
 - static props en components?
 
 ---

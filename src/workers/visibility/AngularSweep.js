@@ -1,23 +1,22 @@
-// AngularSweep.js - Visibility polygon computation for circle occluders
+// AngularSweep.js - Visibility polygon for circle + convex polygon occluders
 //
-// Computes the area visible from a light source, blocked by circular occluders.
-// Uses angular sweep: for each circle, compute 2 tangent angles from the light,
-// then sweep all events sorted by angle to build the visibility polygon.
-//
-// All functions are allocation-free in the hot path (pre-allocated output arrays).
+// Computes the area visible from a light source, blocked by occluders.
+// Circles use analytical tangents; boxes/polygons use silhouette vertex events
+// and ray–edge hits. Allocation-free hot path (pre-allocated output / scratch).
 
 import { normalizeAngleSigned } from '../../core/utils.js';
 
 const TWO_PI = Math.PI * 2;
 const EPSILON = 1e-5;
-const MAX_ARC_STEP = Math.PI / 8; // ~22.5° max gap between boundary vertices
+const MAX_ARC_STEP = Math.PI / 16; // ~22.5° max gap between boundary vertices
+
+/** Circle occluder (analytical tangents + ray-circle). */
+export const OCC_CIRCLE = 0;
+/** Convex polygon occluder (world-space verts in shared pool). */
+export const OCC_POLY = 1;
 
 /**
  * Compute the two tangent angles from a point to a circle.
- * Returns the half-angle offset from the center angle.
- * tangentAngle1 = angleToCenter - offset
- * tangentAngle2 = angleToCenter + offset
- *
  * Returns -1 if the point is inside the circle (no valid tangent).
  */
 function tangentHalfAngle(dist, radius) {
@@ -26,53 +25,137 @@ function tangentHalfAngle(dist, radius) {
 }
 
 /**
- * Ray-circle intersection: returns distance from ray origin to the nearest
- * intersection point with the circle, or Infinity if no intersection.
- *
- * Ray: origin (ox, oy), direction (cos(angle), sin(angle))
- * Circle: center (cx, cy), radius r
+ * Ray-circle intersection: nearest positive hit distance, or Infinity.
+ * Pass unit dir (cos/sin of ray angle) — no trig here.
  */
-function rayCircleDist(ox, oy, angle, cx, cy, r) {
+function rayCircleDist(ox, oy, dirX, dirY, cx, cy, r) {
   const dx = cx - ox;
   const dy = cy - oy;
-  const dirX = Math.cos(angle);
-  const dirY = Math.sin(angle);
 
-  // Project circle center onto ray
   const tca = dx * dirX + dy * dirY;
-  if (tca < 0) return Infinity; // circle is behind ray
+  if (tca < 0) return Infinity;
 
   const d2 = dx * dx + dy * dy - tca * tca;
   const r2 = r * r;
-  if (d2 > r2) return Infinity; // ray misses circle
+  if (d2 > r2) return Infinity;
 
   const thc = Math.sqrt(r2 - d2);
   const t0 = tca - thc;
-
-  // t0 < 0 means origin is inside circle
   return t0 > 0 ? t0 : tca + thc;
 }
 
-// Pre-allocated event pool (reused across calls)
-// Each event: angle, circleIndex, isOpen (1=open, 0=close)
+/**
+ * Ray vs convex polygon edges: nearest positive hit, or Infinity.
+ * Pass unit dir (cos/sin of ray angle) — no trig here.
+ */
+function rayPolyDist(ox, oy, dirX, dirY, vertsX, vertsY, start, count) {
+  let minT = Infinity;
+
+  for (let i = 0; i < count; i++) {
+    const i0 = start + i;
+    const i1 = start + ((i + 1) % count);
+    const ax = vertsX[i0];
+    const ay = vertsY[i0];
+    const bx = vertsX[i1];
+    const by = vertsY[i1];
+    const ex = bx - ax;
+    const ey = by - ay;
+    const denom = dirX * ey - dirY * ex;
+    if (Math.abs(denom) < 1e-12) continue;
+
+    const fx = ax - ox;
+    const fy = ay - oy;
+    const t = (fx * ey - fy * ex) / denom;
+    const u = (fx * dirY - fy * dirX) / denom;
+    if (t > EPSILON && u >= 0 && u <= 1 && t < minT) {
+      minT = t;
+    }
+  }
+  return minT;
+}
+
+/** Cross (a - o) × (b - o) */
+function crossOrigin(ox, oy, ax, ay, bx, by) {
+  return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+}
+
+/**
+ * Point-in-convex (CCW or CW). Uses consistent half-plane test.
+ */
+function pointInConvex(px, py, vertsX, vertsY, start, count) {
+  if (count < 3) return false;
+  let sign = 0;
+  for (let i = 0; i < count; i++) {
+    const i0 = start + i;
+    const i1 = start + ((i + 1) % count);
+    const c = crossOrigin(vertsX[i0], vertsY[i0], vertsX[i1], vertsY[i1], px, py);
+    if (c === 0) continue;
+    const s = c > 0 ? 1 : -1;
+    if (sign === 0) sign = s;
+    else if (s !== sign) return false;
+  }
+  return sign !== 0;
+}
+
+/**
+ * Left/right tangent vertex indices from external point to convex poly.
+ * Returns false if light is inside or poly is degenerate.
+ */
+function polyTangentIndices(lx, ly, vertsX, vertsY, start, count, out) {
+  if (count < 3) return false;
+  if (pointInConvex(lx, ly, vertsX, vertsY, start, count)) return false;
+
+  let iLeft = 0;
+  let iRight = 0;
+  for (let i = 1; i < count; i++) {
+    const xi = vertsX[start + i];
+    const yi = vertsY[start + i];
+    if (crossOrigin(lx, ly, vertsX[start + iRight], vertsY[start + iRight], xi, yi) > 0) {
+      iRight = i;
+    }
+    if (crossOrigin(lx, ly, vertsX[start + iLeft], vertsY[start + iLeft], xi, yi) < 0) {
+      iLeft = i;
+    }
+  }
+  out[0] = iLeft;
+  out[1] = iRight;
+  return true;
+}
+
 const MAX_EVENTS = 2048;
 const _eventAngles = new Float64Array(MAX_EVENTS);
-const _eventCircleIdx = new Int32Array(MAX_EVENTS);
+const _eventOccIdx = new Int32Array(MAX_EVENTS);
 const _eventType = new Uint8Array(MAX_EVENTS); // 1=open, 0=close
 const _sortIndices = new Int32Array(MAX_EVENTS);
 
-// Active circle set (simple array, max simultaneous overlaps)
+const MAX_OCC_CACHE = 1024;
+const _occOpen = new Float64Array(MAX_OCC_CACHE);
+const _occClose = new Float64Array(MAX_OCC_CACHE);
+const _occValid = new Uint8Array(MAX_OCC_CACHE);
+
 const MAX_ACTIVE = 256;
-const _activeCircles = new Int32Array(MAX_ACTIVE);
+const _activeOcc = new Int32Array(MAX_ACTIVE);
 let _activeCount = 0;
+
+/** Prebaked unit circle for empty-light full disc (step = MAX_ARC_STEP). */
+const FULL_CIRCLE_SEGS = Math.ceil(TWO_PI / MAX_ARC_STEP);
+const _fullCircleC = new Float64Array(FULL_CIRCLE_SEGS);
+const _fullCircleS = new Float64Array(FULL_CIRCLE_SEGS);
+for (let i = 0; i < FULL_CIRCLE_SEGS; i++) {
+  const a = -Math.PI + i * (TWO_PI / FULL_CIRCLE_SEGS);
+  _fullCircleC[i] = Math.cos(a);
+  _fullCircleS[i] = Math.sin(a);
+}
 let _warnedEventOverflow = false;
 let _warnedActiveOverflow = false;
 
-function warnEventOverflow(circleCount) {
+const _tangentOut = new Int32Array(2);
+
+function warnEventOverflow(occCount) {
   if (_warnedEventOverflow) return;
   _warnedEventOverflow = true;
   console.warn(
-    `[AngularSweep] Event cap exceeded (${MAX_EVENTS} max events, ${circleCount} circles considered). ` +
+    `[AngularSweep] Event cap exceeded (${MAX_EVENTS} max events, ${occCount} occluders). ` +
     `Falling back to full-circle visibility for this light.`
   );
 }
@@ -81,100 +164,146 @@ function warnActiveOverflow() {
   if (_warnedActiveOverflow) return;
   _warnedActiveOverflow = true;
   console.warn(
-    `[AngularSweep] Active occluder cap exceeded (${MAX_ACTIVE} max simultaneous occluders). ` +
+    `[AngularSweep] Active occluder cap exceeded (${MAX_ACTIVE} max simultaneous). ` +
     `Falling back to full-circle visibility for this light.`
   );
 }
 
 /**
- * Build a visibility polygon from a light source, blocked by circle occluders.
+ * Build a visibility polygon from a light source blocked by mixed occluders.
  *
- * @param {number} lightX - Light source X position
- * @param {number} lightY - Light source Y position
- * @param {number} maxRadius - Maximum light influence radius
- * @param {Float32Array} circleX - Circle center X positions
- * @param {Float32Array} circleY - Circle center Y positions
- * @param {Float32Array} circleR - Circle radii
- * @param {number} circleCount - Number of circles to process
- * @param {Float32Array} outX - Output polygon vertex X (pre-allocated)
- * @param {Float32Array} outY - Output polygon vertex Y (pre-allocated)
- * @param {number} maxVertices - Max output vertices
- * @returns {number} Number of vertices written
+ * @param {number} lightX
+ * @param {number} lightY
+ * @param {number} maxRadius
+ * @param {Uint8Array} kind - OCC_CIRCLE | OCC_POLY per occluder
+ * @param {Float32Array} cx - circle center X / poly unused
+ * @param {Float32Array} cy - circle center Y / poly unused
+ * @param {Float32Array} cr - circle radius / poly unused
+ * @param {Int32Array} vertStart - poly vertex pool start index
+ * @param {Uint8Array|Int32Array} vertCount - poly vertex count
+ * @param {Float32Array} vertsX - shared world-space vertex pool
+ * @param {Float32Array} vertsY
+ * @param {number} occCount
+ * @param {Float32Array} outX
+ * @param {Float32Array} outY
+ * @param {number} maxVertices
+ * @returns {number} vertex count written
  */
 export function buildVisibilityPolygon(
   lightX, lightY, maxRadius,
-  circleX, circleY, circleR,
-  circleCount, outX, outY, maxVertices
+  kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+  occCount, outX, outY, maxVertices
 ) {
-  if (circleCount === 0) {
+  if (occCount === 0) {
     return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
   }
 
-  // Build events: 2 tangent events per circle
   let eventCount = 0;
+  const cacheN = occCount < MAX_OCC_CACHE ? occCount : MAX_OCC_CACHE;
+  for (let i = 0; i < cacheN; i++) _occValid[i] = 0;
 
-  for (let i = 0; i < circleCount; i++) {
-    const dx = circleX[i] - lightX;
-    const dy = circleY[i] - lightY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const r = circleR[i];
+  for (let i = 0; i < occCount; i++) {
+    if (kind[i] === OCC_CIRCLE) {
+      const dx = cx[i] - lightX;
+      const dy = cy[i] - lightY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const r = cr[i];
+      if (dist <= r) continue;
+      if (dist - r > maxRadius) continue;
 
-    if (dist <= r) continue; // light is inside this circle, skip
-    if (dist - r > maxRadius) continue; // too far, skip
+      const centerAngle = Math.atan2(dy, dx);
+      const halfAngle = tangentHalfAngle(dist, r);
+      if (halfAngle < 0) continue;
 
-    const centerAngle = Math.atan2(dy, dx);
-    const halfAngle = tangentHalfAngle(dist, r);
-    if (halfAngle < 0) continue;
+      const openAngle = normalizeAngleSigned(centerAngle - halfAngle);
+      const closeAngle = normalizeAngleSigned(centerAngle + halfAngle);
+      if (i < MAX_OCC_CACHE) {
+        _occOpen[i] = openAngle;
+        _occClose[i] = closeAngle;
+        _occValid[i] = 1;
+      }
 
-    const openAngle = normalizeAngleSigned(centerAngle - halfAngle);
-    const closeAngle = normalizeAngleSigned(centerAngle + halfAngle);
+      if (eventCount + 2 > MAX_EVENTS) {
+        warnEventOverflow(occCount);
+        return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
+      }
 
-    if (eventCount + 2 > MAX_EVENTS) {
-      warnEventOverflow(circleCount);
-      return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
+      _eventAngles[eventCount] = openAngle;
+      _eventOccIdx[eventCount] = i;
+      _eventType[eventCount] = 1;
+      eventCount++;
+
+      _eventAngles[eventCount] = closeAngle;
+      _eventOccIdx[eventCount] = i;
+      _eventType[eventCount] = 0;
+      eventCount++;
+    } else {
+      const vs = vertStart[i];
+      const vc = vertCount[i] | 0;
+      if (vc < 3) continue;
+
+      // Skip if entirely beyond influence (rough AABB radius)
+      let minD = Infinity;
+      for (let v = 0; v < vc; v++) {
+        const dx = vertsX[vs + v] - lightX;
+        const dy = vertsY[vs + v] - lightY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < minD) minD = d;
+      }
+      if (minD > maxRadius) continue;
+
+      if (!polyTangentIndices(lightX, lightY, vertsX, vertsY, vs, vc, _tangentOut)) {
+        continue; // light inside poly
+      }
+
+      const iLeft = _tangentOut[0];
+      const iRight = _tangentOut[1];
+      const openN = normalizeAngleSigned(Math.atan2(
+        vertsY[vs + iLeft] - lightY,
+        vertsX[vs + iLeft] - lightX
+      ));
+      const closeN = normalizeAngleSigned(Math.atan2(
+        vertsY[vs + iRight] - lightY,
+        vertsX[vs + iRight] - lightX
+      ));
+      if (i < MAX_OCC_CACHE) {
+        _occOpen[i] = openN;
+        _occClose[i] = closeN;
+        _occValid[i] = 1;
+      }
+
+      if (eventCount + 2 > MAX_EVENTS) {
+        warnEventOverflow(occCount);
+        return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
+      }
+
+      _eventAngles[eventCount] = openN;
+      _eventOccIdx[eventCount] = i;
+      _eventType[eventCount] = 1;
+      eventCount++;
+
+      _eventAngles[eventCount] = closeN;
+      _eventOccIdx[eventCount] = i;
+      _eventType[eventCount] = 0;
+      eventCount++;
     }
-
-    _eventAngles[eventCount] = openAngle;
-    _eventCircleIdx[eventCount] = i;
-    _eventType[eventCount] = 1; // open
-    eventCount++;
-
-    _eventAngles[eventCount] = closeAngle;
-    _eventCircleIdx[eventCount] = i;
-    _eventType[eventCount] = 0; // close
-    eventCount++;
   }
 
   if (eventCount === 0) {
     return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
   }
 
-  // Sort events by angle
   for (let i = 0; i < eventCount; i++) _sortIndices[i] = i;
   sortEventsByAngle(eventCount);
 
-  // Sweep: build polygon vertices
   _activeCount = 0;
 
-  // Initialize active set: find circles whose arc spans angle = -PI (the sweep start)
-  for (let i = 0; i < circleCount; i++) {
-    const dx = circleX[i] - lightX;
-    const dy = circleY[i] - lightY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const r = circleR[i];
-    if (dist <= r || dist - r > maxRadius) continue;
-
-    const centerAngle = Math.atan2(dy, dx);
-    const halfAngle = tangentHalfAngle(dist, r);
-    if (halfAngle < 0) continue;
-
-    const openAngle = normalizeAngleSigned(centerAngle - halfAngle);
-    const closeAngle = normalizeAngleSigned(centerAngle + halfAngle);
-
-    // Circle is active at -PI if its arc wraps around (open > close)
-    if (openAngle > closeAngle) {
+  // Seed active set at sweep start (-PI) from cached open/close (no second atan2 pass)
+  for (let i = 0; i < occCount; i++) {
+    if (i >= MAX_OCC_CACHE || !_occValid[i]) continue;
+    if (_occOpen[i] > _occClose[i]) {
       if (_activeCount < MAX_ACTIVE) {
-        _activeCircles[_activeCount++] = i;
+        _activeOcc[_activeCount++] = i;
       } else {
         warnActiveOverflow();
         return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
@@ -182,169 +311,140 @@ export function buildVisibilityPolygon(
     }
   }
 
-  let vertCount = 0;
-
+  let vertCountOut = 0;
   const startAngle = -Math.PI;
   const endAngle = Math.PI - EPSILON;
 
-  // Emit vertex at the sweep start (-PI)
-  vertCount = emitVertex(lightX, lightY, startAngle, maxRadius,
-    circleX, circleY, circleR,
-    outX, outY, vertCount, maxVertices);
+  vertCountOut = emitVertex(lightX, lightY, startAngle, maxRadius,
+    kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+    outX, outY, vertCountOut, maxVertices);
 
   let lastAngle = startAngle;
 
-  // Process events in angle order
   for (let e = 0; e < eventCount; e++) {
     const idx = _sortIndices[e];
     const angle = _eventAngles[idx];
-    const ci = _eventCircleIdx[idx];
+    const oi = _eventOccIdx[idx];
     const isOpen = _eventType[idx];
 
-    // Fill arc gap: insert intermediate boundary vertices when the angular
-    // gap between the previous vertex and this event is large. Without these,
-    // the triangle-fan chord cuts across the circle, creating visible cutoffs.
     const preAngle = angle - EPSILON;
-    vertCount = emitArcVertices(lightX, lightY, lastAngle, preAngle, maxRadius,
-      circleX, circleY, circleR,
-      outX, outY, vertCount, maxVertices);
+    vertCountOut = emitArcVertices(lightX, lightY, lastAngle, preAngle, maxRadius,
+      kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+      outX, outY, vertCountOut, maxVertices);
 
-    // Emit vertex just BEFORE the event (at current closest occluder)
-    if (vertCount < maxVertices) {
-      vertCount = emitVertex(lightX, lightY, preAngle, maxRadius,
-        circleX, circleY, circleR,
-        outX, outY, vertCount, maxVertices);
+    if (vertCountOut < maxVertices) {
+      vertCountOut = emitVertex(lightX, lightY, preAngle, maxRadius,
+        kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+        outX, outY, vertCountOut, maxVertices);
     }
 
-    // Update active set
     if (isOpen) {
       if (_activeCount < MAX_ACTIVE) {
-        _activeCircles[_activeCount++] = ci;
+        _activeOcc[_activeCount++] = oi;
       } else {
         warnActiveOverflow();
         return buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices);
       }
     } else {
       for (let a = 0; a < _activeCount; a++) {
-        if (_activeCircles[a] === ci) {
-          _activeCircles[a] = _activeCircles[--_activeCount];
+        if (_activeOcc[a] === oi) {
+          _activeOcc[a] = _activeOcc[--_activeCount];
           break;
         }
       }
     }
 
-    // Emit vertex just AFTER the event (at new closest occluder)
     const postAngle = angle + EPSILON;
-    if (vertCount < maxVertices) {
-      vertCount = emitVertex(lightX, lightY, postAngle, maxRadius,
-        circleX, circleY, circleR,
-        outX, outY, vertCount, maxVertices);
+    if (vertCountOut < maxVertices) {
+      vertCountOut = emitVertex(lightX, lightY, postAngle, maxRadius,
+        kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+        outX, outY, vertCountOut, maxVertices);
     }
 
     lastAngle = postAngle;
   }
 
-  // Fill arc gap from last event to end angle
-  vertCount = emitArcVertices(lightX, lightY, lastAngle, endAngle, maxRadius,
-    circleX, circleY, circleR,
-    outX, outY, vertCount, maxVertices);
+  vertCountOut = emitArcVertices(lightX, lightY, lastAngle, endAngle, maxRadius,
+    kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+    outX, outY, vertCountOut, maxVertices);
 
-  // Close the polygon: emit vertex at end angle (just before +PI)
-  if (vertCount < maxVertices) {
-    vertCount = emitVertex(lightX, lightY, endAngle, maxRadius,
-      circleX, circleY, circleR,
-      outX, outY, vertCount, maxVertices);
+  if (vertCountOut < maxVertices) {
+    vertCountOut = emitVertex(lightX, lightY, endAngle, maxRadius,
+      kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+      outX, outY, vertCountOut, maxVertices);
   }
 
-  return vertCount;
+  return vertCountOut;
 }
 
-/**
- * Emit a visibility polygon vertex at the given angle.
- * Casts a ray and finds the nearest blocking circle (if any).
- * Returns the new vertex count.
- */
 function emitVertex(
   lightX, lightY, angle, maxRadius,
-  circleX, circleY, circleR,
-  outX, outY, vertCount, maxVertices
+  kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+  outX, outY, vertCountOut, maxVertices
 ) {
-  if (vertCount >= maxVertices) return vertCount;
+  if (vertCountOut >= maxVertices) return vertCountOut;
 
+  const dirX = Math.cos(angle);
+  const dirY = Math.sin(angle);
   let minDist = maxRadius;
 
-  // Check all active circles for the closest intersection
   for (let a = 0; a < _activeCount; a++) {
-    const ci = _activeCircles[a];
-    const d = rayCircleDist(lightX, lightY, angle, circleX[ci], circleY[ci], circleR[ci]);
-    if (d < minDist) {
-      minDist = d;
+    const oi = _activeOcc[a];
+    let d;
+    if (kind[oi] === OCC_CIRCLE) {
+      d = rayCircleDist(lightX, lightY, dirX, dirY, cx[oi], cy[oi], cr[oi]);
+    } else {
+      d = rayPolyDist(lightX, lightY, dirX, dirY, vertsX, vertsY, vertStart[oi], vertCount[oi] | 0);
     }
+    if (d < minDist) minDist = d;
   }
 
-  const vx = lightX + Math.cos(angle) * minDist;
-  const vy = lightY + Math.sin(angle) * minDist;
+  const vx = lightX + dirX * minDist;
+  const vy = lightY + dirY * minDist;
 
-  // Deduplicate: skip if very close to previous vertex
-  if (vertCount > 0) {
-    const prevX = outX[vertCount - 1];
-    const prevY = outY[vertCount - 1];
+  if (vertCountOut > 0) {
+    const prevX = outX[vertCountOut - 1];
+    const prevY = outY[vertCountOut - 1];
     const dx = vx - prevX;
     const dy = vy - prevY;
-    if (dx * dx + dy * dy < 0.25) return vertCount; // less than 0.5 world units apart
+    if (dx * dx + dy * dy < 0.25) return vertCountOut;
   }
 
-  outX[vertCount] = vx;
-  outY[vertCount] = vy;
-  return vertCount + 1;
+  outX[vertCountOut] = vx;
+  outY[vertCountOut] = vy;
+  return vertCountOut + 1;
 }
 
-/**
- * Insert intermediate boundary vertices when the angular gap between
- * fromAngle and toAngle exceeds MAX_ARC_STEP. Each intermediate vertex
- * is ray-cast through emitVertex so active occluders are respected.
- */
 function emitArcVertices(
   lightX, lightY, fromAngle, toAngle, maxRadius,
-  circleX, circleY, circleR,
-  outX, outY, vertCount, maxVertices
+  kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+  outX, outY, vertCountOut, maxVertices
 ) {
   const gap = toAngle - fromAngle;
-  if (gap <= MAX_ARC_STEP) return vertCount;
+  if (gap <= MAX_ARC_STEP) return vertCountOut;
 
   const steps = Math.ceil(gap / MAX_ARC_STEP);
   const step = gap / steps;
 
-  for (let s = 1; s < steps && vertCount < maxVertices; s++) {
+  for (let s = 1; s < steps && vertCountOut < maxVertices; s++) {
     const angle = fromAngle + s * step;
-    vertCount = emitVertex(lightX, lightY, angle, maxRadius,
-      circleX, circleY, circleR,
-      outX, outY, vertCount, maxVertices);
+    vertCountOut = emitVertex(lightX, lightY, angle, maxRadius,
+      kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
+      outX, outY, vertCountOut, maxVertices);
   }
 
-  return vertCount;
+  return vertCountOut;
 }
 
-/**
- * Build a full circle polygon (no occluders case).
- * Approximates with N vertices.
- */
 function buildFullCircle(lightX, lightY, maxRadius, outX, outY, maxVertices) {
-  const segments = Math.min(Math.ceil(TWO_PI / MAX_ARC_STEP), maxVertices);
-  const step = TWO_PI / segments;
-
+  const segments = Math.min(FULL_CIRCLE_SEGS, maxVertices);
   for (let i = 0; i < segments; i++) {
-    const angle = -Math.PI + i * step;
-    outX[i] = lightX + Math.cos(angle) * maxRadius;
-    outY[i] = lightY + Math.sin(angle) * maxRadius;
+    outX[i] = lightX + _fullCircleC[i] * maxRadius;
+    outY[i] = lightY + _fullCircleS[i] * maxRadius;
   }
-
   return segments;
 }
 
-/**
- * Sort events by angle (insertion sort - fast for small arrays, no allocations)
- */
 function sortEventsByAngle(count) {
   for (let i = 1; i < count; i++) {
     const key = _sortIndices[i];
@@ -356,4 +456,54 @@ function sortEventsByAngle(count) {
     }
     _sortIndices[j + 1] = key;
   }
+}
+
+/**
+ * Write 4 world-space corners of an oriented box into a vertex pool.
+ * Pass precomputed cos/sin (Transform.rotC/rotS) — no Math.cos/sin here.
+ * @returns {number} verts written (always 4)
+ */
+export function writeOrientedBoxVerts(
+  outX, outY, start,
+  entityX, entityY, width, height, c, s, offsetX, offsetY
+) {
+  const hw = width * 0.5;
+  const hh = height * 0.5;
+  const wx = entityX + c * offsetX - s * offsetY;
+  const wy = entityY + s * offsetX + c * offsetY;
+
+  // CCW: BL, BR, TR, TL
+  const locals = [
+    -hw, -hh,
+    hw, -hh,
+    hw, hh,
+    -hw, hh,
+  ];
+  for (let i = 0; i < 4; i++) {
+    const lx = locals[i * 2];
+    const ly = locals[i * 2 + 1];
+    outX[start + i] = wx + c * lx - s * ly;
+    outY[start + i] = wy + s * lx + c * ly;
+  }
+  return 4;
+}
+
+/**
+ * Write world-transformed convex polygon verts (local poly + cos/sin + offset).
+ * @returns {number} verts written
+ */
+export function writePolygonVerts(
+  outX, outY, start,
+  entityX, entityY, c, s, offsetX, offsetY,
+  localX, localY, localBase, count
+) {
+  const wx = entityX + c * offsetX - s * offsetY;
+  const wy = entityY + s * offsetX + c * offsetY;
+  for (let i = 0; i < count; i++) {
+    const lx = localX[localBase + i];
+    const ly = localY[localBase + i];
+    outX[start + i] = wx + c * lx - s * ly;
+    outY[start + i] = wy + s * lx + c * ly;
+  }
+  return count;
 }

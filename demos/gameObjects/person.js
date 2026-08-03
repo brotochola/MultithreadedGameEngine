@@ -16,7 +16,7 @@ import {
   Ray,
   Flash,
   SoundManager,
-  getDirectionFromAngle,
+  getDirectionFromVector,
   GameObject,
   DecorationPool,
   BulletPool,
@@ -24,8 +24,6 @@ import {
 } from '../../src/index.js';
 
 const { RigidBody, Collider, SpriteRenderer, ShadowCaster, Transform, rng } = WEED;
-
-const HALF_PI = Math.PI / 2;
 
 export class Person extends Lootable {
   static scriptUrl = import.meta.url;
@@ -378,25 +376,18 @@ export class Person extends Lootable {
     const targetX = Transform.x[targetEntityIndex] + RigidBody.vx[targetEntityIndex] * (10 / 60);
     const targetY = Transform.y[targetEntityIndex] + RigidBody.vy[targetEntityIndex] * (10 / 60);
 
-    const angle = Math.atan2(targetY - this.y, targetX - this.x) + HALF_PI;
-
-    // Calculate distance from shooter to target
     const dx = targetX - this.x;
     const dy = targetY - this.y;
-    // const distance = Math.sqrt(dx * dx + dy * dy);
+    const lenSq = dx * dx + dy * dy;
+    let dirX = 1;
+    let dirY = 0;
+    if (lenSq > 1e-12) {
+      const inv = 1 / Math.sqrt(lenSq);
+      dirX = dx * inv;
+      dirY = dy * inv;
+    }
 
-    // Spawn white line decoration from shooter to target
-    // _white texture is 8x8, so:
-    // - scaleX = distance / 8 (stretch horizontally to distance)
-    // - scaleY = 2 / 8 = 0.25 (make it 2px high)
-    // - rotation = angle to target (without HALF_PI offset for horizontal line)
-    // - anchorX = 0 (line starts at shooter position)
-    // - anchorY = 0.5 (center vertically)
-    const lineAngle = Math.atan2(dy, dx); // Angle for horizontal line (no HALF_PI offset)
-
-    // this.rigidBody.linearDamping = 0.5;
-    const direction = getDirectionFromAngle(angle);
-
+    const direction = getDirectionFromVector(dx, dy);
     const dirIndex = DIRECTION_NAMES.indexOf(direction);
     if (dirIndex >= 0) {
       PersonComponent.facingDirection[this.index] = dirIndex;
@@ -411,11 +402,11 @@ export class Person extends Lootable {
       this.personAnimationFSM.forceChangeState(PersonAnimationFSM.states.SHOOTING);
     }
 
-    // Muzzle position from shooter center using target angle.
+    // Muzzle position from shooter center along aim unit vector.
     const muzzleDistancePx = this.constructor.muzzleDistancePx;
     const muzzleHeightPx = this.constructor.muzzleHeightPx;
-    const muzzleX = this.x + Math.cos(lineAngle) * muzzleDistancePx;
-    const muzzleY = this.y + Math.sin(lineAngle) * muzzleDistancePx;
+    const muzzleX = this.x + dirX * muzzleDistancePx;
+    const muzzleY = this.y + dirY * muzzleDistancePx;
 
     // Spawn bullet (raycast hit handled by engine; target.onGotShot called on impact)
     const speed = weapon.bulletSpeed ?? 800;
@@ -424,9 +415,17 @@ export class Person extends Lootable {
     const maxSpreadRad = 0.21; // ~12 degrees when accuracy is 0
     const spreadRad = maxSpreadRad * (1 - accuracy);
     const angleOffset = (rng() - 0.5) * 2 * spreadRad;
-    const shotAngle = lineAngle + angleOffset;
-    const vx = Math.cos(shotAngle) * speed;
-    const vy = Math.sin(shotAngle) * speed;
+    let shotDirX = dirX;
+    let shotDirY = dirY;
+    if (angleOffset !== 0) {
+      const ad = angleOffset < 0 ? -angleOffset : angleOffset;
+      const dc = ad < 0.08 ? 1 : Math.cos(angleOffset);
+      const ds = ad < 0.08 ? angleOffset : Math.sin(angleOffset);
+      shotDirX = dirX * dc - dirY * ds;
+      shotDirY = dirX * ds + dirY * dc;
+    }
+    const vx = shotDirX * speed;
+    const vy = shotDirY * speed;
     BulletPool.spawn({
       x: muzzleX,
       y: muzzleY,
@@ -438,7 +437,6 @@ export class Person extends Lootable {
       shooterEntityType: Transform.entityType[this.index],
       texture: 'bullet',
       scale: 1,
-      spriteRotation: shotAngle,
       anchorX: 1,
       anchorY: 0.5,
       trailWidth: 4,
@@ -458,48 +456,43 @@ export class Person extends Lootable {
       );
     }
 
-    //little fire: muzzle effect
-    // Sprite renders at gun height (y + offsetY), but sorts at ground level (y)
-    // Bullet tracer particle (travels from shooter to victim in 3 frames)
-
-    const angleDeg = (lineAngle * 180) / Math.PI;
-
+    // Muzzle flash sprites face shot direction (CS, no degree→trig round-trip)
     ParticleEmitter.emit({
       count: 1,
       x: muzzleX,
-      y: muzzleY + 1, // Base Y position for sorting (ground level)
+      y: muzzleY + 1,
       texture: "muzzle" + Math.floor(Math.random() * 3 + 1),
       scaleX: Math.random() * 0.5 + 0.5,
       scaleY: Math.random() * 0.5 + 0.5,
-      rotation: { min: angleDeg * 0.9, max: angleDeg * 1.1 },
+      rotC: shotDirX,
+      rotS: shotDirY,
       alpha: Math.random() * 0.5 + 0.5,
-      anchorX: 0, // Start at shooter position
-      anchorY: 0.5, // Center vertically
+      anchorX: 0,
+      anchorY: 0.5,
       z: muzzleHeightPx,
       gravity: 0,
       lifespan: 50,
       speed: 0
     })
 
-    //second muzzle
     ParticleEmitter.emit({
       count: 1,
       x: muzzleX,
-      y: muzzleY + 1, // Base Y position for sorting (ground level)
+      y: muzzleY + 1,
       texture: "muzzle" + Math.floor(Math.random() * 3 + 1),
       scaleX: Math.random() * 0.5 + 0.5,
       scaleY: Math.random() * 0.5 + 0.5,
-      rotation: { min: angleDeg * 0.9, max: angleDeg * 1.1 },
+      rotC: shotDirX,
+      rotS: shotDirY,
       alpha: Math.random() * 0.5 + 0.5,
-      anchorX: 0, // Start at shooter position
-      anchorY: 0.5, // Center vertically
+      anchorX: 0,
+      anchorY: 0.5,
       z: muzzleHeightPx,
       gravity: 0,
       lifespan: 50,
       speed: 0
     })
 
-    //create flash!
     Flash.create({
       x: muzzleX,
       y: muzzleY,
@@ -510,36 +503,38 @@ export class Person extends Lootable {
       hasGlowSprite: 0,
     });
 
-    this.shootingSparks(lineAngle, muzzleX, muzzleY, muzzleHeightPx)
+    this.shootingSparks(shotDirX, shotDirY, muzzleX, muzzleY, muzzleHeightPx)
 
     // }, howMuchTimeToWaitUntilFire)
 
     return true;
   }
 
-  shootingSparks(shootAngle, muzzleX, muzzleY, muzzleHeightPx) {
-    // Convert angle from radians to degrees for ParticleEmitter (which uses degrees)
-    const angleDeg = (shootAngle * 180) / Math.PI;
-    // Shotgun spread: 35 degree cone
-    const spreadDeg = 10;
-
-    ParticleEmitter.emit({
-      count: Math.floor(Math.random() * 10) + 10,
-      x: muzzleX,
-      y: muzzleY + 1,
-      z: muzzleHeightPx,
-      angleXY: { min: angleDeg - spreadDeg / 2, max: angleDeg + spreadDeg / 2 },
-      speed: { min: 0.1, max: 10 },
-      rotation: { min: 0, max: 360 },
-      vz: { min: -1, max: 5 }, // Some sparks fly up, others fall
-      gravity: 0.4,
-      lifespan: { min: 33, max: 100 },
-      scale: { min: 0.15, max: 0.5 },
-      texture: '_whiteCircle',
-      tint: { min: 0xffff00, max: 0xffffff },
-      alpha: { min: 0.5, max: 0.8 },
-      despawnOnGroundContact: true, // Despawn immediately when particles touch the ground
-    });
+  shootingSparks(dirX, dirY, muzzleX, muzzleY, muzzleHeightPx) {
+    // Cone around aim: sample speed + small lateral offset in CS space (no atan2)
+    const count = Math.floor(Math.random() * 10) + 10;
+    for (let n = 0; n < count; n++) {
+      const speed = 0.1 + Math.random() * 9.9;
+      const lateral = (Math.random() - 0.5) * 0.35; // ~±10° small-angle
+      const sx = dirX - dirY * lateral;
+      const sy = dirY + dirX * lateral;
+      ParticleEmitter.emit({
+        count: 1,
+        x: muzzleX,
+        y: muzzleY + 1,
+        z: muzzleHeightPx,
+        vx: sx * speed,
+        vy: sy * speed,
+        vz: { min: -1, max: 5 },
+        gravity: 0.4,
+        lifespan: { min: 33, max: 100 },
+        scale: { min: 0.15, max: 0.5 },
+        texture: '_whiteCircle',
+        tint: { min: 0xffff00, max: 0xffffff },
+        alpha: { min: 0.5, max: 0.8 },
+        despawnOnGroundContact: true,
+      });
+    }
   }
 
   /**
@@ -555,8 +550,7 @@ export class Person extends Lootable {
     // Face the target
     const targetX = Transform.x[targetEntityIndex];
     const targetY = Transform.y[targetEntityIndex];
-    const angle = Math.atan2(targetY - this.y, targetX - this.x) + HALF_PI;
-    const direction = getDirectionFromAngle(angle);
+    const direction = getDirectionFromVector(targetX - this.x, targetY - this.y);
     const dirIndex = DIRECTION_NAMES.indexOf(direction);
     if (dirIndex >= 0) {
       PersonComponent.facingDirection[this.index] = dirIndex;

@@ -177,11 +177,10 @@ export class Joint extends SharedAtomicPool {
   static _worldToLocal(entity, wx, wy) {
     const x = Transform.x[entity];
     const y = Transform.y[entity];
-    const rot = Transform.rotation[entity] || 0;
+    const c = Transform.rotC ? Transform.rotC[entity] : Math.cos(Transform.rotation[entity] || 0);
+    const s = Transform.rotS ? Transform.rotS[entity] : Math.sin(Transform.rotation[entity] || 0);
     const dx = wx - x;
     const dy = wy - y;
-    const c = Math.cos(rot);
-    const s = Math.sin(rot);
     return { x: dx * c + dy * s, y: -dx * s + dy * c };
   }
 

@@ -105,6 +105,7 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
   ]);
   const bodySetLinearVelocity = wrap("body_set_linear_velocity", null, [
     "number",
@@ -578,8 +579,8 @@ function createPhysicsApi(Module) {
       this._world.destroyBody(this.slot);
     }
 
-    setTransform(x, y, angle = 0) {
-      bodySetTransform(this.slot, x, y, angle);
+    setTransform(x, y, rotC = 1, rotS = 0) {
+      bodySetTransform(this.slot, x, y, rotC, rotS);
     }
 
     setLinearVelocity(vx, vy) {
@@ -1148,7 +1149,7 @@ function createPhysicsApi(Module) {
       const stateByteOffset = getStateByteOffset();
       const metaByteOffset = getMetaByteOffset();
       const stateBaseIndex = stateByteOffset >> 2;
-      const channelCount = typeof STATE_CHANNEL_COUNT === "number" ? STATE_CHANNEL_COUNT : 6;
+      const channelCount = typeof STATE_CHANNEL_COUNT === "number" ? STATE_CHANNEL_COUNT : 8;
       const channelOffsets = [];
       for (let channel = 0; channel < channelCount; channel++) {
         channelOffsets.push(

@@ -18,7 +18,9 @@ export class BulletComponent extends Component {
 
     vx: Float32Array,
     vy: Float32Array,
-    bulletAngle: Float32Array,
+    /** Facing of velocity / trail (cos, sin of atan2(vy,vx)). */
+    bulletRotC: Float32Array,
+    bulletRotS: Float32Array,
 
     damage: Float32Array,
     ownerId: Uint16Array,
@@ -28,7 +30,8 @@ export class BulletComponent extends Component {
     scale: Float32Array,
     alpha: Float32Array,
     tint: Uint32Array,
-    spriteRotation: Float32Array,
+    spriteRotC: Float32Array,
+    spriteRotS: Float32Array,
     anchorX: Float32Array,
     anchorY: Float32Array,
 
@@ -41,4 +44,10 @@ export class BulletComponent extends Component {
   };
 
   static bulletCount = 0;
+
+  static initializeArrays(buffer, count) {
+    super.initializeArrays(buffer, count);
+    if (this.bulletRotC) this.bulletRotC.fill(1);
+    if (this.spriteRotC) this.spriteRotC.fill(1);
+  }
 }

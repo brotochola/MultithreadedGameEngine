@@ -1,5 +1,5 @@
 // Bind Weed Transform / RigidBody hot views onto Box2D WASM HEAP channels.
-// Sole owner of Transform.x/y/rotation and RigidBody.vx/vy/angularVelocity/sleeping
+// Sole owner of Transform.x/y/rotation/rotC/rotS and RigidBody.vx/vy/angularVelocity/sleeping
 // after box2dReady. Logic constructs GameObjects only after this bind.
 // Units: px, px/s, rad, rad/s (Box2D native).
 
@@ -32,6 +32,8 @@ export function bindBox2dHotFields(payload) {
     off[STATE_CHANNELS.ROTATION] << 2,
     n,
   );
+  Transform.rotC = new Float32Array(sab, off[STATE_CHANNELS.ROT_C] << 2, n);
+  Transform.rotS = new Float32Array(sab, off[STATE_CHANNELS.ROT_S] << 2, n);
   RigidBody.vx = new Float32Array(sab, off[STATE_CHANNELS.VX] << 2, n);
   RigidBody.vy = new Float32Array(sab, off[STATE_CHANNELS.VY] << 2, n);
   RigidBody.angularVelocity = new Float32Array(
@@ -47,4 +49,11 @@ export function bindBox2dHotFields(payload) {
 
 export function isBox2dHotFieldsBound(payload) {
   return !!(payload?.sab && Transform.x?.buffer === payload.sab);
+}
+
+/** Keep rotC/rotS coherent when JS writes an angle before the next physics export. */
+export function syncRotCSFromAngle(index, angle) {
+  if (!Transform.rotC || !Transform.rotS) return;
+  Transform.rotC[index] = Math.cos(angle);
+  Transform.rotS[index] = Math.sin(angle);
 }

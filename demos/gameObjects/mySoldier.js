@@ -58,7 +58,8 @@ export class MySoldier extends Person {
   /**
    * LIFECYCLE: Main update loop
    */
-  tick(dtRatio) {
+  tick(dtRatio, deltaTime, accumulatedTime, frameNumber) {
+    this._logicFrame = frameNumber | 0;
     super.tick(dtRatio);
 
     if (PersonComponent.dead[this.index] === 1) return;

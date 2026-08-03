@@ -41,7 +41,8 @@ const MARGIN = 64; // keep colliders fully inside the grid
 const gridCols = Math.ceil(WORLD_W / CELL_SIZE);
 const gridRows = Math.ceil(WORLD_H / CELL_SIZE);
 const totalCells = gridCols * gridRows;
-const cellByteSize = 4 + MAX_PER_CELL * 4;
+// Match production: [count:u8][pad:3][entities:u16×mec]
+const cellByteSize = 4 + MAX_PER_CELL * 2;
 
 Grid.cellSize = CELL_SIZE;
 Grid.invCellSize = 1 / CELL_SIZE;
@@ -54,7 +55,7 @@ Grid.cellByteSize = cellByteSize;
 const gridBuffer = new ArrayBuffer(totalCells * cellByteSize);
 Grid._gridBuffer = gridBuffer;
 Grid._gridCounts = new Uint8Array(gridBuffer);
-Grid._gridEntities = new Uint32Array(gridBuffer);
+Grid._gridEntities = new Uint16Array(gridBuffer);
 
 Transform.active = new Uint8Array(ENTITY_COUNT).fill(1);
 Transform.x = new Float32Array(ENTITY_COUNT);

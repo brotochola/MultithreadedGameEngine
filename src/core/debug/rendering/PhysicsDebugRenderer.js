@@ -131,9 +131,8 @@ export class PhysicsDebugRenderer {
       const ox = offsetX?.[i] || 0;
       const oy = offsetY?.[i] || 0;
       const shape = shapeType[i];
-      const th = rotation[i] || 0;
-      const c = Math.cos(th);
-      const s = Math.sin(th);
+      const c = Transform.rotC ? Transform.rotC[i] : Math.cos(rotation[i] || 0);
+      const s = Transform.rotS ? Transform.rotS[i] : Math.sin(rotation[i] || 0);
 
       // Rotate offset for Box and Polygon (Circle keeps axis-aligned offset)
       let posX;
@@ -353,9 +352,8 @@ export class PhysicsDebugRenderer {
       const ox = offsetX?.[i] || 0;
       const oy = offsetY?.[i] || 0;
       const shape = shapeType?.[i];
-      const th = rotation[i] || 0;
-      const c = Math.cos(th);
-      const s = Math.sin(th);
+      const c = Transform.rotC ? Transform.rotC[i] : Math.cos(rotation[i] || 0);
+      const s = Transform.rotS ? Transform.rotS[i] : Math.sin(rotation[i] || 0);
 
       let posX;
       let posY;
@@ -588,9 +586,8 @@ export class PhysicsDebugRenderer {
 
   /** Body-local anchor → world (inverse of Joint._worldToLocal). */
   _localAnchorToWorld(entity, lx, ly, out) {
-    const rot = Transform.rotation[entity] || 0;
-    const c = Math.cos(rot);
-    const s = Math.sin(rot);
+    const c = Transform.rotC ? Transform.rotC[entity] : Math.cos(Transform.rotation[entity] || 0);
+    const s = Transform.rotS ? Transform.rotS[entity] : Math.sin(Transform.rotation[entity] || 0);
     out.x = Transform.x[entity] + lx * c - ly * s;
     out.y = Transform.y[entity] + lx * s + ly * c;
     return out;

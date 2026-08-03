@@ -36,7 +36,7 @@ export function componentSchemaFingerprint(ComponentClass) {
     parts.push(`${name}:${type.name}:${length}`);
   }
   if (ComponentClass === Transform || ComponentClass.name === 'Transform') {
-    parts.push('pose:x,y,rotation');
+    parts.push('pose:x,y,rotC,rotS');
   }
   if (ComponentClass === RigidBody || ComponentClass.name === 'RigidBody') {
     parts.push('pose:vx,vy,angularVelocity,sleeping');
@@ -87,7 +87,8 @@ export function readEntityComponents(EntityClass, entityIndex) {
     if (ComponentClass === Transform || name === 'Transform') {
       if (Transform.x) fields.x = Transform.x[entityIndex];
       if (Transform.y) fields.y = Transform.y[entityIndex];
-      if (Transform.rotation) fields.rotation = Transform.rotation[entityIndex];
+      if (Transform.rotC) fields.rotC = Transform.rotC[entityIndex];
+      if (Transform.rotS) fields.rotS = Transform.rotS[entityIndex];
     }
 
     // RigidBody velocities / sleeping also live on HEAP
@@ -153,7 +154,14 @@ export function applyEntitySaveRestore(entityIndex, EntityClass, components) {
     if ((ComponentClass === Transform || name === 'Transform') && Transform.x) {
       if ('x' in fields) Transform.x[entityIndex] = fields.x;
       if ('y' in fields) Transform.y[entityIndex] = fields.y;
-      if ('rotation' in fields) Transform.rotation[entityIndex] = fields.rotation;
+      if ('rotC' in fields && Transform.rotC) Transform.rotC[entityIndex] = fields.rotC;
+      if ('rotS' in fields && Transform.rotS) Transform.rotS[entityIndex] = fields.rotS;
+      if ('rotation' in fields && Transform.rotC && Transform.rotS) {
+        // Legacy saves stored radians
+        Transform.rotC[entityIndex] = Math.cos(fields.rotation);
+        Transform.rotS[entityIndex] = Math.sin(fields.rotation);
+        if (Transform.rotation) Transform.rotation[entityIndex] = fields.rotation;
+      }
     }
 
     if ((ComponentClass === RigidBody || name === 'RigidBody') && RigidBody.vx) {

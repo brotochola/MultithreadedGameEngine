@@ -1,6 +1,6 @@
 // Transform.js - Entity state SoA + HEAP-bound pose views
 // SoA: active / entityType / isItOnScreen
-// Pose (x/y/rotation): Box2D WASM HEAP only — bound via bindBox2dHotFields after box2dReady
+// Pose (x/y/rotation/rotC/rotS): Box2D WASM HEAP only — bound via bindBox2dHotFields after box2dReady
 // (logic constructs GameObjects after that bind so setup() can write this.x)
 
 import { Component } from '../core/Component.js';
@@ -17,6 +17,8 @@ export class Transform extends Component {
     Transform.x = null;
     Transform.y = null;
     Transform.rotation = null;
+    Transform.rotC = null;
+    Transform.rotS = null;
   }
 
   // HEAP-bound (not in ARRAY_SCHEMA) — instance accessors for entity.transform.x etc.
@@ -33,9 +35,20 @@ export class Transform extends Component {
     Transform.y[this.index] = value;
   }
   get rotation() {
-    return Transform.rotation[this.index];
+    return Transform.rotation ? Transform.rotation[this.index] : 0;
   }
   set rotation(value) {
-    Transform.rotation[this.index] = value;
+    const i = this.index;
+    if (Transform.rotation) Transform.rotation[i] = value;
+    if (Transform.rotC && Transform.rotS) {
+      Transform.rotC[i] = Math.cos(value);
+      Transform.rotS[i] = Math.sin(value);
+    }
+  }
+  get rotC() {
+    return Transform.rotC[this.index];
+  }
+  get rotS() {
+    return Transform.rotS[this.index];
   }
 }

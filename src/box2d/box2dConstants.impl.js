@@ -40,9 +40,11 @@
     VX: 3,
     VY: 4,
     ANG_VEL: 5,
+    ROT_C: 6,
+    ROT_S: 7,
   });
 
-  var STATE_CHANNEL_COUNT = 6;
+  var STATE_CHANNEL_COUNT = 8;
 
   var JOINT_TYPE = Object.freeze({
     DISTANCE: 0,

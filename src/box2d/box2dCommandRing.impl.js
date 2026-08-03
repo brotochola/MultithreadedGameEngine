@@ -10,9 +10,9 @@
 
 (function (global) {
   var BOX2D_CMD = Object.freeze({
-    SET_TRANSFORM: 1, // entity, x, y, angle
+    SET_TRANSFORM: 1, // entity, x, y, rotC, rotS
     SET_VELOCITY: 2, // entity, vx, vy
-    SET_ANGLE: 3, // entity, angle
+    SET_ANGLE: 3, // entity, rotC, rotS
     SET_ANGULAR_VELOCITY: 4, // entity, w
     SET_FIXED_ROTATION: 5, // entity, flag (0|1)
     EXPLODE: 6, // maskBits as entity, x, y, radius, impulsePerLength (falloff=0.5*radius)
@@ -92,16 +92,31 @@
     }
   }
 
-  function enqueueSetTransform(entity, x, y, angle) {
-    return enqueue(BOX2D_CMD.SET_TRANSFORM, entity, x, y, angle == null ? 0 : angle, 0);
+  function enqueueSetTransform(entity, x, y, rotC, rotS) {
+    return enqueue(
+      BOX2D_CMD.SET_TRANSFORM,
+      entity,
+      x,
+      y,
+      rotC == null ? 1 : rotC,
+      rotS == null ? 0 : rotS,
+    );
   }
 
   function enqueueSetVelocity(entity, vx, vy) {
     return enqueue(BOX2D_CMD.SET_VELOCITY, entity, vx, vy, 0, 0);
   }
 
-  function enqueueSetAngle(entity, angle) {
-    return enqueue(BOX2D_CMD.SET_ANGLE, entity, angle, 0, 0, 0);
+  /** @param {number} rotC cosθ @param {number} rotS sinθ */
+  function enqueueSetAngle(entity, rotC, rotS) {
+    return enqueue(
+      BOX2D_CMD.SET_ANGLE,
+      entity,
+      rotC == null ? 1 : rotC,
+      rotS == null ? 0 : rotS,
+      0,
+      0,
+    );
   }
 
   function enqueueSetAngularVelocity(entity, w) {
@@ -144,13 +159,13 @@
       var d = f32[base + 6];
       switch (op) {
         case BOX2D_CMD.SET_TRANSFORM:
-          if (handlers.setTransform) handlers.setTransform(entity, a, b, c);
+          if (handlers.setTransform) handlers.setTransform(entity, a, b, c, d);
           break;
         case BOX2D_CMD.SET_VELOCITY:
           if (handlers.setVelocity) handlers.setVelocity(entity, a, b);
           break;
         case BOX2D_CMD.SET_ANGLE:
-          if (handlers.setAngle) handlers.setAngle(entity, a);
+          if (handlers.setAngle) handlers.setAngle(entity, a, b);
           break;
         case BOX2D_CMD.SET_ANGULAR_VELOCITY:
           if (handlers.setAngularVelocity) handlers.setAngularVelocity(entity, a);
