@@ -27,9 +27,10 @@ This trades **strict global consistency** for **one-frame eventual consistency**
    - Update a shared per-cell version when an owned cell's membership count/hash changes.
 
 2. **Find neighbors** (`findNeighborsForOwnedEntities`)
-   - For each entity whose **home row** falls in an owned row, gather neighbors within `visualRange` using precomputed **circle patterns** over grid cells.
-   - Reuse the previous `neighborData` for that entity when its position/range signature and every searched cell version are unchanged.
-   - Write `neighborData` for that entity.
+   - For each entity whose **home row** falls in an owned row, gather neighbor candidates using precomputed **circle patterns** over grid cells.
+   - When `neighborReuseSkin > 0`, search at `visualRange + 2·skin`, cache the expanded candidate list, and **always** re-filter into published `neighborData` at exact `visualRange`.
+   - Reuse the candidate list (and skip the cell walk) when A is still within skin of the build position, vr/extent match, and list age is below `neighborReuseMaxFrames`.
+   - Write filtered `neighborData` for that entity.
 
 ---
 
@@ -77,9 +78,14 @@ Visual-range neighbors only. Physics contacts come from Box2D, not this buffer.
 
 ## Neighbor reuse
 
-Each spatial worker keeps a per-entity signature for the last neighbor search: position, half extent, visual range, source cell, cell radius, and a dependency hash built from the shared versions of every searched cell. If both the entity signature and dependency hash match, the worker leaves that entity's existing `neighborData` in place and increments the `NEIGHBORS_REUSED` stat.
+Verlet-style reuse (controlled by `spatial.neighborReuseSkin` / `neighborReuseMaxFrames`):
 
-This preserves the no-barrier model: workers may read recent data, but reuse only happens when the cells that would be searched are unchanged according to the row owners.
+- **`skin = visualRange · neighborReuseSkin`**. With skin > 0, a miss rebuilds an expanded **candidate** list at `searchRange = visualRange + 2·skin` (capped by `maxNeighbors`). Truncated lists never reuse until a non-truncated rebuild.
+- Every frame (hit or miss) the worker **re-filters** candidates into published `neighborData` with the exact `visualRange` distance test, so the published set tracks current positions of A and B within the candidate envelope.
+- **Hit** (reuse): A is within skin of its build position, half-extent and visual range unchanged, and frames since build `< neighborReuseMaxFrames`. The cell walk is skipped; only the cheap filter runs. Increments `NEIGHBORS_REUSED`.
+- **`neighborReuseSkin: 0`**: no candidate reuse — full rebuild every frame at exact `visualRange` (baseline).
+
+`neighborReuseMaxFrames` bounds how long neighbors B can drift while A stays inside the skin before a forced rebuild. If skin > 0 and maxFrames is unset/`0`, the worker falls back to **15**.
 
 ---
 
@@ -95,12 +101,14 @@ Spatial workers write into `spatialStats` (multi-worker layout). Relevant keys f
 
 | Key | Meaning |
 |-----|--------|
+| `STEP_MS` | Full spatial step time (ms) |
 | `NEIGHBOR_CHECKS` | Neighbor-related work counter (as defined in worker) |
 | `GRID_CELLS_CHECKED` | Cells examined |
 | `ENTITIES_PROCESSED` | Entities processed in spatial pass |
 | `REBUILD_MS` | Time in grid rebuild (ms) |
 | `NEIGHBOR_MS` | Time in neighbor search (ms) |
 | `MSG_MS` | Message handling time this frame (ms) |
+| `NEIGHBORS_REUSED` | Entities that skipped the cell walk this frame (candidate filter only) |
 
 ---
 
@@ -108,6 +116,8 @@ Spatial workers write into `spatialStats` (multi-worker layout). Relevant keys f
 
 - **`cellSize`, grid dimensions** — from scene `gridMetadata` (see `Scene` / config defaults).
 - **`maxNeighbors`** — bounds stride and buffer sizes (`totalEntityCount * (1 + maxNeighbors) * 2` bytes). Default is **128**; dense flocks may need 512–1024 via scene `spatial.maxNeighbors`. Must stay consistent across `Grid` initialization.
+- **`neighborReuseSkin`** — fraction of `visualRange` (default **0.04**). `0` disables Verlet reuse.
+- **`neighborReuseMaxFrames`** — max frames to keep a candidate list (default **15**). Dense/fast scenes may override; e.g. Predator uses **0.01 / 30**.
 
 ---
 

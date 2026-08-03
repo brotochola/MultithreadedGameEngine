@@ -130,20 +130,12 @@ class SpatialWorker extends AbstractWorker {
     this.rebuildTimeThisFrame = 0;
     this.neighborSearchTimeThisFrame = 0;
     this.neighborsReusedThisFrame = 0;
-    this.falseNegativesThisFrame = 0;
-    this.falsePositivesThisFrame = 0;
-    /** Cumulative over worker lifetime (for correctness gates across sample intervals). */
-    this.falseNegativesTotal = 0;
-    this.falsePositivesTotal = 0;
 
-    /** Fraction of visualRange (0 = baseline exact reuse). */
+    /** Fraction of visualRange (0 = off). */
     this._neighborReuseSkin = 0;
-    this._verifyNeighborSets = false;
     /** Per-entity expanded candidate lists: [count, id0, ...] stride = 1+maxNeighbors */
     this._neighborCandidateData = null;
     this._neighborCandidateTruncated = null;
-    this._verifyMarker = null;
-    this._verifyFrameCounter = 0;
     this._entityFramesSinceBuild = null;
 
   }
@@ -222,18 +214,13 @@ class SpatialWorker extends AbstractWorker {
 
     const spatialCfg = this.config?.spatial || {};
     this._neighborReuseSkin = Number(spatialCfg.neighborReuseSkin) > 0 ? Number(spatialCfg.neighborReuseSkin) : 0;
-    this._verifyNeighborSets = spatialCfg.verifyNeighborSets === true;
     // Max frames to keep a candidate list (bounds B drift). Override via spatial.neighborReuseMaxFrames.
     const maxFrames = Number(spatialCfg.neighborReuseMaxFrames);
-    this._maxReuseFrames = maxFrames > 0 ? maxFrames | 0 : this._neighborReuseSkin > 0 ? 10 : 0;
+    this._maxReuseFrames = maxFrames > 0 ? maxFrames | 0 : this._neighborReuseSkin > 0 ? 15 : 0;
     const candStride = 1 + Grid.maxNeighbors;
     this._neighborCandidateData = new Uint16Array(this.globalEntityCount * candStride);
     this._neighborCandidateTruncated = new Uint8Array(this.globalEntityCount);
     this._entityFramesSinceBuild = new Uint16Array(this.globalEntityCount);
-    if (this._verifyNeighborSets) {
-      this._verifyMarker = new Uint32Array(this.globalEntityCount);
-      this._verifyFrameCounter = 0;
-    }
 
     // Precompute circle patterns for all possible cellRadius values (0 to maxCellRadius)
     this._precomputeCirclePatterns();
@@ -353,9 +340,6 @@ class SpatialWorker extends AbstractWorker {
     this.rebuildTimeThisFrame = 0;
     this.neighborSearchTimeThisFrame = 0;
     this.neighborsReusedThisFrame = 0;
-    this.falseNegativesThisFrame = 0;
-    this.falsePositivesThisFrame = 0;
-    // Note: falseNegativesTotal / falsePositivesTotal are cumulative (not reset)
 
     // STEP 1: Rebuild grid (only owned rows)
     let startTime = this.stats ? performance.now() : 0;
@@ -588,56 +572,6 @@ class SpatialWorker extends AbstractWorker {
     return published;
   }
 
-  /**
-   * Brute-force oracle: count FN/FP of published neighborData vs current positions.
-   */
-  _verifyPublishedNeighbors(entityA, myX, myY, myVisualRange, neighborOffset, neighborData, entityPosData, active) {
-    const marker = this._verifyMarker;
-    this._verifyFrameCounter++;
-    if (this._verifyFrameCounter >= 0xffffff) {
-      this._verifyFrameCounter = 1;
-      marker.fill(0);
-    }
-    const stamp = this._verifyFrameCounter;
-
-    const publishedCount = neighborData[neighborOffset];
-    for (let i = 0; i < publishedCount; i++) {
-      marker[neighborData[neighborOffset + 1 + i]] = stamp;
-    }
-
-    const activeEntitiesData = this.activeEntitiesData;
-    const totalActive = activeEntitiesData ? activeEntitiesData[0] : 0;
-    let gtCount = 0;
-    for (let a = 0; a < totalActive; a++) {
-      const entityB = activeEntitiesData[1 + a];
-      if (entityB === entityA || !active[entityB]) continue;
-      const baseIdxB = entityB * 4;
-      const bX = entityPosData[baseIdxB];
-      const bY = entityPosData[baseIdxB + 1];
-      const bHalfExtent = entityPosData[baseIdxB + 2];
-      const dx = bX - myX;
-      const dy = bY - myY;
-      const effectiveRange = myVisualRange + bHalfExtent;
-      if (dx * dx + dy * dy < effectiveRange * effectiveRange) {
-        gtCount++;
-        if (marker[entityB] !== stamp) {
-          this.falseNegativesThisFrame++;
-          this.falseNegativesTotal++;
-        } else marker[entityB] = stamp | 0x80000000; // mark as matched GT
-      }
-    }
-
-    // FP: published but not in GT (still stamped without high bit)
-    for (let i = 0; i < publishedCount; i++) {
-      const entityB = neighborData[neighborOffset + 1 + i];
-      if (marker[entityB] === stamp) {
-        this.falsePositivesThisFrame++;
-        this.falsePositivesTotal++;
-      }
-    }
-    void gtCount;
-  }
-
   findNeighborsForOwnedEntities() {
     const visualRange = Collider.visualRange;
     const active = Transform.active;
@@ -649,7 +583,6 @@ class SpatialWorker extends AbstractWorker {
     const stride = Grid._stride;
     const workerId = this.workerId;
     const skinFrac = this._neighborReuseSkin;
-    const verify = this._verifyNeighborSets;
     const candStride = 1 + maxNeighbors;
     const candData = this._neighborCandidateData;
 
@@ -824,19 +757,6 @@ class SpatialWorker extends AbstractWorker {
               this._entityReuseInitialized[entityA] = 0;
             }
           }
-
-          if (verify) {
-            this._verifyPublishedNeighbors(
-              entityA,
-              myX,
-              myY,
-              myVisualRange,
-              neighborOffset,
-              neighborData,
-              entityPosData,
-              active
-            );
-          }
         }
       }
     }
@@ -856,8 +776,6 @@ class SpatialWorker extends AbstractWorker {
       this.stats[SPATIAL_STATS.NEIGHBOR_MS] = this.neighborSearchTimeThisFrame;
       this.stats[SPATIAL_STATS.MSG_MS] = this.messageTimeThisFrame;
       this.stats[SPATIAL_STATS.NEIGHBORS_REUSED] = this.neighborsReusedThisFrame;
-      this.stats[SPATIAL_STATS.FALSE_NEGATIVES] = this.falseNegativesTotal;
-      this.stats[SPATIAL_STATS.FALSE_POSITIVES] = this.falsePositivesTotal;
     }
   }
 }

@@ -119,8 +119,6 @@ export const SPATIAL_STATS = Object.freeze({
   MSG_MS: 6,
   NEIGHBORS_REUSED: 7,
   STEP_MS: 8,
-  FALSE_NEGATIVES: 9,
-  FALSE_POSITIVES: 10,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE_PER_WORKER: 16 * 4,
 });
@@ -273,8 +271,6 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
       { key: 'REBUILD_MS', label: 'Rebuild', format: fmtMs },
       { key: 'NEIGHBOR_MS', label: 'Search', format: fmtMs },
       { key: 'NEIGHBORS_REUSED', label: 'Reused', format: fmtNum },
-      { key: 'FALSE_NEGATIVES', label: 'FN', format: fmtNum },
-      { key: 'FALSE_POSITIVES', label: 'FP', format: fmtNum },
     ],
   },
   logic: {

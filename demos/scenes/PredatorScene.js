@@ -77,6 +77,9 @@ export class PredatorScene extends WEED.Scene {
       maxEntitiesPerCell: 128, //this is very important!!
       numberOfSpatialWorkers: 3, // Multiple workers for parallel neighbor detection
       noLimitFPS: false,
+      // Dense/fast flocks: smaller skin + longer reuse than engine defaults (0.04 / 15)
+      neighborReuseSkin: 0.01,
+      neighborReuseMaxFrames: 30,
     },
 
     particle: {

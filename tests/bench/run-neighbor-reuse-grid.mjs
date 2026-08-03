@@ -40,7 +40,6 @@ function patchDefaults(skin, maxFrames) {
   }
   src = src.replace(/neighborReuseSkin:\s*[\d.]+/, `neighborReuseSkin: ${skin}`);
   src = src.replace(/neighborReuseMaxFrames:\s*\d+/, `neighborReuseMaxFrames: ${maxFrames}`);
-  src = src.replace(/verifyNeighborSets:\s*(true|false)/, 'verifyNeighborSets: false');
   fs.writeFileSync(defaultsPath, src);
 }
 

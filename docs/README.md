@@ -38,6 +38,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 | [`../tests/bench/run-integrated-worker-benchmark.mjs`](../tests/bench/run-integrated-worker-benchmark.mjs) | `npm run test:bench` — worker FPS comparison (`BallsScene`) |
 | [`../tests/bench/scene-cycle-smoke.mjs`](../tests/bench/scene-cycle-smoke.mjs) | Scene load/destroy leak smoke (heap, `Layer`/`NavGrid`/`Sound` statics) |
 | [`../tests/bench/ray-microbench.mjs`](../tests/bench/ray-microbench.mjs) | Ray DDA correctness vs brute force + microbench |
+| [`./spatial_worker_hypothesis_report.md`](./spatial_worker_hypothesis_report.md) | Spatial hyp campaign + neighbor-reuse defaults (H3) |
 
 ## Documentation Policy
 

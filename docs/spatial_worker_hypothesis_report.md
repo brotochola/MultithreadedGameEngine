@@ -211,14 +211,15 @@ Baseline de confirmación (más conservador que el screening temprano en Predato
 
 | Situación | Acción |
 |-----------|--------|
-| Prioridad máxima de rendimiento spatial | **Usar `spatial.neighborReuseSkin: 0.25`** (ya integrado en `spatial_worker`; default 0 = off) |
-| Escenas rápidas | Respetar `neighborReuseMaxFrames` vs velocidad máx. (drift B ≤ skin) o bajar skin/frames |
+| Default del motor | **`neighborReuseSkin: 0.04`**, **`neighborReuseMaxFrames: 15`** (`SPATIAL_DEFAULTS`) |
+| Predator / flock denso-rápido | Override escena: **`0.01` / `30`** (mejor celda del barrido parcial) |
+| Escenas más rápidas / más riesgo FN | Bajar skin o `neighborReuseMaxFrames` |
 | Sleeping cells (H1) | No merge; añadir tests de vecinos + invariantes de grid antes de reintentar |
 | Incremental movedBodies (H2) | Rediseñar con lista de celdas por entidad; el prototipo de campaña no basta |
 | cellSize | Mantener Balls **100**, Predator **128** |
 | Morton reorder / BVH / hash Map | No como default (confirmado otra vez) |
 
-**Estado del código:** H3 Verlet *correcto* vive en [`src/workers/spatial_worker.js`](../src/workers/spatial_worker.js) detrás de `neighborReuseSkin` (default **0**). Gate: `node tests/bench/run-neighbor-reuse-correctness.mjs`.
+**Estado del código:** H3 Verlet *correcto* vive en [`src/workers/spatial_worker.js`](../src/workers/spatial_worker.js) detrás de `neighborReuseSkin` (default **0.04**). El oracle FN/FP (`verifyNeighborSets`) se retiró del motor tras validar FN=0/FP=0; ver §12.
 
 ---
 
@@ -226,16 +227,17 @@ Baseline de confirmación (más conservador que el screening temprano en Predato
 
 - Una sola máquina / sesión headed; sin réplicas multi-host.
 - Screening 2-run: CV alto en algunas hyps; confirmación solo en promovidas.
-- ~~H3 no mide calidad semántica~~ → **resuelto en §12** (oracle FN/FP en escena dedicada).
+- ~~H3 no mide calidad semántica~~ → validado históricamente con oracle (§12); oracle ya no está en el runtime.
 - H1 no incluye gate visual/funcional de IA Predator.
 - Predator `STEP` max tiene CV 20% bajo H3 (confirm) — banda ancha; la mediana sigue claramente bajo baseline.
 - El H3 de *campaña* (solo skin en `_canReuseNeighbors` sin candidate cache) queda obsoleto; no re-ejecutar `applyHyp('H3')` del patcher antiguo.
+- Barrido skin×frames (§12.5) incompleto (cortó en skin 0.25); zona 0.01–0.2 está completa.
 
 ---
 
 ## 10. Trabajo futuro
 
-- Barrido de `skin` / `neighborReuseMaxFrames` en Balls + Predator headed median.
+- ~~Barrido de `skin` / `neighborReuseMaxFrames`~~ → parcial hecho; opcional completar skins ≥0.35.
 - Incremental real: occupancy lists + `movedBodies` + full rebuild periódico medido.
 - Combinar skin Verlet + H11 y re-benchmark.
 - Wire correcto de `cellSleeping` con tests.
@@ -257,16 +259,11 @@ Artefactos: `tests/results/spatial-hyps/*.json`.
 
 ---
 
-## 12. Validación semántica profunda de H3 (post-campaña)
+## 12. Validación semántica y tuning de defaults (post-campaña)
 
 ### 12.1 Hueco del H3 de campaña
 
-Reusar `neighborData` cuando A se mueve ≤ skin **sin** ampliar la búsqueda ni re-filtrar produce:
-
-- **FN:** B entra en rango después del rebuild
-- **FP:** B sale de rango; la lista vieja lo conserva
-
-`BODY_COUNT` no detecta eso.
+Reusar `neighborData` cuando A se mueve ≤ skin **sin** ampliar la búsqueda ni re-filtrar produce FN/FP. `BODY_COUNT` no detecta eso. La implementación integrada corrige el hueco (§12.2).
 
 ### 12.2 Semántica integrada
 
@@ -283,13 +280,9 @@ Implementación (`neighborReuseSkin > 0`):
 3. Hit: A dentro de skin del build, misma vr/extent, edad `< neighborReuseMaxFrames` (acota drift de B)
 4. `skin = 0`: sin reuse (rebuild completo cada frame)
 
-### 12.3 Escena y gate
+### 12.3 Oracle histórico (retirado del motor)
 
-- [`NeighborReuseCorrectnessScene.js`](../demos/scenes/NeighborReuseCorrectnessScene.js) — 1000 probes, `fixedFps: 60`, seed fijo, velocidad máx. 12 px/s
-- Oracle en worker (`verifyNeighborSets`) → `FALSE_NEGATIVES` / `FALSE_POSITIVES` acumulativos
-- Harness: [`run-neighbor-reuse-correctness.mjs`](../tests/bench/run-neighbor-reuse-correctness.mjs)
-
-### 12.4 Resultados (headed, 2 runs, warmup 8s / measure 10s)
+Se validó FN=0 / FP=0 con un oracle brute-force en worker (`verifyNeighborSets`) y una escena de probes dedicada. Ese scaffolding **ya no forma parte del runtime** (ni defaults, ni stats FN/FP, ni gate). Resultados históricos (headed, 2 runs):
 
 | Fase | Variante | STEP_MS med | REUSED | FN | FP |
 |------|----------|------------:|-------:|---:|---:|
@@ -298,15 +291,23 @@ Implementación (`neighborReuseSkin > 0`):
 | Perf (oracle off) | skin 0 | **2.04** | 0 | — | — |
 | Perf (oracle off) | skin 0.25 | **0.94** | ~960 | — | — |
 
-**Perf:** Δ STEP_MS ≈ **−53.7%** (cumple ≥3%).  
-**Corrección:** FN=0 y FP=0 en baseline y Verlet.
+Perf Δ STEP_MS ≈ **−53.7%** en esa escena.
 
-```bash
-node tests/bench/run-neighbor-reuse-correctness.mjs --headed --runs 2
-```
+### 12.5 Barrido skin × frames (parcial)
 
-JSON: `tests/results/neighbor-reuse/correctness-summary.json`.
+Harness: [`run-neighbor-reuse-grid.mjs`](../tests/bench/run-neighbor-reuse-grid.mjs). Artefacto: `tests/results/neighbor-reuse/skin-frames-grid.json` (cortó en `skin=0.25 frames=15` Predator; skins **0–0.2** completos).
+
+Baseline `skin=0`: Balls STEP_max **15.74 ms**, Predator **53.43 ms**.
+
+Mejores celdas observadas (1 run headed, warmup 12s / measure 10s):
+
+| Escena | Mejor celda | STEP_max | Δ vs skin0 |
+|--------|-------------|----------:|-----------:|
+| Balls | skin **0.05** / frames **20** | 7.48 | ≈ −52% |
+| Predator | skin **0.01** / frames **30** | 18.27 | ≈ −66% |
+
+**Ship:** defaults globales **0.04 / 15** (entre 0.01 y 0.05); Predator override **0.01 / 30**.
 
 ---
 
-*Informe generado a partir de la campaña experimental del spatial_worker y la validación semántica H3. Las cifras absolutas dependen del hardware y de la carga del sistema; los veredictos se basan en deltas relativos bajo protocolo fijo.*
+*Informe generado a partir de la campaña experimental del spatial_worker, la validación semántica H3 y el barrido parcial skin×frames. Las cifras absolutas dependen del hardware y de la carga del sistema; los veredictos se basan en deltas relativos bajo protocolo fijo.*
