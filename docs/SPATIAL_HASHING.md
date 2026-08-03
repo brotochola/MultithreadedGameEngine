@@ -166,7 +166,9 @@ With Verlet alone, dense scenes can already show ~90% `NEIGHBORS_REUSED` (cell w
 
 ## Sleeping bodies (visual neighbors)
 
-Spatial neighbor lists are **visual-range only**. Static/sleeping pairs are not filtered out of `neighborData` for collision anymore — Box2D owns contacts and sleep. Cell sleeping still skips rebuild work when every entity in a cell is sleeping or static (see particle / Box2D sleep ownership).
+Spatial neighbor lists are **visual-range only**. Static/sleeping pairs are not filtered out of `neighborData` for collision anymore — Box2D owns contacts and sleep.
+
+**Cell sleeping today:** `particle_worker` writes `Grid.cellSleepingData` from `RigidBody.sleeping` (a cell is sleeping when every occupant is sleeping or static; empty cells are marked awake). Production `spatial_worker` does **not** skip grid rebuild or neighbor search based on those flags — see the sleep-neighborhood campaign report for experimental hyps. Debug overlays can draw sleeping cells.
 
 ---
 
@@ -184,6 +186,7 @@ Spatial workers write into `spatialStats` (multi-worker layout). Relevant keys f
 | `NEIGHBOR_MS` | Time in neighbor search (ms) |
 | `MSG_MS` | Message handling time this frame (ms) |
 | `NEIGHBORS_REUSED` | Entities that skipped the cell walk this frame (stagger freeze **or** Verlet re-filter) |
+| `SLEEP_NEIGHBOR_SKIPS` | Entities that took a sleep-neighborhood early-out (campaign / experimental; 0 in production baseline) |
 
 When comparing builds, split **`REBUILD_MS`** vs **`NEIGHBOR_MS`**: stagger only affects neighbor search; grid insert still runs every frame.
 

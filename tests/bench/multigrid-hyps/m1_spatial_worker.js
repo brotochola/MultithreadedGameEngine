@@ -239,6 +239,17 @@ class SpatialWorker extends AbstractWorker {
     this._neighborCandidateTruncated = new Uint8Array(this.globalEntityCount);
     this._entityFramesSinceBuild = new Uint16Array(this.globalEntityCount);
 
+    // M1: coarse grid at 4× cellSize (worker-local; full insert of all actives)
+    this._coarseCellSize = this.cellSize * 4;
+    this._coarseInvCellSize = 1 / this._coarseCellSize;
+    this._coarseWidth = Math.max(1, Math.ceil(this.gridWidth / 4));
+    this._coarseHeight = Math.max(1, Math.ceil(this.gridHeight / 4));
+    this._coarseTotalCells = this._coarseWidth * this._coarseHeight;
+    this._coarseMaxPerCell = Grid.maxEntitiesPerCell;
+    this._coarseCounts = new Uint8Array(this._coarseTotalCells);
+    this._coarseEntities = new Uint16Array(this._coarseTotalCells * this._coarseMaxPerCell);
+    this._coarseMaxRadius = 8;
+
     // Precompute circle patterns for all possible cellRadius values (0 to maxCellRadius)
     this._precomputeCirclePatterns();
 
@@ -503,6 +514,67 @@ class SpatialWorker extends AbstractWorker {
         gridCounts[byteOffset] = localCounts[cellIndex];
       }
     }
+
+    // M1: rebuild worker-local coarse grid (all actives → complete neighbor view)
+    this._rebuildCoarseGrid();
+  }
+
+  /**
+   * M1: insert every active into coarse 4× grid (local, not shared).
+   */
+  _rebuildCoarseGrid() {
+    const counts = this._coarseCounts;
+    const entities = this._coarseEntities;
+    const maxPer = this._coarseMaxPerCell;
+    const cw = this._coarseWidth;
+    const ch = this._coarseHeight;
+    const inv = this._coarseInvCellSize;
+    const maxCol = cw - 1;
+    const maxRow = ch - 1;
+    counts.fill(0);
+
+    const activeEntitiesData = this.activeEntitiesData;
+    const totalActiveEntities = activeEntitiesData ? activeEntitiesData[0] : 0;
+    const colliderActive = Collider.active;
+    const spriteRendererActive = SpriteRenderer.active;
+    const x = Transform.x;
+    const y = Transform.y;
+    const offsetX = Collider.offsetX;
+    const offsetY = Collider.offsetY;
+
+    for (let activeIdx = 0; activeIdx < totalActiveEntities; activeIdx++) {
+      const i = activeEntitiesData[1 + activeIdx];
+      if (!colliderActive[i] && !spriteRendererActive[i]) continue;
+
+      let posX;
+      let posY;
+      let halfW = 0;
+      let halfH = 0;
+      if (colliderActive[i]) {
+        getColliderBounds(i, _boundsResult);
+        posX = _boundsResult.posX;
+        posY = _boundsResult.posY;
+        halfW = _boundsResult.halfW;
+        halfH = _boundsResult.halfH;
+      } else {
+        posX = x[i] + offsetX[i];
+        posY = y[i] + offsetY[i];
+      }
+      if (posX !== posX || posY !== posY) continue;
+
+      getCellRange(posX, posY, halfW, halfH, inv, maxCol, maxRow, _cellRangeResult);
+      for (let row = _cellRangeResult.minRow; row <= _cellRangeResult.maxRow; row++) {
+        const rowBase = row * cw;
+        for (let col = _cellRangeResult.minCol; col <= _cellRangeResult.maxCol; col++) {
+          const cellIndex = rowBase + col;
+          const c = counts[cellIndex];
+          if (c < maxPer) {
+            entities[cellIndex * maxPer + c] = i;
+            counts[cellIndex] = c + 1;
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -729,49 +801,106 @@ class SpatialWorker extends AbstractWorker {
               neighborData
             );
           } else {
-            const neighborCells = this._getNeighborCells(entityCellIndex, cellRadius, homeRow, homeCol);
-            const neighborCellsLength = neighborCells.length;
-            const dependencyHash = this._computeDependencyHash(neighborCells);
-
             // Miss: rebuild expanded candidate list at searchRange
             const candBase = entityA * candStride;
             let candCount = 0;
             let truncated = false;
             const searchRangeWithExtentBase = searchRange;
+            // M1: large visualRange → query coarse 4× grid (fewer cells)
+            const useCoarse = myVisualRange > this.cellSize;
 
-            for (let i = 0; i < neighborCellsLength; i++) {
-              const checkCellIndex = neighborCells[i];
-              const checkByteOffset = checkCellIndex * Grid.cellByteSize;
-              const checkCellCount = gridCounts[checkByteOffset];
-              if (checkCellCount === 0) continue;
+            if (useCoarse) {
+              const cW = this._coarseWidth;
+              const cH = this._coarseHeight;
+              const cInv = this._coarseInvCellSize;
+              const cCounts = this._coarseCounts;
+              const cEnt = this._coarseEntities;
+              const cMaxPer = this._coarseMaxPerCell;
+              let cRow = (myY * cInv) | 0;
+              let cCol = (myX * cInv) | 0;
+              cRow = cRow < 0 ? 0 : cRow > cH - 1 ? cH - 1 : cRow;
+              cCol = cCol < 0 ? 0 : cCol > cW - 1 ? cW - 1 : cCol;
+              let cRadius = ((searchRange * cInv) | 0) + 1;
+              if (cRadius > this._coarseMaxRadius) cRadius = this._coarseMaxRadius;
 
-              this.cellsCheckedThisFrame++;
-              const checkEntityBase = Grid.getCellBase(checkCellIndex);
+              for (let dr = -cRadius; dr <= cRadius; dr++) {
+                const rr = cRow + dr;
+                if (rr < 0 || rr >= cH) continue;
+                const rowBase = rr * cW;
+                for (let dc = -cRadius; dc <= cRadius; dc++) {
+                  const cc = cCol + dc;
+                  if (cc < 0 || cc >= cW) continue;
+                  // circle-ish: skip corners outside radius
+                  if (dr * dr + dc * dc > cRadius * cRadius) continue;
+                  const checkCellIndex = rowBase + cc;
+                  const checkCellCount = cCounts[checkCellIndex];
+                  if (checkCellCount === 0) continue;
+                  this.cellsCheckedThisFrame++;
+                  const checkEntityBase = checkCellIndex * cMaxPer;
+                  for (let j = 0; j < checkCellCount; j++) {
+                    const entityB = cEnt[checkEntityBase + j];
+                    if (entityA === entityB) continue;
+                    if (processedMarker[entityB] === stampedA) continue;
+                    processedMarker[entityB] = stampedA;
+                    const baseIdxB = entityB * 4;
+                    const bX = entityPosData[baseIdxB];
+                    const bY = entityPosData[baseIdxB + 1];
+                    const bHalfExtent = entityPosData[baseIdxB + 2];
+                    const dxAB = bX - myX;
+                    const dyAB = bY - myY;
+                    const effectiveRange = searchRangeWithExtentBase + bHalfExtent;
+                    if (dxAB * dxAB + dyAB * dyAB < effectiveRange * effectiveRange) {
+                      if (candCount < maxNeighbors) {
+                        candData[candBase + 1 + candCount] = entityB;
+                        candCount++;
+                      } else {
+                        truncated = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (truncated) break;
+                }
+                if (truncated) break;
+              }
+            } else {
+              const neighborCells = this._getNeighborCells(entityCellIndex, cellRadius, homeRow, homeCol);
+              const neighborCellsLength = neighborCells.length;
 
-              for (let j = 0; j < checkCellCount; j++) {
-                const entityB = gridEntities[checkEntityBase + j];
-                if (entityA === entityB) continue;
-                if (processedMarker[entityB] === stampedA) continue;
-                processedMarker[entityB] = stampedA;
+              for (let i = 0; i < neighborCellsLength; i++) {
+                const checkCellIndex = neighborCells[i];
+                const checkByteOffset = checkCellIndex * Grid.cellByteSize;
+                const checkCellCount = gridCounts[checkByteOffset];
+                if (checkCellCount === 0) continue;
 
-                const baseIdxB = entityB * 4;
-                const bX = entityPosData[baseIdxB];
-                const bY = entityPosData[baseIdxB + 1];
-                const bHalfExtent = entityPosData[baseIdxB + 2];
-                const dxAB = bX - myX;
-                const dyAB = bY - myY;
-                const effectiveRange = searchRangeWithExtentBase + bHalfExtent;
-                if (dxAB * dxAB + dyAB * dyAB < effectiveRange * effectiveRange) {
-                  if (candCount < maxNeighbors) {
-                    candData[candBase + 1 + candCount] = entityB;
-                    candCount++;
-                  } else {
-                    truncated = true;
-                    break;
+                this.cellsCheckedThisFrame++;
+                const checkEntityBase = Grid.getCellBase(checkCellIndex);
+
+                for (let j = 0; j < checkCellCount; j++) {
+                  const entityB = gridEntities[checkEntityBase + j];
+                  if (entityA === entityB) continue;
+                  if (processedMarker[entityB] === stampedA) continue;
+                  processedMarker[entityB] = stampedA;
+
+                  const baseIdxB = entityB * 4;
+                  const bX = entityPosData[baseIdxB];
+                  const bY = entityPosData[baseIdxB + 1];
+                  const bHalfExtent = entityPosData[baseIdxB + 2];
+                  const dxAB = bX - myX;
+                  const dyAB = bY - myY;
+                  const effectiveRange = searchRangeWithExtentBase + bHalfExtent;
+                  if (dxAB * dxAB + dyAB * dyAB < effectiveRange * effectiveRange) {
+                    if (candCount < maxNeighbors) {
+                      candData[candBase + 1 + candCount] = entityB;
+                      candCount++;
+                    } else {
+                      truncated = true;
+                      break;
+                    }
                   }
                 }
+                if (truncated) break;
               }
-              if (truncated) break;
             }
 
             candData[candBase] = candCount;
@@ -797,7 +926,7 @@ class SpatialWorker extends AbstractWorker {
                 myVisualRange,
                 entityCellIndex,
                 cellRadius,
-                dependencyHash
+                0
               );
             } else {
               // Skin reuse stays off (incomplete list), but schedule stagger needs age reset
