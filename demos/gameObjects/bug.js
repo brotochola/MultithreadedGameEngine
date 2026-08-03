@@ -1,6 +1,6 @@
 import WEED from '/src/index.js';
 
-const { Mouse, distanceSq2D, GameObject, Collider, SpriteRenderer, rng, RigidBody, ShadowCaster } = WEED;
+const { Mouse, distanceSq2D, GameObject, Collider, SpriteRenderer, rng, RigidBody, ShadowCaster, calculateVelocityAngle } = WEED;
 
 // Speed threshold for animation
 
@@ -64,14 +64,11 @@ export class Bug extends GameObject {
     tick(dtRatio) {
         const i = this.index;
         const speed = RigidBody.speed[i];
-        const velocityAngle = RigidBody.velocityAngle[i];
 
         this.followMouse();
 
-        // Only update animation if moving
-
-        // Get direction from velocity angle (returns: n, ne, e, se, s, sw, w, nw)
-        const direction = getDirection8(velocityAngle);
+        // Local atan2 only for this bug (no global RigidBody.velocityAngle pass)
+        const direction = getDirection8(calculateVelocityAngle(RigidBody.vx[i], RigidBody.vy[i]));
 
         // Only change animation if direction changed
         if (direction !== this._facingDirection) {

@@ -5,7 +5,7 @@ import WEED from '/src/index.js';
 import { PersonComponent, DIRECTION_NAMES } from '../components/personComponent.js';
 import { LootableComponent } from '../components/lootableComponent.js';
 
-const { FSM, FSMState, RigidBody, getDirectionFromAngle } = WEED;
+const { FSM, FSMState, RigidBody, getDirectionFromVector } = WEED;
 
 const ACTION_ANIM_SPEED = 0.25;
 const DYING_ANIM_SPEED = 0.5;
@@ -83,12 +83,11 @@ class WalkingState extends FSMState {
       return;
     }
 
-    const velocityAngle = RigidBody.velocityAngle[i];
     const speed = RigidBody.speed[i];
 
-    // Update facing direction from velocity
+    // Update facing from vx/vy (no velocityAngle atan2)
     if (speed > WALK_SPEED_THRESHOLD) {
-      const direction = getDirectionFromAngle(velocityAngle);
+      const direction = getDirectionFromVector(RigidBody.vx[i], RigidBody.vy[i]);
       const dirIndex = DIRECTION_NAMES.indexOf(direction);
       if (dirIndex >= 0) {
         PersonComponent.facingDirection[i] = dirIndex;
@@ -135,12 +134,9 @@ class RunningState extends FSMState {
       return;
     }
 
-    const velocityAngle = RigidBody.velocityAngle[i];
     const speed = RigidBody.speed[i];
 
-    // Update animation
-
-    const direction = getDirectionFromAngle(velocityAngle);
+    const direction = getDirectionFromVector(RigidBody.vx[i], RigidBody.vy[i]);
     const dirIndex = DIRECTION_NAMES.indexOf(direction);
     if (dirIndex >= 0) {
       PersonComponent.facingDirection[i] = dirIndex;

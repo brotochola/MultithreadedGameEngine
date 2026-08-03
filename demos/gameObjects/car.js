@@ -191,18 +191,27 @@ export class Car extends GameObject {
         const speed = RigidBody.speed[i];
         if (speed < 90 || Math.random() > 0.35) return;
 
-        const angle = this.carComponent.angle;
-        const angleDeg = (angle * 180) / Math.PI;
-        const backX = Transform.x[i] - Math.cos(angle) * (this.collider.width * 0.35);
-        const backY = Transform.y[i] - Math.sin(angle) * (this.collider.width * 0.35);
+        const c = Transform.rotC ? Transform.rotC[i] : 1;
+        const s = Transform.rotS ? Transform.rotS[i] : 0;
+        const backOff = this.collider.width * 0.35;
+        const backX = Transform.x[i] - c * backOff;
+        const backY = Transform.y[i] - s * backOff;
+
+        // Rear cone ±20°: rotate (-c,-s) by random spread (no atan2→cos/sin of body angle)
+        const spread = (Math.random() * 40 - 20) * (Math.PI / 180);
+        const sc = Math.cos(spread);
+        const ss = Math.sin(spread);
+        const dirX = -c * sc + s * ss;
+        const dirY = -c * ss - s * sc;
+        const spd = 0.2 + Math.random() * 1.0;
 
         ParticleEmitter.emit({
             count: Math.floor(Math.random() * 2) + 1,
             x: backX + (Math.random() - 0.5) * 8,
             y: backY + (Math.random() - 0.5) * 8,
             z: -5 - Math.random() * 10,
-            angleXY: { min: angleDeg + 160, max: angleDeg + 200 },
-            speed: { min: 0.2, max: 1.2 },
+            vx: dirX * spd,
+            vy: dirY * spd,
             vz: -Math.random() * 0.5,
             gravity: 0,
             rotation: { min: 0, max: 360 },

@@ -85,33 +85,11 @@ export class Sun {
     static _float32 = null;
     static _uint32 = null;
 
-    /** cos(2π i/N) LUT — day-cycle curves without Math.cos per setTimeOfDay */
-    static _COS_LUT_N = 256;
-    static _cosLut = null;
-
-    static _ensureCosLut() {
-        if (this._cosLut) return this._cosLut;
-        const n = this._COS_LUT_N;
-        const lut = new Float32Array(n + 1);
-        for (let i = 0; i <= n; i++) {
-            lut[i] = Math.cos((i / n) * Math.PI * 2);
-        }
-        this._cosLut = lut;
-        return lut;
-    }
-
-    /** Sample cos(phase * 2π) with phase in [0,1) via LUT */
+    /** cos(phase * 2π); phase in turns. One sun/scene — plain Math.cos. */
     static _cosTau(phase01) {
-        const lut = this._ensureCosLut();
-        const n = this._COS_LUT_N;
         let t = phase01 - Math.floor(phase01);
         if (t < 0) t += 1;
-        const x = t * n;
-        const i0 = x | 0;
-        const f = x - i0;
-        const c0 = lut[i0];
-        const c1 = lut[i0 + 1];
-        return c0 + (c1 - c0) * f;
+        return Math.cos(t * Math.PI * 2);
     }
 
     // ============ Initialization ============
@@ -270,7 +248,7 @@ export class Sun {
         // Offset so sunrise is at ~6am
         this.angle = ((dayProgress - 0.25) * 360 + 360) % 360;
 
-        // Elevation: cos(π * noonOffset) via LUT sample of cos(2π * noonOffset/2)
+        // Elevation: cos(π * noonOffset) = cos(2π * noonOffset/2)
         const noonOffset = Math.abs(h - 12) / 12; // 0 at noon, 1 at midnight
         const elevation = Math.max(0, this._cosTau(noonOffset * 0.5) * 90);
         this.elevation = elevation;

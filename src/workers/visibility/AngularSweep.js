@@ -8,7 +8,12 @@ import { normalizeAngleSigned } from '../../core/utils.js';
 
 const TWO_PI = Math.PI * 2;
 const EPSILON = 1e-5;
-const MAX_ARC_STEP = Math.PI / 16; // ~22.5° max gap between boundary vertices
+/** Empty-light disc tessellation only (not free-arc densify). */
+const MAX_ARC_STEP = Math.PI / 16;
+/** Max free sector before inserting midpoints. Chord stays outside R with FREE_OVERSIZE. */
+const MAX_FREE_GAP = Math.PI / 2;
+/** 1/cos(MAX_FREE_GAP/2) — chord of a max free sector lies on/outside radius R. */
+const FREE_OVERSIZE = 1 / Math.cos(MAX_FREE_GAP * 0.5);
 
 /** Circle occluder (analytical tangents + ray-circle). */
 export const OCC_CIRCLE = 0;
@@ -242,15 +247,16 @@ export function buildVisibilityPolygon(
       const vc = vertCount[i] | 0;
       if (vc < 3) continue;
 
-      // Skip if entirely beyond influence (rough AABB radius)
-      let minD = Infinity;
+      // Skip if entirely beyond influence (compare squared — no sqrt)
+      let minDistSq = Infinity;
+      const maxRadiusSq = maxRadius * maxRadius;
       for (let v = 0; v < vc; v++) {
         const dx = vertsX[vs + v] - lightX;
         const dy = vertsY[vs + v] - lightY;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < minD) minD = d;
+        const dSq = dx * dx + dy * dy;
+        if (dSq < minDistSq) minDistSq = dSq;
       }
-      if (minD > maxRadius) continue;
+      if (minDistSq > maxRadiusSq) continue;
 
       if (!polyTangentIndices(lightX, lightY, vertsX, vertsY, vs, vc, _tangentOut)) {
         continue; // light inside poly
@@ -314,8 +320,13 @@ export function buildVisibilityPolygon(
   let vertCountOut = 0;
   const startAngle = -Math.PI;
   const endAngle = Math.PI - EPSILON;
+  // start ≈ (-1, 0); end ≈ (-1, 0) — fixed dirs, no Math.cos/sin
+  const startDirC = -1;
+  const startDirS = 0;
+  const endDirC = Math.cos(endAngle);
+  const endDirS = Math.sin(endAngle);
 
-  vertCountOut = emitVertex(lightX, lightY, startAngle, maxRadius,
+  vertCountOut = emitVertex(lightX, lightY, startDirC, startDirS, maxRadius,
     kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
     outX, outY, vertCountOut, maxVertices);
 
@@ -332,8 +343,9 @@ export function buildVisibilityPolygon(
       kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
       outX, outY, vertCountOut, maxVertices);
 
+    // Pre-toggle sample slightly before event (active-set state before open/close)
     if (vertCountOut < maxVertices) {
-      vertCountOut = emitVertex(lightX, lightY, preAngle, maxRadius,
+      vertCountOut = emitVertex(lightX, lightY, Math.cos(preAngle), Math.sin(preAngle), maxRadius,
         kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
         outX, outY, vertCountOut, maxVertices);
     }
@@ -355,8 +367,9 @@ export function buildVisibilityPolygon(
     }
 
     const postAngle = angle + EPSILON;
+    // Post-toggle sample slightly after event
     if (vertCountOut < maxVertices) {
-      vertCountOut = emitVertex(lightX, lightY, postAngle, maxRadius,
+      vertCountOut = emitVertex(lightX, lightY, Math.cos(postAngle), Math.sin(postAngle), maxRadius,
         kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
         outX, outY, vertCountOut, maxVertices);
     }
@@ -369,7 +382,7 @@ export function buildVisibilityPolygon(
     outX, outY, vertCountOut, maxVertices);
 
   if (vertCountOut < maxVertices) {
-    vertCountOut = emitVertex(lightX, lightY, endAngle, maxRadius,
+    vertCountOut = emitVertex(lightX, lightY, endDirC, endDirS, maxRadius,
       kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
       outX, outY, vertCountOut, maxVertices);
   }
@@ -377,15 +390,14 @@ export function buildVisibilityPolygon(
   return vertCountOut;
 }
 
+/** @param {number} dirX unit cos @param {number} dirY unit sin — no trig here */
 function emitVertex(
-  lightX, lightY, angle, maxRadius,
+  lightX, lightY, dirX, dirY, maxRadius,
   kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
   outX, outY, vertCountOut, maxVertices
 ) {
   if (vertCountOut >= maxVertices) return vertCountOut;
 
-  const dirX = Math.cos(angle);
-  const dirY = Math.sin(angle);
   let minDist = maxRadius;
 
   for (let a = 0; a < _activeCount; a++) {
@@ -399,8 +411,10 @@ function emitVertex(
     if (d < minDist) minDist = d;
   }
 
-  const vx = lightX + dirX * minDist;
-  const vy = lightY + dirY * minDist;
+  // Free sky: oversize so fan chord sits outside R; frag clips to uLightRadius
+  const placeDist = minDist >= maxRadius - EPSILON ? maxRadius * FREE_OVERSIZE : minDist;
+  const vx = lightX + dirX * placeDist;
+  const vy = lightY + dirY * placeDist;
 
   if (vertCountOut > 0) {
     const prevX = outX[vertCountOut - 1];
@@ -415,24 +429,28 @@ function emitVertex(
   return vertCountOut + 1;
 }
 
+/**
+ * Free angular gaps: no 22.5° densify.
+ * Split until every sector ≤ MAX_FREE_GAP (one midpoint is NOT enough for
+ * ~240° free arcs — that leaves two >90° sectors whose chords cut inside R).
+ */
 function emitArcVertices(
   lightX, lightY, fromAngle, toAngle, maxRadius,
   kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
   outX, outY, vertCountOut, maxVertices
 ) {
   const gap = toAngle - fromAngle;
-  if (gap <= MAX_ARC_STEP) return vertCountOut;
+  if (gap <= MAX_FREE_GAP || gap <= 0) return vertCountOut;
 
-  const steps = Math.ceil(gap / MAX_ARC_STEP);
+  // ceil so each step ≤ MAX_FREE_GAP (e.g. 242° → 3 steps → 2 midpoints)
+  const steps = Math.ceil(gap / MAX_FREE_GAP);
   const step = gap / steps;
-
   for (let s = 1; s < steps && vertCountOut < maxVertices; s++) {
     const angle = fromAngle + s * step;
-    vertCountOut = emitVertex(lightX, lightY, angle, maxRadius,
+    vertCountOut = emitVertex(lightX, lightY, Math.cos(angle), Math.sin(angle), maxRadius,
       kind, cx, cy, cr, vertStart, vertCount, vertsX, vertsY,
       outX, outY, vertCountOut, maxVertices);
   }
-
   return vertCountOut;
 }
 

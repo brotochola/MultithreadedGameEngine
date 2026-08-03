@@ -5,14 +5,15 @@ import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
 import { ZenithalCar } from '../gameObjects/zenithalCar.js';
 import { ZenithalLight } from '../gameObjects/zenithalLight.js';
-const { ParticleEmitter, Scene, Camera, Mouse, Transform, RigidBody } = WEED;
+
+const { rng, ParticleEmitter, Scene, Camera, Mouse, Transform, RigidBody } = WEED;
 
 const DRAG_PICK_RADIUS_SQ = 50 * 50;
 
 export class ZenithalParticleTestScene extends Scene {
   static config = {
-    worldWidth: 4000,
-    worldHeight: 4000,
+    worldWidth: 1920,
+    worldHeight: 1080,
 
     particle: {
       maxParticles: 2000,
@@ -35,7 +36,10 @@ export class ZenithalParticleTestScene extends Scene {
 
     lighting: {
       enabled: true,
-      baseAmbient: 0.05,
+      // Umbra = this floor under multiply. 0.05 reads as pitch black; soft
+      // casted-shadow sprites used ~0.33 alpha (much lighter). Raycasted path
+      // disables CASTED_SHADOWS cookies so this is the only umbra control.
+      baseAmbient: 0.15,
       maxLights: 20,
       shadowsEnabled: true,
       maxShadowCastingLights: 5,
@@ -62,8 +66,8 @@ export class ZenithalParticleTestScene extends Scene {
   };
 
   static entities = [
-    [ZenithalCar, 10],
-    [ZenithalLight, 5],
+    [ZenithalCar, 100],
+    [ZenithalLight, 10],
   ];
 
   async preload() {
@@ -76,13 +80,13 @@ export class ZenithalParticleTestScene extends Scene {
     Camera.setZoom(1.2);
     const cx = this.config.worldWidth / 2;
     const cy = this.config.worldHeight / 2;
-    ZenithalCar.spawn({ x: cx, y: cy });
-    ZenithalCar.spawn({ x: cx + 100, y: cy - 80 });
-    ZenithalCar.spawn({ x: cx - 120, y: cy + 60 });
 
-    ZenithalLight.spawn({ x: cx, y: cy - 150 });
-    // ZenithalLight.spawn({ x: cx + 200, y: cy + 100 });
+    for (let i = 0; i < 100; i++) {
 
+      ZenithalCar.spawn({ x: i * 50, y: i * 80 });
+    }
+
+    ZenithalLight.spawn({ x: cx, y: cy });
   }
 
   update(dtRatio, deltaTime, accumulatedTime, frameNumber) {

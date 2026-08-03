@@ -16,7 +16,7 @@ const {
   Camera,
   Ray,
   NavGrid,
-  getDirectionFromAngle,
+  getDirectionFromVector,
   rng,
   Flash,
   LightEmitter,
@@ -226,12 +226,10 @@ export class Player extends GameObject {
    */
   updateAnimation(i) {
     const speed = this.rigidBody.speed;
-    const velocityAngle = this.rigidBody.velocityAngle;
 
     // Determine animation state based on speed
     if (speed > 0.5) {
-      // Moving - determine direction
-      const direction = getDirectionFromAngle(velocityAngle);
+      const direction = getDirectionFromVector(this.rigidBody.vx, this.rigidBody.vy);
       this.lastDirection = direction;
 
       // Choose walk or run based on speed threshold

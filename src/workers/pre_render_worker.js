@@ -1717,6 +1717,8 @@ class PreRenderWorker extends AbstractWorker {
         const bulletTextureId = BulletComponent.textureId;
         const bulletSpriteRotC = BulletComponent.spriteRotC;
         const bulletSpriteRotS = BulletComponent.spriteRotS;
+        const bulletRotC = BulletComponent.bulletRotC;
+        const bulletRotS = BulletComponent.bulletRotS;
         const bulletTrailWidth = BulletComponent.trailWidth;
         const bulletAnchorX = BulletComponent.anchorX;
         const bulletAnchorY = BulletComponent.anchorY;
@@ -1936,10 +1938,9 @@ class PreRenderWorker extends AbstractWorker {
                         rqY[out] = (startY + currY) * 0.5;
                         rqScaleX[out] = lengthApprox / 10;
                         rqScaleY[out] = bulletTrailWidth[idx];
-                        // Trail quad faces +X along segment (same as atan2(dy,dx) CS)
-                        const invLen = 1 / Math.sqrt(lenSq);
-                        rqRotC[out] = dx * invLen;
-                        rqRotS[out] = dy * invLen;
+                        // Flight dir already in bulletRotC/S (straight bullets)
+                        rqRotC[out] = bulletRotC[idx];
+                        rqRotS[out] = bulletRotS[idx];
                         rqAlpha[out] = bulletAlpha[idx] * 0.9;
                         rqTint[out] = 0xffffff;
                     }
@@ -2061,6 +2062,8 @@ class PreRenderWorker extends AbstractWorker {
         const bulletTextureId = BulletComponent.textureId;
         const bulletSpriteRotC = BulletComponent.spriteRotC;
         const bulletSpriteRotS = BulletComponent.spriteRotS;
+        const bulletRotC = BulletComponent.bulletRotC;
+        const bulletRotS = BulletComponent.bulletRotS;
         const bulletTrailWidth = BulletComponent.trailWidth;
         const bulletAnchorX = BulletComponent.anchorX;
         const bulletAnchorY = BulletComponent.anchorY;
@@ -2364,9 +2367,8 @@ class PreRenderWorker extends AbstractWorker {
                             rqY[out] = (startY + currY) * 0.5;
                             rqScaleX[out] = lengthApprox / 10;
                             rqScaleY[out] = bulletTrailWidth[idx];
-                            const invLen = 1 / Math.sqrt(lenSq);
-                            rqRotC[out] = dx * invLen;
-                            rqRotS[out] = dy * invLen;
+                            rqRotC[out] = bulletRotC[idx];
+                            rqRotS[out] = bulletRotS[idx];
                             rqAlpha[out] = bulletAlpha[idx] * 0.9;
                             rqTint[out] = 0xffffff;
                         }

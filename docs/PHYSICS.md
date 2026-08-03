@@ -1,6 +1,6 @@
 # Physics pipeline
 
-Weed runs **Box2D 3.0** (the real C library, WASM + SIMD + pthreads) as Scene’s physics worker: classic `src/box2d/box2d_wasm.js` + [`physics_host.impl.js`](../src/box2d/physics_host.impl.js) + [`weedjs_post.js`](../src/box2d/weedjs_post.js). After `box2dReady`, `bindBox2dHotFields` points `Transform.x/y/rotation` and `RigidBody.vx/vy/angularVelocity/sleeping` at WASM HEAP — those fields are not in Weed SoA. Visual consumers (pre_render, particle parent-follow) do **not** sample live HEAP mid-step; they latch a post-step **pose publish** SAB (`poseDataA/B` + `poseSync`).
+Weed runs **Box2D 3.0** (the real C library, WASM + SIMD + pthreads) as Scene’s physics worker: classic `src/box2d/box2d_wasm.js` + [`physics_host.impl.js`](../src/box2d/physics_host.impl.js) + [`weedjs_post.js`](../src/box2d/weedjs_post.js). After `box2dReady`, `bindBox2dHotFields` points `Transform.x/y/rotation/rotC/rotS` and `RigidBody.vx/vy/angularVelocity/sleeping` at WASM HEAP — those fields are not in Weed SoA. **Facing truth is `Transform.rotC` / `Transform.rotS`** (native `b2Rot`); `Transform.rotation` is a derived angle (atan2) for API convenience — hot paths must not `Math.cos/sin(rotation)`. Visual consumers (pre_render, particle parent-follow) do **not** sample live HEAP mid-step; they latch a post-step **pose publish** SAB (`poseDataA/B` + `poseSync`).
 
 Bundle builds (`npm run make_bundle`) shove glue + `.wasm` + the `importScripts` siblings into `WEED.Box2dWorkerSource` so npm consumers don’t fetch a separate `dist/box2d/`. Rebuild notes: [src/box2d/README.md](../src/box2d/README.md).
 
@@ -12,7 +12,7 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 
 ## Responsibilities (per frame)
 
-1. **Box2D step** — classic WASM host advances bodies in-process (`weedjsDoStep`); hot pose/vel (`Transform.x/y/rotation`, `RigidBody.vx/vy/angularVelocity/sleeping`) live on HEAP. World `maximumLinearSpeed` clamps in the solver. Body damping: `linearDamping` / `angularDamping`. Before `world.step`, physics snapshots prev pose into `RigidBody.px/py/pRotation`. After the step, it **publishes** live `Transform.x/y/rotation` for dense bodies into double-buffered `poseDataA/B` and bumps `poseSync[readyFrame]` (same Atomics idiom as the render queue).
+1. **Box2D step** — classic WASM host advances bodies in-process (`weedjsDoStep`); hot pose/vel (`Transform.x/y/rotation/rotC/rotS`, `RigidBody.vx/vy/angularVelocity/sleeping`) live on HEAP. World `maximumLinearSpeed` clamps in the solver. Body damping: `linearDamping` / `angularDamping`. Before `world.step`, physics snapshots prev pose into `RigidBody.px/py/pRotation`. After the step, it **publishes** live `Transform.x/y/rotC/rotS` for dense bodies into double-buffered `poseDataA/B` and bumps `poseSync[readyFrame]` (same Atomics idiom as the render queue).
 2. **Contacts** — Box2D owns narrowphase; fixture μ from `Collider.friction`.
 3. **Joints** — Weed `Joint` SAB (`addDistance` / `addRevolute` / `addWeld` with body-local anchors) syncs to Box2D joints each step (`weedjs_post.syncJoints`). Cap: WASM `MAX_JOINTS` (4096).
 4. **Stats** — write counters and timing into `physicsStats`.
@@ -25,7 +25,7 @@ Live HEAP `Transform` mutates during solver substeps. Async readers must not sam
 
 | Buffer | Layout | Role |
 |--------|--------|------|
-| `poseDataA` / `poseDataB` | SoA `Float32` `x[N]`, `y[N]`, `rotation[N]` (`N = totalEntityCount`) | Post-step display snapshot |
+| `poseDataA` / `poseDataB` | SoA `Float32` `x[N]`, `y[N]`, `rotC[N]`, `rotS[N]` (`N = totalEntityCount`) | Post-step display snapshot |
 | `poseSync` | `Int32[2]` `[readyFrame, consumedFrame]` | Writer stores ready; pre_render latches `(ready-1)%2` and stores consumed |
 
 - **Writer:** `weedjs_post.publishPose` after `world.step` (dense body list → typed views; no alloc).
@@ -184,7 +184,7 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 ## GC and allocations (physics worker)
 
 - Hot pose/vel/sleeping bound to WASM HEAP (`bindBox2dHotFields`) — not allocated in Weed SoA.
-- Display pose publish copies dense-body `x/y/rotation` into pre-bound `poseData` typed views (no per-step heap objects).
+- Display pose publish copies dense-body `x/y/rotC/rotS` into pre-bound `poseData` typed views (no per-step heap objects).
 - Command ring handlers hoisted once in `weedjs_post` (no per-step `{}`).
 - Joint sync uses typed arrays + revision ints only; no per-joint heap objects in the hot path.
 - Contact callbacks: logic drains the contact ring; begin/end apply helpers are instance methods (no per-frame closures).

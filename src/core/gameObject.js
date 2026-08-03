@@ -614,12 +614,12 @@ export class GameObject {
    * Body heading unit X (from Transform.rotC / Box2D b2Rot).
    */
   get forwardX() {
-    return Transform.rotC ? Transform.rotC[this.index] : Math.cos(Transform.rotation[this.index]);
+    return Transform.rotC ? Transform.rotC[this.index] : 1;
   }
 
   /** Body heading unit Y */
   get forwardY() {
-    return Transform.rotS ? Transform.rotS[this.index] : Math.sin(Transform.rotation[this.index]);
+    return Transform.rotS ? Transform.rotS[this.index] : 0;
   }
 
   /** Right unit X (rotate forward by -90°) */

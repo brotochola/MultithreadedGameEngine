@@ -1249,6 +1249,14 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
     this._registerLayerDisplayObject('LIGHTING', this._visPolyDisplaySprite);
     this.pixiApp.stage.addChild(this._visPolyDisplaySprite);
 
+    // Visibility polygons already do attenuation + occlusion. CASTED_SHADOWS
+    // light cookies multiply on top and crush umbra to pitch black (cookies clear
+    // to black outside the gradient; soft shadow sprites used ~0.33 alpha).
+    if (this.shadowDisplaySprite) {
+      this.shadowDisplaySprite.visible = false;
+    }
+    this.shadowSpritesEnabled = false;
+
     this._visPolyGlProgram = new PIXI.GlProgram({
       vertex: this._visPolyVertexShader,
       fragment: this._visPolyFragmentShader,
@@ -1271,6 +1279,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
             uCanvasSize: { value: new Float32Array([this.canvasWidth, this.canvasHeight]), type: 'vec2<f32>' },
             uLightPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
             uLightIntensity: { value: 1000, type: 'f32' },
+            uLightRadius: { value: 1e6, type: 'f32' },
             uLightColor: { value: new Float32Array([1, 1, 1]), type: 'vec3<f32>' },
           },
         },
@@ -1311,6 +1320,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
           uCanvasSize: { value: new Float32Array([this.canvasWidth, this.canvasHeight]), type: 'vec2<f32>' },
           uLightPos: { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
           uLightIntensity: { value: 1000, type: 'f32' },
+          uLightRadius: { value: 1e6, type: 'f32' },
           uLightColor: { value: new Float32Array([1, 1, 1]), type: 'vec3<f32>' },
         },
       },
@@ -1352,6 +1362,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
     // LightEmitter data for color
     const lightColor = LightEmitter.lightColor;
     const lightIntensityArr = LightEmitter.lightIntensity;
+    const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
     const lightHeight = LightEmitter.height;
 
     const rgb = this._rgbResult;
@@ -1416,6 +1427,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
       uniforms.uLightPos[0] = lx;
       uniforms.uLightPos[1] = ly - (lightHeight[lightIdx] || 0);
       uniforms.uLightIntensity = lightIntensityArr[lightIdx];
+      uniforms.uLightRadius = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
 
       extractRGBNormalizedMut(lightColor[lightIdx], rgb);
       uniforms.uLightColor[0] = rgb.r;
@@ -1591,6 +1603,9 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
         uniforms.uLightPos[0] = lx;
         uniforms.uLightPos[1] = ly;
         uniforms.uLightIntensity = intensity;
+        uniforms.uLightRadius = lightInfluenceRadius(
+          LightEmitter.sqrtLightIntensity ? LightEmitter.sqrtLightIntensity[lightIdx] : 0
+        );
         uniforms.uLightColor[0] = rgb.r;
         uniforms.uLightColor[1] = rgb.g;
         uniforms.uLightColor[2] = rgb.b;

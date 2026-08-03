@@ -340,42 +340,56 @@ export class Ray {
 
       const dx = x2 - x1;
       const dy = y2 - y1;
-      const distSq = dx * dx + dy * dy; // OPTIMIZED: Calculate distSq first
+      const distSq = dx * dx + dy * dy;
 
       if (distSq === 0) {
         return result;
       }
 
-      // Calculate length only if we pass the early exit (OPTIMIZED: avoid sqrt in early exit path)
       const rayLength = Math.sqrt(distSq);
-
-      const dirX = dx / rayLength;
-      const dirY = dy / rayLength;
-
-      // Use traversal with exclusion set
-      const hitResult = Ray._traverseGrid(
-        x1,
-        y1,
-        x2,
-        y2,
-        dirX,
-        dirY,
-        rayLength,
-        rayLength,
-        excludeEntities,
-        mask
+      return Ray._linecastDirImpl(
+        x1, y1, x2, y2,
+        dx / rayLength, dy / rayLength, rayLength,
+        excludeEntities, mask, result
       );
-
-      if (hitResult.entityIndex !== -1) {
-        result.blocked = true;
-        result.entityIndex = hitResult.entityIndex;
-        result.distance = hitResult.distance;
-      }
-
-      return result;
     } finally {
       Ray._leaveStats();
     }
+  }
+
+  /**
+   * Linecast with pre-normalized unit dir + length (skip sqrt).
+   * Caller must pass unit (dirX,dirY) and rayLength > 0.
+   */
+  static linecastDir(x1, y1, dirX, dirY, rayLength, excludeEntities = null, mask = 0xFFFFFFFF, out = null) {
+    Ray._enterStats();
+    try {
+      const result = out || Ray._tempLinecastResult;
+      result.blocked = false;
+      result.entityIndex = -1;
+      result.distance = Infinity;
+      if (!(rayLength > 0)) return result;
+      const x2 = x1 + dirX * rayLength;
+      const y2 = y1 + dirY * rayLength;
+      return Ray._linecastDirImpl(x1, y1, x2, y2, dirX, dirY, rayLength, excludeEntities, mask, result);
+    } finally {
+      Ray._leaveStats();
+    }
+  }
+
+  /** @private */
+  static _linecastDirImpl(x1, y1, x2, y2, dirX, dirY, rayLength, excludeEntities, mask, result) {
+    const hitResult = Ray._traverseGrid(
+      x1, y1, x2, y2,
+      dirX, dirY, rayLength, rayLength,
+      excludeEntities, mask
+    );
+    if (hitResult.entityIndex !== -1) {
+      result.blocked = true;
+      result.entityIndex = hitResult.entityIndex;
+      result.distance = hitResult.distance;
+    }
+    return result;
   }
 
   /**

@@ -38,21 +38,22 @@ export class AICar extends Car {
         const lenSq = _navVec.x * _navVec.x + _navVec.y * _navVec.y;
         if (lenSq < 0.01) return;
 
-        const currentAngle = this.carComponent.angle;
-        const desiredAngle = Math.atan2(_navVec.y, _navVec.x);
-
-        let angleDiff = desiredAngle - currentAngle;
-        while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-
+        const inv = 1 / Math.sqrt(lenSq);
+        const nx = _navVec.x * inv;
+        const ny = _navVec.y * inv;
+        const fx = this.forwardX;
+        const fy = this.forwardY;
+        // cross/dot vs Transform.rotC/S facing — no atan2(nav) / cos(angleDiff)
+        const cross = fx * ny - fy * nx;
+        const alignment = fx * nx + fy * ny;
+        const angleDiff = Math.atan2(cross, alignment);
         const turnInput = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff) * 2, 1) * this.constructor.aiTurnStrength;
 
-        const alignment = Math.cos(angleDiff);
         const forwardSpeed = dot2(
             this.carComponent.vx,
             this.carComponent.vy,
-            this.forwardX,
-            this.forwardY
+            fx,
+            fy
         );
 
         let forwardInput = 0;

@@ -3,7 +3,7 @@
 
 import WEED from '/src/index.js';
 
-import { Player } from '../gameObjects/player.js';
+// import { Player } from '../gameObjects/player.js';
 import { MySoldier } from '../gameObjects/mySoldier.js';
 import { CivilianComponent } from '../components/civilianComponent.js';
 import { SoldierBehaviorFSM } from './SoldierBehaviorFSM.js';
@@ -36,7 +36,7 @@ class IdleCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) { }
 
   static onUpdate(owner, i, dt) {
-    const playerEntityType = Player.entityType;
+    // const playerEntityType = Player.entityType;
     const mySoldierEntityType = MySoldier.entityType;
     const neighborCount = owner.neighborCount;
 
@@ -47,7 +47,7 @@ class IdleCivilianBehaviorState extends FSMState {
         return;
       }
       const neighBorEntityType = Transform.entityType[neighborIndex];
-      if (neighBorEntityType === playerEntityType || neighBorEntityType === mySoldierEntityType) {
+      if (neighBorEntityType === mySoldierEntityType) {
         this.fsm.changeState(i, this.fsm.states.FLEEING);
         return;
       }
@@ -65,7 +65,7 @@ class FleeingCivilianBehaviorState extends FSMState {
   }
 
   static onUpdate(owner, i, dt) {
-    const playerEntityType = Player.entityType;
+    // const playerEntityType = Player.entityType;
     const mySoldierEntityType = MySoldier.entityType;
     const neighborCount = owner.neighborCount;
 
@@ -84,7 +84,7 @@ class FleeingCivilianBehaviorState extends FSMState {
       }
 
       const neighBorEntityType = Transform.entityType[neighborIndex];
-      if (neighBorEntityType === playerEntityType || neighBorEntityType === mySoldierEntityType) {
+      if (neighBorEntityType === mySoldierEntityType) {
         const dx = myX - Transform.x[neighborIndex];
         const dy = myY - Transform.y[neighborIndex];
         const dist2 = dx * dx + dy * dy;

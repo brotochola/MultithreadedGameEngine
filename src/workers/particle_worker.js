@@ -29,7 +29,6 @@ import {
   _decalTileBounds,
   _tileClipRegion,
   calculateSpeed,
-  calculateVelocityAngle,
   calculateCameraScreenBounds,
   screenBoundsToWorldBounds,
 } from '../core/utils.js';
@@ -1074,6 +1073,8 @@ class ParticleWorker extends AbstractWorker {
     const prevY = BulletComponent.prevY;
     const vx = BulletComponent.vx;
     const vy = BulletComponent.vy;
+    const bulletRotC = BulletComponent.bulletRotC;
+    const bulletRotS = BulletComponent.bulletRotS;
     const damage = BulletComponent.damage;
     const ownerId = BulletComponent.ownerId;
     const shooterEntityType = BulletComponent.shooterEntityType;
@@ -1098,36 +1099,39 @@ class ParticleWorker extends AbstractWorker {
       prevX[i] = px;
       prevY[i] = py;
 
-      const nx = px + vx[i] * dt;
-      const ny = py + vy[i] * dt;
+      const dx = vx[i] * dt;
+      const dy = vy[i] * dt;
+      const nx = px + dx;
+      const ny = py + dy;
       x[i] = nx;
       y[i] = ny;
 
+      const lenSq = dx * dx + dy * dy;
       excludeSet.clear();
       excludeSet.add(ownerId[i]);
-      const hit = Ray.linecast(px, py, nx, ny, excludeSet);
+      if (lenSq > 1e-12) {
+        const len = Math.sqrt(lenSq);
+        // Flight dir already in bulletRotC/S — one sqrt (was: linecast sqrt + hit sqrt)
+        const hit = Ray.linecastDir(px, py, bulletRotC[i], bulletRotS[i], len, excludeSet);
+        if (hit.blocked && hit.entityIndex >= 0) {
+          const t = Math.min(hit.distance / len, 1);
+          const hitX = px + dx * t;
+          const hitY = py + dy * t;
 
-      if (hit.blocked && hit.entityIndex >= 0) {
-        const dx = nx - px;
-        const dy = ny - py;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const t = len > 0 ? Math.min(hit.distance / len, 1) : 0;
-        const hitX = px + dx * t;
-        const hitY = py + dy * t;
-
-        if (impactHeader && impactWrite < maxImpacts) {
-          const base = impactWrite * 6;
-          impactData[base] = hit.entityIndex;
-          impactData[base + 1] = damage[i];
-          impactData[base + 2] = hitX;
-          impactData[base + 3] = hitY;
-          impactData[base + 4] = ownerId[i];
-          impactData[base + 5] = shooterEntityType[i];
-          impactWrite++;
+          if (impactHeader && impactWrite < maxImpacts) {
+            const base = impactWrite * 6;
+            impactData[base] = hit.entityIndex;
+            impactData[base + 1] = damage[i];
+            impactData[base + 2] = hitX;
+            impactData[base + 3] = hitY;
+            impactData[base + 4] = ownerId[i];
+            impactData[base + 5] = shooterEntityType[i];
+            impactWrite++;
+          }
+          active[i] = 0;
+          BulletPool.returnToPool(i);
+          continue;
         }
-        active[i] = 0;
-        BulletPool.returnToPool(i);
-        continue;
       }
 
       activeData[activeWrite++] = i;
@@ -2050,9 +2054,7 @@ class ParticleWorker extends AbstractWorker {
     const rigidBodyActive = RigidBody.active;
     const vx = RigidBody.vx;
     const vy = RigidBody.vy;
-    const velocityAngle = RigidBody.velocityAngle;
     const speed = RigidBody.speed;
-    const minSpeedForRotation = this.minSpeedForRotation;
     const isStatic = RigidBody.static;
 
     const physicsEntities = this.queryActiveEntities(this._queryRigidBody);
@@ -2062,14 +2064,8 @@ class ParticleWorker extends AbstractWorker {
       if (!rigidBodyActive[i]) continue;
       if (isStatic[i]) continue;
 
-      const currentSpeed = calculateSpeed(vx[i], vy[i]);
-      speed[i] = currentSpeed;
-
-      // STOP 5: Box2D owns RigidBody.sleeping (HEAP export). Do not write sleep here.
-
-      if (currentSpeed > minSpeedForRotation) {
-        velocityAngle[i] = calculateVelocityAngle(vx[i], vy[i]);
-      }
+      // speed only — facing/cardinals use getDirectionFromVector(vx,vy); no per-body atan2
+      speed[i] = calculateSpeed(vx[i], vy[i]);
     }
   }
 
