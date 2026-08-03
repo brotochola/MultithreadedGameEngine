@@ -1,6 +1,6 @@
 {
   "name": "@weed.js/engine",
-  "version": "0.6.61",
+  "version": "0.6.62",
   "description": "A multithreaded 2D web game engine for high-entity-count browser games",
   "type": "module",
   "main": "dist/weed.bundle.min.js",
@@ -44,6 +44,7 @@
     "test:bench:headed": "node tests/bench/run-integrated-worker-benchmark.mjs --headed",
     "bench:headed:profile": "node tests/bench/run-integrated-worker-benchmark.mjs --headed --trace",
     "bench:headed:median": "node tests/bench/run-headed-median.mjs",
+    "bench:lighting": "node tests/bench/run-lighting-bench-ab.mjs",
     "bench:box2d:pthread-lto": "node tests/bench/run-box2d-pthread-lto-matrix.mjs",
     "bench:box2d:flto-mode": "node tests/bench/run-box2d-flto-mode-bench.mjs",
     "bench:headed:spatial-confirm": "node tests/bench/run-headed-median.mjs --runs 6 --json-out tests/results/research-spatial-headed.json",
