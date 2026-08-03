@@ -41,8 +41,9 @@ function findClosestCivilian(owner) {
   // Get owner's collider position (Transform + Collider.offset)
   const ownerX = Transform.x[owner.index] + (Collider.offsetX[owner.index] || 0);
   const ownerY = Transform.y[owner.index] + (Collider.offsetY[owner.index] || 0);
+  const neighborCount = owner.neighborCount;
 
-  for (let n = 0; n < owner.neighborCount; n++) {
+  for (let n = 0; n < neighborCount; n++) {
     const neighborIndex = owner.getNeighbor(n);
     if (Transform.entityType[neighborIndex] !== civilianType) continue;
     if (LootableComponent.health[neighborIndex] <= 0) continue;
@@ -76,7 +77,9 @@ function findACivilianToShoot(owner) {
     _shootCandIndex[k] = -1;
   }
 
-  for (let n = 0; n < owner.neighborCount; n++) {
+  const neighborCount = owner.neighborCount;
+
+  for (let n = 0; n < neighborCount; n++) {
     const neighborIndex = owner.getNeighbor(n);
     if (Transform.entityType[neighborIndex] !== civilianType) continue;
     if (LootableComponent.health[neighborIndex] <= 0) continue;

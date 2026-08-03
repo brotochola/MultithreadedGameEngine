@@ -6,8 +6,27 @@ import WEED from '/src/index.js';
 import { Player } from '../gameObjects/player.js';
 import { MySoldier } from '../gameObjects/mySoldier.js';
 import { CivilianComponent } from '../components/civilianComponent.js';
+import { SoldierBehaviorFSM } from './SoldierBehaviorFSM.js';
 
 const { FSM, FSMState, Transform, RigidBody } = WEED;
+
+/** Attacking soldier → panic (updates origin). Returns true if panic handled. */
+function tryPanicFromAttackingSoldier(owner, i, neighborIndex, soldierType) {
+  if (Transform.entityType[neighborIndex] !== soldierType) return false;
+  const stateIndex = SoldierBehaviorFSM.state[neighborIndex];
+  const ranged = SoldierBehaviorFSM.states.RANGED_ATTACKING.stateIndex;
+  const close = SoldierBehaviorFSM.states.CLOSE_ATTACKING.stateIndex;
+  if (stateIndex !== ranged && stateIndex !== close) return false;
+
+  CivilianComponent.panicOriginX[i] = Transform.x[neighborIndex];
+  CivilianComponent.panicOriginY[i] = Transform.y[neighborIndex];
+
+  const PANIC = CivilianBehaviorFSM.states.PANIC;
+  if (!CivilianBehaviorFSM.isInState(i, PANIC)) {
+    owner.civilianBehaviorFSM.changeState(PANIC);
+  }
+  return true;
+}
 
 // ==========================================
 // IDLE STATE - Do nothing, watch for predators
@@ -17,22 +36,22 @@ class IdleCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) { }
 
   static onUpdate(owner, i, dt) {
-    // Check if any neighbor is a predator
     const playerEntityType = Player.entityType;
     const mySoldierEntityType = MySoldier.entityType;
     const neighborCount = owner.neighborCount;
 
     for (let n = 0; n < neighborCount; n++) {
       const neighborIndex = owner.getNeighbor(n);
+      // Violence/panic wins over plain flee (same priority as old post-FSM scan)
+      if (tryPanicFromAttackingSoldier(owner, i, neighborIndex, mySoldierEntityType)) {
+        return;
+      }
       const neighBorEntityType = Transform.entityType[neighborIndex];
       if (neighBorEntityType === playerEntityType || neighBorEntityType === mySoldierEntityType) {
-        // Player or my soldier detected! Flee!
         this.fsm.changeState(i, this.fsm.states.FLEEING);
         return;
       }
     }
-    // owner.updateTeamData();
-    // owner.groupWithMyTeam();
   }
 }
 
@@ -42,17 +61,14 @@ class IdleCivilianBehaviorState extends FSMState {
 
 class FleeingCivilianBehaviorState extends FSMState {
   static onEnter(owner, i, fromState) {
-    // Will set run animation in onUpdate based on direction
     RigidBody.sleeping[i] = 0;
   }
 
   static onUpdate(owner, i, dt) {
     const playerEntityType = Player.entityType;
-
     const mySoldierEntityType = MySoldier.entityType;
     const neighborCount = owner.neighborCount;
 
-    // Accumulate flee direction from all visible predators
     let fleeX = 0;
     let fleeY = 0;
     let predatorCount = 0;
@@ -63,16 +79,17 @@ class FleeingCivilianBehaviorState extends FSMState {
     for (let n = 0; n < neighborCount; n++) {
       const neighborIndex = owner.getNeighbor(n);
 
+      if (tryPanicFromAttackingSoldier(owner, i, neighborIndex, mySoldierEntityType)) {
+        return;
+      }
+
       const neighBorEntityType = Transform.entityType[neighborIndex];
       if (neighBorEntityType === playerEntityType || neighBorEntityType === mySoldierEntityType) {
-        // Calculate direction away from predator
         const dx = myX - Transform.x[neighborIndex];
         const dy = myY - Transform.y[neighborIndex];
         const dist2 = dx * dx + dy * dy;
 
-        // Guard: dist2 must be > 1 to avoid division producing Infinity
         if (dist2 > 1) {
-          // 1/r, floored — close range can't rocket
           const floorSq = owner.constructor.accelDistFloorSq;
           const d2 = dist2 < floorSq ? floorSq : dist2;
           fleeX += dx / d2;
@@ -82,19 +99,16 @@ class FleeingCivilianBehaviorState extends FSMState {
       }
     }
 
-    // If no predators visible, return to idle
     if (predatorCount === 0) {
       this.fsm.changeState(i, this.fsm.states.IDLE);
       return;
     }
 
-    // Average over predators — sum stacked N× with dozens of soldiers and rocketed
     const fleeFactor = 40500 / predatorCount;
     owner.addAcceleration(fleeX * fleeFactor, fleeY * fleeFactor);
   }
 
   static onExit(owner, i, toState) {
-    // Could play relief sound, slow down animation, etc.
   }
 }
 
@@ -106,13 +120,21 @@ class PanicCivilianBehaviorState extends FSMState {
   }
 
   static onUpdate(owner, i, dt, totalTime) {
-    // 20s timer: return to IDLE unless hurt again (timer resets on damage)
     if (totalTime >= PANIC_DURATION_MS) {
       this.fsm.changeState(i, this.fsm.states.IDLE);
       return;
     }
 
-    // Flee away from panic origin (where damage came from)
+    // Refresh panic origin from nearby attackers (one walk; was separate violence scan)
+    const mySoldierEntityType = MySoldier.entityType;
+    const neighborCount = owner.neighborCount;
+    for (let n = 0; n < neighborCount; n++) {
+      const neighborIndex = owner.getNeighbor(n);
+      if (tryPanicFromAttackingSoldier(owner, i, neighborIndex, mySoldierEntityType)) {
+        break;
+      }
+    }
+
     const ox = CivilianComponent.panicOriginX[i];
     const oy = CivilianComponent.panicOriginY[i];
     const dx = owner.x - ox;
@@ -120,7 +142,6 @@ class PanicCivilianBehaviorState extends FSMState {
     const dist2 = dx * dx + dy * dy;
 
     if (dist2 > 1) {
-      // 1/r, floored — close range can't rocket
       const floorSq = owner.constructor.accelDistFloorSq;
       const d2 = dist2 < floorSq ? floorSq : dist2;
       const panicFleeFactor = owner.constructor.panicFleeFactor;

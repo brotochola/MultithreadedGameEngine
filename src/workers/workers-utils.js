@@ -137,6 +137,8 @@ export const LOGIC_STATS = Object.freeze({
   RAYCAST_MS: 5,
   RAYCAST_COUNT: 6,
   ENTITY_MS: 7,
+  DECIMATE_MS: 8,
+  TICK_MS: 9,
   STRIDE_FLOATS: 16,
   BUFFER_SIZE_PER_WORKER: 16 * 4,
 });
@@ -290,6 +292,8 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
       { key: 'RAYCAST_MS', label: 'Ray', format: fmtMs },
       { key: 'RAYCAST_COUNT', label: 'Rays', format: fmtNum },
       { key: 'ENTITY_MS', label: 'Entity', format: fmtMs },
+      { key: 'DECIMATE_MS', label: 'Decim', format: fmtMs },
+      { key: 'TICK_MS', label: 'Tick', format: fmtMs },
     ],
   },
   preRender: {

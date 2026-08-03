@@ -535,6 +535,8 @@ class LogicWorker extends AbstractWorker {
     const transformActive = Transform.active; // Cache for active check
 
     const tEntity0 = performance.now();
+    let decimateMs = 0;
+    let tickMs = 0;
 
     // ========================================
     // PHASE 1: NON-DECIMATED ENTITIES (FAST PATH)
@@ -563,8 +565,9 @@ class LogicWorker extends AbstractWorker {
         activeCount++;
         this.entitiesProcessedThisFrame++;
 
-        // Tick entity logic - no decimation checks needed!
+        const tTick0 = performance.now();
         obj.tick(dtRatio, deltaTime, accTime, frameNum);
+        tickMs += performance.now() - tTick0;
 
         if (needsScreenCallbacks) this.checkScreenVisibility(entityIndex, obj);
       }
@@ -604,9 +607,12 @@ class LogicWorker extends AbstractWorker {
           activeCount++;
           this.entitiesProcessedThisFrame++;
 
+          const tVisit0 = performance.now();
+
           // TICK DECIMATION: Check countdown
           if (--nextTick[entityIndex] > 0) {
             if (needsScreenCallbacks) this.checkScreenVisibility(entityIndex, obj);
+            decimateMs += performance.now() - tVisit0;
             continue;
           }
 
@@ -622,11 +628,14 @@ class LogicWorker extends AbstractWorker {
           rbAy[entityIndex] *= tickInterval;
 
           if (needsScreenCallbacks) this.checkScreenVisibility(entityIndex, obj);
+          tickMs += performance.now() - tVisit0;
         }
       }
     }
 
     this.entityTimeThisFrame = performance.now() - tEntity0;
+    this.decimateMsThisFrame = decimateMs;
+    this.tickMsThisFrame = tickMs;
     const rayStats = Ray.consumeStats();
     this.raycastMsThisFrame = rayStats.ms;
     this.raycastCountThisFrame = rayStats.count;
@@ -1193,6 +1202,8 @@ class LogicWorker extends AbstractWorker {
       this.stats[LOGIC_STATS.RAYCAST_MS] = this.raycastMsThisFrame || 0;
       this.stats[LOGIC_STATS.RAYCAST_COUNT] = this.raycastCountThisFrame || 0;
       this.stats[LOGIC_STATS.ENTITY_MS] = this.entityTimeThisFrame || 0;
+      this.stats[LOGIC_STATS.DECIMATE_MS] = this.decimateMsThisFrame || 0;
+      this.stats[LOGIC_STATS.TICK_MS] = this.tickMsThisFrame || 0;
     }
   }
 }

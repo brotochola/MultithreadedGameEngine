@@ -194,7 +194,10 @@ export class Person extends Lootable {
     if (!isShooting) {
       this.keepWithinBounds(dtRatio);
       if (RigidBody.speed[this.index] < 0.166) {
-        this.setVelocity(0, 0);
+        const i = this.index;
+        if (RigidBody.vx[i] !== 0 || RigidBody.vy[i] !== 0) {
+          this.setVelocity(0, 0);
+        }
       }
     }
 

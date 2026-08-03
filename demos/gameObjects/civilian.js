@@ -1,8 +1,6 @@
 import WEED from '/src/index.js';
 import { CivilianBehaviorFSM } from '../fsm/civilianBehaviorFSM.js';
 import { CivilianComponent } from '../components/civilianComponent.js';
-import { SoldierBehaviorFSM } from '../fsm/SoldierBehaviorFSM.js';
-import { MySoldier } from './mySoldier.js';
 import { Person } from './person.js';
 import { PersonComponent } from '../components/personComponent.js';
 
@@ -82,34 +80,5 @@ export class Civilian extends Person {
     if (PersonComponent.dead[this.index] === 1) return;
 
     this.civilianBehaviorFSM.tick(dt, this);
-    this.checkIfTheresViolenceAroundMe();
-  }
-
-  checkIfTheresViolenceAroundMe() {
-    const soldierEntityType = MySoldier.entityType;
-    const RANGED = SoldierBehaviorFSM.states.RANGED_ATTACKING;
-    const CLOSE = SoldierBehaviorFSM.states.CLOSE_ATTACKING;
-
-    for (let n = 0; n < this.neighborCount; n++) {
-      const neighborIndex = this.getNeighbor(n);
-      if (Transform.entityType[neighborIndex] !== soldierEntityType) continue;
-
-      const stateIndex = SoldierBehaviorFSM.state[neighborIndex];
-      if (stateIndex === RANGED.stateIndex || stateIndex === CLOSE.stateIndex) {
-        // Soldier is shooting or punching - trigger panic
-        const i = this.index;
-        CivilianComponent.panicOriginX[i] = Transform.x[neighborIndex];
-        CivilianComponent.panicOriginY[i] = Transform.y[neighborIndex];
-
-        const fsm = this.civilianBehaviorFSM;
-        const PANIC = CivilianBehaviorFSM.states.PANIC;
-        if (!CivilianBehaviorFSM.isInState(i, PANIC)) {
-          // CivilianBehaviorFSM.forceChangeState(i, PANIC, this);
-          // } else {
-          fsm.changeState(PANIC);
-        }
-        return;
-      }
-    }
   }
 }
