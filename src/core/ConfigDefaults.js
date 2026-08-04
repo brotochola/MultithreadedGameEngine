@@ -278,7 +278,8 @@ export const RENDERER_DEFAULTS = Object.freeze({
   cullingRatio: 0.1,
   startFadingDecorationsAtZoom: 0.5,
   hideDecorationsAtZoom: 0.25,
-  maxVisibleRenderables: 10000,
+  /** null = auto-size main render queue at SAB alloc from pools + Adobe piece bounds */
+  maxVisibleRenderables: null,
   maxDecalTileUploadsPerFrame: 32,
   /** Pixi ImageSource mip chain for atlases/textures/tilesets. Off by default (VRAM + atlas bleed risk; STEP flat in benches). */
   autoGenerateMipmaps: false,

@@ -774,7 +774,7 @@ Recommended `<head>` meta tags (add these to your HTML — the engine can't inje
 - Physics: `subStepCount = 4`
 - Spatial: `cellSize = 128`
 - Logic: `staggeredUpdates = false`
-- Renderer: `maxVisibleRenderables = 10000` (raise per scene as needed)
+- Renderer: `maxVisibleRenderables` defaults to auto (pool sum + particles/decorations/bullets/glows + Adobe piece expansion); set explicitly only to cap below that floor
 - Layers: `maxItems = 5000`, `resolution = 1.0`, `ySorting = false` (built-in), `blendMode = BLEND_MODES.NORMAL` (0)
 - Audio: `maxSlots = 64`, `mixGain = 0.5`, `masterVolume = 1.0`
 - Navigation: `enabled = false` by default

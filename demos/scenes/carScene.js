@@ -86,7 +86,6 @@ export class CarScene extends WEED.Scene {
             noLimitFPS: false,
             ySorting: true,
             cullingRatio: 0.5,
-            maxVisibleRenderables: 50000, // Must fit: cars + rocks + particles + decorations (500 cars + 1000 particles = 1500+)
             // fixedFps: 60,
         },
 

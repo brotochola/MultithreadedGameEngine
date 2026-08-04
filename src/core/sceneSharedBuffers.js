@@ -291,6 +291,69 @@ function initializeBulletBuffers(scene) {
   BulletPool.initializeFreeList(buffers.bulletFreeList, buffers.bulletFreeListTop);
 }
 
+/**
+ * Never-overflow floor for the main ENTITIES render queue:
+ * entities + particles + decorations + bullets×2 (+ trails) + glow worst-case + Adobe piece expansion.
+ * Shadows / custom layers use their own queues and are not included.
+ */
+export function computeAutoMaxVisibleRenderables(scene) {
+  const config = scene.config || {};
+  const totalEntityCount = scene.totalEntityCount | 0;
+  const maxParticles = config.particle?.maxParticles | 0;
+  const maxDecorations = config.decoration?.maxDecorations | 0;
+  const maxBullets = config.bullet?.maxBullets | 0;
+  const lightingEnabled = !!config.lighting?.enabled;
+
+  let maxPieces = 1;
+  for (const asset of AdobeAnimRegistry.assets.values()) {
+    const counts = asset.framePieceCount;
+    if (!counts) continue;
+    for (let i = 0; i < counts.length; i++) {
+      const c = counts[i] | 0;
+      if (c > maxPieces) maxPieces = c;
+    }
+  }
+
+  let adobePieceBonus = 0;
+  const registered = scene.registeredClasses || [];
+  for (let i = 0; i < registered.length; i++) {
+    const reg = registered[i];
+    const components = reg.components;
+    if (!components || components.indexOf(AdobeAnimComponent) < 0) continue;
+    adobePieceBonus += (reg.count | 0) * (maxPieces - 1);
+  }
+
+  const glowSlots = lightingEnabled ? totalEntityCount : 0;
+  return (
+    totalEntityCount +
+    maxParticles +
+    maxDecorations +
+    maxBullets * 2 +
+    glowSlots +
+    adobePieceBonus
+  );
+}
+
+export function resolveMaxVisibleRenderables(scene) {
+  const config = scene.config;
+  let maxVisibleRenderables = config.renderer?.maxVisibleRenderables;
+  if (maxVisibleRenderables == null || maxVisibleRenderables <= 0) {
+    maxVisibleRenderables = computeAutoMaxVisibleRenderables(scene);
+    config.renderer.maxVisibleRenderables = maxVisibleRenderables;
+    console.log(
+      `[Scene] renderer.maxVisibleRenderables auto = ${maxVisibleRenderables}`
+    );
+  }
+  // Queue slots are draw items (not entity ids); Adobe piece expansion can exceed MAX_ENTITIES.
+  assertIntegerInRange(
+    'renderer.maxVisibleRenderables',
+    maxVisibleRenderables,
+    0,
+    16_777_216
+  );
+  return maxVisibleRenderables;
+}
+
 function initializeLightingAndRenderBuffers(scene) {
   const { buffers, config } = scene;
 
@@ -346,7 +409,7 @@ function initializeLightingAndRenderBuffers(scene) {
     scene.decalsTotalTiles = totalTiles;
   }
 
-  const maxVisibleRenderables = config.renderer.maxVisibleRenderables || 10000;
+  const maxVisibleRenderables = resolveMaxVisibleRenderables(scene);
   const renderQueueBufferSize = computeRenderQueueBufferSize(maxVisibleRenderables);
 
   buffers.renderQueueDataA = new SharedArrayBuffer(renderQueueBufferSize);

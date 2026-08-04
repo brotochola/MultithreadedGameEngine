@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createSceneSharedBuffers } from '../../src/core/sceneSharedBuffers.js';
+import {
+  createSceneSharedBuffers,
+  computeAutoMaxVisibleRenderables,
+  resolveMaxVisibleRenderables,
+} from '../../src/core/sceneSharedBuffers.js';
+import { AdobeAnimComponent } from '../../src/components/AdobeAnimComponent.js';
+import { AdobeAnimRegistry } from '../../src/core/AdobeAnimRegistry.js';
 
 function createValidationScene(overrides = {}) {
   const scene = {
@@ -54,6 +60,7 @@ function createValidationScene(overrides = {}) {
       physics: { ...scene.config.physics, ...(overrides.config?.physics || {}) },
       spatial: { ...scene.config.spatial, ...(overrides.config?.spatial || {}) },
       lighting: { ...scene.config.lighting, ...(overrides.config?.lighting || {}) },
+      renderer: { ...scene.config.renderer, ...(overrides.config?.renderer || {}) },
     },
   };
 }
@@ -91,4 +98,90 @@ test('createSceneSharedBuffers rejects spatial grids with too many cells for Uin
     () => createSceneSharedBuffers(scene),
     /spatial grid columns must be an integer in \[1, 65535\]/
   );
+});
+
+test('computeAutoMaxVisibleRenderables matches pool formula', () => {
+  const scene = createValidationScene({
+    totalEntityCount: 100,
+    config: {
+      particle: { maxParticles: 50 },
+      decoration: { maxDecorations: 20 },
+      bullet: { maxBullets: 10 },
+      lighting: { enabled: false },
+      renderer: { maxVisibleRenderables: null },
+    },
+  });
+  // 100 + 50 + 20 + 10*2 + 0 glow + 0 adobe
+  assert.equal(computeAutoMaxVisibleRenderables(scene), 190);
+});
+
+test('computeAutoMaxVisibleRenderables adds glow slots when lighting enabled', () => {
+  const scene = createValidationScene({
+    totalEntityCount: 100,
+    config: {
+      particle: { maxParticles: 0 },
+      decoration: { maxDecorations: 0 },
+      bullet: { maxBullets: 0 },
+      lighting: { enabled: true },
+    },
+  });
+  // 100 entities + 100 glow
+  assert.equal(computeAutoMaxVisibleRenderables(scene), 200);
+});
+
+test('computeAutoMaxVisibleRenderables adds Adobe piece bonus', () => {
+  AdobeAnimRegistry.clearForSceneUnload();
+  AdobeAnimRegistry.register('testAsset', {
+    framePieceCount: new Uint16Array([3, 8, 2]),
+  });
+
+  const scene = createValidationScene({
+    totalEntityCount: 10,
+    registeredClasses: [
+      {
+        class: class AdobeEnt {},
+        startIndex: 0,
+        count: 10,
+        components: [AdobeAnimComponent],
+      },
+    ],
+    config: {
+      particle: { maxParticles: 0 },
+      decoration: { maxDecorations: 0 },
+      bullet: { maxBullets: 0 },
+      lighting: { enabled: false },
+    },
+  });
+  // 10 + 10*(8-1) = 80
+  assert.equal(computeAutoMaxVisibleRenderables(scene), 80);
+  AdobeAnimRegistry.clearForSceneUnload();
+});
+
+test('resolveMaxVisibleRenderables keeps explicit override', () => {
+  const scene = createValidationScene({
+    totalEntityCount: 100,
+    config: {
+      particle: { maxParticles: 50 },
+      decoration: { maxDecorations: 20 },
+      bullet: { maxBullets: 10 },
+      renderer: { maxVisibleRenderables: 100 },
+    },
+  });
+  assert.equal(resolveMaxVisibleRenderables(scene), 100);
+  assert.equal(scene.config.renderer.maxVisibleRenderables, 100);
+});
+
+test('resolveMaxVisibleRenderables auto-fills null', () => {
+  const scene = createValidationScene({
+    totalEntityCount: 100,
+    config: {
+      particle: { maxParticles: 50 },
+      decoration: { maxDecorations: 20 },
+      bullet: { maxBullets: 10 },
+      lighting: { enabled: false },
+      renderer: { maxVisibleRenderables: null },
+    },
+  });
+  assert.equal(resolveMaxVisibleRenderables(scene), 190);
+  assert.equal(scene.config.renderer.maxVisibleRenderables, 190);
 });
