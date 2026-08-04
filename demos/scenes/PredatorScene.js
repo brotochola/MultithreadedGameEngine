@@ -68,7 +68,7 @@ export class PredatorScene extends WEED.Scene {
 
     debug: {
       maxDebugDrawEntries: 30192,
-      collectDetailedStats: true,
+      collectDetailedStats: false,
     },
 
     // Spatial hash grid configuration

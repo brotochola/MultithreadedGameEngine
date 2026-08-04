@@ -167,6 +167,11 @@ class PreRenderWorker extends AbstractWorker {
         this._renderableY = null;
         this._renderableType = null;
         this._renderableIndex = null;
+        // Pose stash (types 0/2/6): filled at collect, consumed at emit — avoid double _displayPose
+        this._renderablePx = null;
+        this._renderablePy = null;
+        this._renderableRotC = null;
+        this._renderableRotS = null;
         this._renderableCount = 0;
 
         // Pre-allocated query arrays
@@ -386,6 +391,10 @@ class PreRenderWorker extends AbstractWorker {
             this._renderableY = new Float32Array(maxItems);
             this._renderableType = new Uint8Array(maxItems);
             this._renderableIndex = new Int32Array(maxItems);
+            this._renderablePx = new Float32Array(maxItems);
+            this._renderablePy = new Float32Array(maxItems);
+            this._renderableRotC = new Float32Array(maxItems);
+            this._renderableRotS = new Float32Array(maxItems);
 
             // Pre-allocate query arrays
             this._queryLightEmitter = [LightEmitter];
@@ -1069,8 +1078,9 @@ class PreRenderWorker extends AbstractWorker {
                 if (shadowCasterActive[i] && transformActive[i]) {
                     const heightMult = shadowHeightMultiplier[i];
                     if (heightMult > 0 && (maxShadowsPerEntity <= 0 || (entityShadowCounts[i] ?? 0) < maxShadowsPerEntity)) {
+                        // Reuse pose from collectRenderable(0) when we just stashed it
                         const pose = this._displayPoseOut;
-                        this._displayPose(i, pose);
+                        if (!renderVisible[i]) this._displayPose(i, pose);
                         const casterX = pose.x;
                         const casterY = pose.y;
                         const textureId = this.entityLastTextureId ? this.entityLastTextureId[i] : INVALID_TEXTURE_ID;
@@ -1332,6 +1342,22 @@ class PreRenderWorker extends AbstractWorker {
         this._renderableY[writeIdx] = y;
         this._renderableType[writeIdx] = type;
         this._renderableIndex[writeIdx] = index;
+        // Stash pose for entity / decoration / adobe (emit copies — no second _displayPose)
+        if (type === 0 || type === 6) {
+            const pose = this._displayPoseOut;
+            this._displayPose(index, pose);
+            this._renderablePx[writeIdx] = pose.x;
+            this._renderablePy[writeIdx] = pose.y;
+            this._renderableRotC[writeIdx] = pose.rotC;
+            this._renderableRotS[writeIdx] = pose.rotS;
+        } else if (type === 2) {
+            const pose = this._displayPoseOut;
+            this._decorationWorldXY(index, pose);
+            this._renderablePx[writeIdx] = pose.x;
+            this._renderablePy[writeIdx] = pose.y;
+            this._renderableRotC[writeIdx] = DecorationComponent.rotC[index];
+            this._renderableRotS[writeIdx] = DecorationComponent.rotS[index];
+        }
         this._renderableCount = writeIdx + 1;
     }
 
@@ -1444,7 +1470,7 @@ class PreRenderWorker extends AbstractWorker {
         out.y = DecorationComponent.y[decoIdx] + oy;
     }
 
-    _emitAdobePieces(ref, writeIndex, entityIndex, sortKey = 0) {
+    _emitAdobePieces(ref, writeIndex, entityIndex, sortKey = 0, stashedPose = null) {
         const resolved = this._resolveAdobeFrameIndex(entityIndex);
         const asset = resolved.asset;
         if (!asset) return writeIndex;
@@ -1473,15 +1499,25 @@ class PreRenderWorker extends AbstractWorker {
         const assetBoundsMaxX = asset.assetBoundsMaxX;
         const assetBoundsMaxY = asset.assetBoundsMaxY;
 
-        const pose = this._displayPoseOut;
-        this._displayPose(entityIndex, pose);
-        const rootX = pose.x;
-        const rootY = pose.y;
+        let rootX, rootY, poseC, poseS;
+        if (stashedPose) {
+            rootX = stashedPose.x;
+            rootY = stashedPose.y;
+            poseC = stashedPose.rotC;
+            poseS = stashedPose.rotS;
+        } else {
+            const pose = this._displayPoseOut;
+            this._displayPose(entityIndex, pose);
+            rootX = pose.x;
+            rootY = pose.y;
+            poseC = pose.rotC;
+            poseS = pose.rotS;
+        }
         // body pose CS × AdobeAnimComponent CS (inline — hot piece loop)
         const ac = AdobeAnimComponent.rotC[entityIndex];
         const as = AdobeAnimComponent.rotS[entityIndex];
-        const rootC = pose.rotC * ac - pose.rotS * as;
-        const rootS = pose.rotS * ac + pose.rotC * as;
+        const rootC = poseC * ac - poseS * as;
+        const rootS = poseS * ac + poseC * as;
         const rootScaleX = AdobeAnimComponent.scaleX[entityIndex];
         const rootScaleY = AdobeAnimComponent.scaleY[entityIndex];
         const rootAnchorX = AdobeAnimComponent.anchorX[entityIndex];
@@ -1546,30 +1582,43 @@ class PreRenderWorker extends AbstractWorker {
      * In-place heapsort for any renderable collector triplet (Y, type, index).
      * Used by both main ENTITIES queue and custom layer queues.
      */
-    _heapsortCollector(count, yArr, typeArr, indexArr) {
+    _heapsortCollector(count, yArr, typeArr, indexArr, px, py, rc, rs) {
         for (let i = (count >> 1) - 1; i >= 0; i--) {
-            this._heapifyRenderables(count, i, yArr, typeArr, indexArr);
+            this._heapifyRenderables(count, i, yArr, typeArr, indexArr, px, py, rc, rs);
         }
 
         for (let i = count - 1; i > 0; i--) {
-            const tempY = yArr[0];
-            const tempType = typeArr[0];
-            const tempIndex = indexArr[0];
-            yArr[0] = yArr[i];
-            typeArr[0] = typeArr[i];
-            indexArr[0] = indexArr[i];
-            yArr[i] = tempY;
-            typeArr[i] = tempType;
-            indexArr[i] = tempIndex;
-            this._heapifyRenderables(i, 0, yArr, typeArr, indexArr);
+            this._swapCollector(0, i, yArr, typeArr, indexArr, px, py, rc, rs);
+            this._heapifyRenderables(i, 0, yArr, typeArr, indexArr, px, py, rc, rs);
         }
     }
 
     _heapsortRenderables(count) {
-        this._heapsortCollector(count, this._renderableY, this._renderableType, this._renderableIndex);
+        this._heapsortCollector(
+            count,
+            this._renderableY,
+            this._renderableType,
+            this._renderableIndex,
+            this._renderablePx,
+            this._renderablePy,
+            this._renderableRotC,
+            this._renderableRotS
+        );
     }
 
-    _heapifyRenderables(heapSize, i, yArr, typeArr, indexArr) {
+    _swapCollector(a, b, yArr, typeArr, indexArr, px, py, rc, rs) {
+        let t = yArr[a]; yArr[a] = yArr[b]; yArr[b] = t;
+        t = typeArr[a]; typeArr[a] = typeArr[b]; typeArr[b] = t;
+        t = indexArr[a]; indexArr[a] = indexArr[b]; indexArr[b] = t;
+        if (px) {
+            t = px[a]; px[a] = px[b]; px[b] = t;
+            t = py[a]; py[a] = py[b]; py[b] = t;
+            t = rc[a]; rc[a] = rc[b]; rc[b] = t;
+            t = rs[a]; rs[a] = rs[b]; rs[b] = t;
+        }
+    }
+
+    _heapifyRenderables(heapSize, i, yArr, typeArr, indexArr, px, py, rc, rs) {
         while (true) {
             let largest = i;
             const left = (i << 1) + 1;
@@ -1585,15 +1634,7 @@ class PreRenderWorker extends AbstractWorker {
 
             if (largest === i) break;
 
-            const tempY = yArr[i];
-            const tempType = typeArr[i];
-            const tempIndex = indexArr[i];
-            yArr[i] = yArr[largest];
-            typeArr[i] = typeArr[largest];
-            indexArr[i] = indexArr[largest];
-            yArr[largest] = tempY;
-            typeArr[largest] = tempType;
-            indexArr[largest] = tempIndex;
+            this._swapCollector(i, largest, yArr, typeArr, indexArr, px, py, rc, rs);
             i = largest;
         }
     }
@@ -1625,20 +1666,36 @@ class PreRenderWorker extends AbstractWorker {
             if (count > 256) {
                 this._heapsortRenderables(count);
             } else {
+                const px = this._renderablePx;
+                const py = this._renderablePy;
+                const rc = this._renderableRotC;
+                const rs = this._renderableRotS;
                 for (let i = 1; i < count; i++) {
                     const currentY = collectorY[i];
                     const currentType = collectorType[i];
                     const currentIndex = collectorIndex[i];
+                    const currentPx = px[i];
+                    const currentPy = py[i];
+                    const currentRc = rc[i];
+                    const currentRs = rs[i];
                     let j = i - 1;
                     while (j >= 0 && collectorY[j] > currentY) {
                         collectorY[j + 1] = collectorY[j];
                         collectorType[j + 1] = collectorType[j];
                         collectorIndex[j + 1] = collectorIndex[j];
+                        px[j + 1] = px[j];
+                        py[j + 1] = py[j];
+                        rc[j + 1] = rc[j];
+                        rs[j + 1] = rs[j];
                         j--;
                     }
                     collectorY[j + 1] = currentY;
                     collectorType[j + 1] = currentType;
                     collectorIndex[j + 1] = currentIndex;
+                    px[j + 1] = currentPx;
+                    py[j + 1] = currentPy;
+                    rc[j + 1] = currentRc;
+                    rs[j + 1] = currentRs;
                 }
             }
         }
@@ -1748,6 +1805,11 @@ class PreRenderWorker extends AbstractWorker {
         ref.sortKey = rqSortKey;
 
         let writeCount = 0;
+        const stashPx = this._renderablePx;
+        const stashPy = this._renderablePy;
+        const stashRc = this._renderableRotC;
+        const stashRs = this._renderableRotS;
+        const stashPose = this._displayPoseOut;
 
         for (let i = 0; i < count && writeCount < this.renderQueueMaxItems; i++) {
             const type = collectorType[i];
@@ -1755,7 +1817,11 @@ class PreRenderWorker extends AbstractWorker {
             const sk = collectorY[i];
 
             if (type === 6) {
-                writeCount = this._emitAdobePieces(ref, writeCount, idx, sk);
+                stashPose.x = stashPx[i];
+                stashPose.y = stashPy[i];
+                stashPose.rotC = stashRc[i];
+                stashPose.rotS = stashRs[i];
+                writeCount = this._emitAdobePieces(ref, writeCount, idx, sk, stashPose);
                 continue;
             }
 
@@ -1763,19 +1829,17 @@ class PreRenderWorker extends AbstractWorker {
             if (rqSortKey) rqSortKey[out] = sk;
 
             if (type === 0) {
-                // === ENTITY ===
-                const pose = this._displayPoseOut;
-                this._displayPose(idx, pose);
-                const currX = pose.x;
-                const currY = pose.y;
+                // === ENTITY === (pose stashed at collect)
+                const currX = stashPx[i];
+                const currY = stashPy[i];
 
                 rqX[out] = currX;
                 rqY[out] = currY;
                 rqScaleX[out] = srScaleX[idx];
                 rqScaleY[out] = srScaleY[idx];
                 if (srInheritTransformRotation[idx]) {
-                    rqRotC[out] = pose.rotC;
-                    rqRotS[out] = pose.rotS;
+                    rqRotC[out] = stashRc[i];
+                    rqRotS[out] = stashRs[i];
                 } else {
                     rqRotC[out] = srSpriteRotC[idx];
                     rqRotS[out] = srSpriteRotS[idx];
@@ -1875,15 +1939,13 @@ class PreRenderWorker extends AbstractWorker {
                 rqType[out] = 1;
                 rqEntityIndex[out] = -1;
             } else if (type === 2) {
-                // === DECORATION ===
-                const pose = this._displayPoseOut;
-                this._decorationWorldXY(idx, pose);
-                rqX[out] = pose.x;
-                rqY[out] = pose.y;
+                // === DECORATION === (world xy + facing stashed at collect)
+                rqX[out] = stashPx[i];
+                rqY[out] = stashPy[i];
                 rqScaleX[out] = decoScaleX[idx];
                 rqScaleY[out] = decoScaleY[idx];
-                rqRotC[out] = decoRotC[idx];
-                rqRotS[out] = decoRotS[idx];
+                rqRotC[out] = stashRc[i];
+                rqRotS[out] = stashRs[i];
                 rqAlpha[out] = decoAlpha[idx] * this._decorationZoomAlpha;
                 rqTint[out] = decoTint[idx];
                 const dAnimIdx = decoTextureId[idx];
@@ -2499,7 +2561,7 @@ class PreRenderWorker extends AbstractWorker {
             for (let w = 0; w < n; w++) this.visibleLightsData[1 + w] = lightEntities[w];
         }
 
-        // Point shadows suppressed when sun owns the look — hoist before caster/neighbor work.
+        // Point shadows suppressed when sun owns the look — before caster/neighbor work.
         // intensity=1 still left scale≈0.033 (> old MIN 0.003) and burned light×neighbor; gate on sun too.
         const sunIntensity = Sun.isInitialized && Sun.enabled ? Sun.intensity : 0;
         const pointLightShadowMultiplier = 1 - (sunIntensity * 0.9);

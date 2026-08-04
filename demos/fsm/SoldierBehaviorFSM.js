@@ -227,7 +227,7 @@ class IdleSoldierState extends FSMState {
       PersonComponent.lastTeamDataUpdateTime[i] = nowMs;
     }
     // owner.groupWithMyTeam();
-    owner.separateFromTeam();
+    // owner.separateFromTeam();
 
   }
 
