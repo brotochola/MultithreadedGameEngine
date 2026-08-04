@@ -255,6 +255,9 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueTextureId = null; // Uint16Array (encoded)
     this.renderQueueAnchorX = null; // Float32Array
     this.renderQueueAnchorY = null; // Float32Array
+    this.renderQueueType = null;
+    this.renderQueueEntityIndex = null;
+    this.renderQueueSortKey = null;
     this.renderQueueCamera = null; // Float32Array[3] -> [zoom, x, y]
 
     // Render queue — instanced Mesh (no Particle pool for ENTITIES)
@@ -421,6 +424,7 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueAnchorY = buffer.anchorY;
     this.renderQueueType = buffer.type;
     this.renderQueueEntityIndex = buffer.entityIndex;
+    this.renderQueueSortKey = buffer.sortKey;
     this.renderQueueCamera = this.renderQueueCameraBuffers[bufferIdx];
   }
 
@@ -645,10 +649,13 @@ class PixiRenderer extends AbstractWorker {
       anchorX: this.renderQueueAnchorX,
       anchorY: this.renderQueueAnchorY,
     };
+    const useSortKey = !!(this.ySorting && this.renderQueueSortKey);
     const baseOpts = {
       space: 'world',
-      depthMode: 'index',
+      depthMode: useSortKey ? 'sortKey' : 'index',
       depthDenom: this.renderQueueMaxItems,
+      worldHeight: this.config?.worldHeight || 10000,
+      sortKey: useSortKey ? this.renderQueueSortKey : null,
       texLut: this._texLut,
       texLutCount: this._texLutCount,
       textures: this.flatTextures,
@@ -695,13 +702,14 @@ class PixiRenderer extends AbstractWorker {
   }
 
   createEntitiesInstancedBatch(maxItems) {
-    // Alpha atlas quads must not depth-test/write: transparent texels still write Z
-    // and punch the horde down to 1px speckles. Y-order stays CPU sort / draw order.
+    // Y-order via GPU depth + sortKey (alpha discard in frag). Without depthTest,
+    // transparent atlas texels still punch Z when depth is on — discard handles that.
+    const useGpuYSort = !!this.ySorting;
     this.entitiesBatch = new InstancedSpriteBatch({
       capacity: maxItems,
       label: 'entities-instanced',
       atlasSource: this._resolveAtlasSource(),
-      depthTest: false,
+      depthTest: useGpuYSort,
       premultiplyAlpha: true,
     });
     this.spriteMesh = this.entitiesBatch.mesh;

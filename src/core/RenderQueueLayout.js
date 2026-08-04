@@ -31,6 +31,8 @@ const FIELDS = [
     ['anchorY',     Float32Array,           4,   0],
     ['type',        Uint8Array,             1,   0],
     ['entityIndex', Uint16Array,            2,   0],
+    // Composite collector key (worldY*K+innerZ / -z / glow bias) — GPU depth when CPU sort skipped
+    ['sortKey',     Float32Array,           4,   0],
 ];
 
 function align4(n) { return (n + 3) & ~3; }

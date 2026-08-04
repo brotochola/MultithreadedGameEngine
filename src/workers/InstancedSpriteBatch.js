@@ -60,7 +60,7 @@ void main() {
 }
 `;
 
-/** Normal: PMA tex × tint × instance alpha (do not × tex.a again). */
+/** Normal: PMA tex × tint × instance alpha (do not × tex.a again). Discard clear texels so depth works. */
 const FRAGMENT_SRC = `
 precision highp float;
 in vec2 vUV;
@@ -69,7 +69,9 @@ uniform sampler2D uTexture;
 
 void main() {
   vec4 t = texture2D(uTexture, vUV);
-  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, t.a * vColor.a);
+  float a = t.a * vColor.a;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
 }
 `;
 
@@ -224,8 +226,9 @@ export class InstancedSpriteBatch {
    * @param {number} [opts.cameraX=0]
    * @param {number} [opts.cameraY=0]
    * @param {number} [opts.resolution=1] - RT scale (shadows/custom shader layers)
-   * @param {'index'|'worldY'} [opts.depthMode='index']
+   * @param {'index'|'worldY'|'sortKey'} [opts.depthMode='index']
    * @param {number} [opts.worldHeight=1]
+   * @param {Float32Array|null} [opts.sortKey] - composite collector keys (depthMode sortKey)
    * @param {Float32Array|null} [opts.texLut]
    * @param {number} [opts.texLutCount=0]
    * @param {Array|null} [opts.textures] - flatTextures fallback when LUT miss / absent
@@ -253,6 +256,7 @@ export class InstancedSpriteBatch {
     const texLutCount = opts.texLutCount | 0;
     const textures = opts.textures || null;
     const typeArr = opts.type || null;
+    const sortKeyArr = opts.sortKey || null;
     const includeType = opts.includeType;
     const excludeType = opts.excludeType;
     const filterTypes = typeArr && (includeType !== undefined || excludeType !== undefined);
@@ -352,7 +356,10 @@ export class InstancedSpriteBatch {
       }
 
       let depth;
-      if (depthMode === 'worldY') {
+      if (depthMode === 'sortKey' && sortKeyArr) {
+        depth = 1.0 - sortKeyArr[i] / sortKeyMax;
+        depth -= (out + 1) * 1e-7;
+      } else if (depthMode === 'worldY') {
         let sortKey = worldY * Y_SORT_K;
         if (typeArr && typeArr[i] === 3) sortKey += GLOW_BIAS;
         else if (typeArr && typeArr[i] === 5) sortKey -= 1;

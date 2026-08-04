@@ -130,6 +130,7 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueAnchorY = null;
         this.renderQueueType = null;
         this.renderQueueEntityIndex = null;
+        this.renderQueueSortKey = null;
         this.renderQueueCamera = null;
         this._frameCameraZoom = 1;
         this._frameCameraX = 0;
@@ -661,6 +662,7 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueAnchorY = buffer.anchorY;
         this.renderQueueType = buffer.type;
         this.renderQueueEntityIndex = buffer.entityIndex;
+        this.renderQueueSortKey = buffer.sortKey;
         this.renderQueueCamera = this.renderQueueCameraBuffers[bufferIdx];
 
         // Swap custom layer write buffers in sync
@@ -1442,7 +1444,7 @@ class PreRenderWorker extends AbstractWorker {
         out.y = DecorationComponent.y[decoIdx] + oy;
     }
 
-    _emitAdobePieces(ref, writeIndex, entityIndex) {
+    _emitAdobePieces(ref, writeIndex, entityIndex, sortKey = 0) {
         const resolved = this._resolveAdobeFrameIndex(entityIndex);
         const asset = resolved.asset;
         if (!asset) return writeIndex;
@@ -1528,6 +1530,7 @@ class PreRenderWorker extends AbstractWorker {
             ref.anchorY[writeIndex] = pieceAnchorY[p];
             ref.type[writeIndex] = 6;
             ref.entityIndex[writeIndex] = entityIndex;
+            if (ref.sortKey) ref.sortKey[writeIndex] = sortKey;
             writeIndex++;
         }
 
@@ -1611,13 +1614,14 @@ class PreRenderWorker extends AbstractWorker {
 
         const entitiesLayer = Layer.getById(Layer.ENTITIES_ID);
         const shouldSortByY = entitiesLayer ? entitiesLayer.ySorting : true;
+        // Instanced path: GPU depth from composite sortKey — skip CPU heapsort.
+        const skipCpuYSort = !!(shouldSortByY && this.config?.renderer?.instancedSprites !== false);
 
-        // Sort by Y (ENTITIES layer policy). Skipped when skipCpuYSort is set --
-        // the GPU depth buffer handles Y-ordering instead (see InstancedSpriteBatch worldY depth mode).
+        // Sort by Y (ENTITIES layer policy). Skipped when GPU depth handles ordering.
         const detail = this.collectDetailedStats;
         let tSort = 0;
         if (detail) tSort = performance.now();
-        if (shouldSortByY && count > 1) {
+        if (shouldSortByY && count > 1 && !skipCpuYSort) {
             if (count > 256) {
                 this._heapsortRenderables(count);
             } else {
@@ -1655,6 +1659,7 @@ class PreRenderWorker extends AbstractWorker {
         const rqAnchorY = this.renderQueueAnchorY;
         const rqType = this.renderQueueType;
         const rqEntityIndex = this.renderQueueEntityIndex;
+        const rqSortKey = this.renderQueueSortKey;
         const entityLastTextureId = this.entityLastTextureId;
 
         // Cache component arrays
@@ -1740,19 +1745,22 @@ class PreRenderWorker extends AbstractWorker {
         ref.rotC = rqRotC; ref.rotS = rqRotS; ref.alpha = rqAlpha; ref.tint = rqTint;
         ref.textureId = rqTextureId; ref.anchorX = rqAnchorX; ref.anchorY = rqAnchorY;
         ref.type = rqType; ref.entityIndex = rqEntityIndex;
+        ref.sortKey = rqSortKey;
 
         let writeCount = 0;
 
         for (let i = 0; i < count && writeCount < this.renderQueueMaxItems; i++) {
             const type = collectorType[i];
             const idx = collectorIndex[i];
+            const sk = collectorY[i];
 
             if (type === 6) {
-                writeCount = this._emitAdobePieces(ref, writeCount, idx);
+                writeCount = this._emitAdobePieces(ref, writeCount, idx, sk);
                 continue;
             }
 
             const out = writeCount++;
+            if (rqSortKey) rqSortKey[out] = sk;
 
             if (type === 0) {
                 // === ENTITY ===
@@ -2491,6 +2499,18 @@ class PreRenderWorker extends AbstractWorker {
             for (let w = 0; w < n; w++) this.visibleLightsData[1 + w] = lightEntities[w];
         }
 
+        // Point shadows suppressed when sun owns the look — hoist before caster/neighbor work.
+        // intensity=1 still left scale≈0.033 (> old MIN 0.003) and burned light×neighbor; gate on sun too.
+        const sunIntensity = Sun.isInitialized && Sun.enabled ? Sun.intensity : 0;
+        const pointLightShadowMultiplier = 1 - (sunIntensity * 0.9);
+        const pointShadowAlphaScale = 0.33 * pointLightShadowMultiplier;
+        const MIN_POINT_SHADOW_ALPHA = 0.003;
+        if (pointShadowAlphaScale <= MIN_POINT_SHADOW_ALPHA || sunIntensity >= 1) {
+            this.shadowRenderQueueCount[0] = writeIdx;
+            this.shadowsUpdatedThisFrame = shadowCount;
+            return;
+        }
+
         // Shadow-specific: bail if no ShadowCaster SoA (optional) or no entities
         const shadowCasterActive = ShadowCaster.active;
         if (!shadowCasterActive) {
@@ -2537,17 +2557,8 @@ class PreRenderWorker extends AbstractWorker {
         const PI = Math.PI;
 
         // ========================================
-        // POINT LIGHT SHADOWS (suppressed when sun is bright)
+        // POINT LIGHT SHADOWS
         // ========================================
-        const sunIntensity = Sun.isInitialized && Sun.enabled ? Sun.intensity : 0;
-        const pointLightShadowMultiplier = 1 - (sunIntensity * 0.9);
-        const pointShadowAlphaScale = 0.33 * pointLightShadowMultiplier;
-        const MIN_POINT_SHADOW_ALPHA = 0.003;
-        if (pointShadowAlphaScale <= MIN_POINT_SHADOW_ALPHA) {
-            this.shadowRenderQueueCount[0] = writeIdx;
-            this.shadowsUpdatedThisFrame = shadowCount;
-            return;
-        }
 
         // Grid cell data (used for flash direct queries)
         const gridCounts = Grid._gridCounts;
