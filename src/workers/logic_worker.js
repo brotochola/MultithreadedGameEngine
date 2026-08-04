@@ -483,7 +483,7 @@ class LogicWorker extends AbstractWorker {
     this.raycastCountThisFrame = 0;
     this.decimateMsThisFrame = 0;
     this.tickMsThisFrame = 0;
-    if (Ray.collectDetailedStats) Ray.beginFrame();
+    if (this.collectDetailedStats) Ray.beginFrame();
 
     // Process bullet impacts from particle_worker (SAB poll - no message needed)
     // Gated on the batch sequence so each batch is processed exactly once,
@@ -536,7 +536,7 @@ class LogicWorker extends AbstractWorker {
     const frameNum = this.frameNumber;
     const transformActive = Transform.active; // Cache for active check
 
-    const collectDetailed = Ray.collectDetailedStats;
+    const collectDetailed = this.collectDetailedStats;
     const tEntity0 = collectDetailed ? performance.now() : 0;
     let decimateMs = 0;
     let tickMs = 0;
@@ -1201,19 +1201,18 @@ class LogicWorker extends AbstractWorker {
    * Override reportFPS to write stats to SharedArrayBuffer
    */
   reportFPS() {
-    // Write stats to SharedArrayBuffer every frame
-    if (this.stats) {
-      this.stats[LOGIC_STATS.FPS] = this.currentFPS;
-      this.stats[LOGIC_STATS.STEP_MS] = this.stepTimeThisFrame;
-      this.stats[LOGIC_STATS.ENTITIES_PROCESSED] = this.entitiesProcessedThisFrame;
-      this.stats[LOGIC_STATS.SYSTEMS_EXECUTED] = this.systemsExecutedThisFrame;
-      this.stats[LOGIC_STATS.MSG_MS] = this.messageTimeThisFrame;
-      this.stats[LOGIC_STATS.RAYCAST_MS] = this.raycastMsThisFrame || 0;
-      this.stats[LOGIC_STATS.RAYCAST_COUNT] = this.raycastCountThisFrame || 0;
-      this.stats[LOGIC_STATS.ENTITY_MS] = this.entityTimeThisFrame || 0;
-      this.stats[LOGIC_STATS.DECIMATE_MS] = this.decimateMsThisFrame || 0;
-      this.stats[LOGIC_STATS.TICK_MS] = this.tickMsThisFrame || 0;
-    }
+    if (!this.stats) return;
+    this.stats[LOGIC_STATS.FPS] = this.currentFPS;
+    this.stats[LOGIC_STATS.STEP_MS] = this.stepTimeThisFrame;
+    if (!this.collectDetailedStats) return;
+    this.stats[LOGIC_STATS.ENTITIES_PROCESSED] = this.entitiesProcessedThisFrame;
+    this.stats[LOGIC_STATS.SYSTEMS_EXECUTED] = this.systemsExecutedThisFrame;
+    this.stats[LOGIC_STATS.MSG_MS] = this.messageTimeThisFrame;
+    this.stats[LOGIC_STATS.RAYCAST_MS] = this.raycastMsThisFrame || 0;
+    this.stats[LOGIC_STATS.RAYCAST_COUNT] = this.raycastCountThisFrame || 0;
+    this.stats[LOGIC_STATS.ENTITY_MS] = this.entityTimeThisFrame || 0;
+    this.stats[LOGIC_STATS.DECIMATE_MS] = this.decimateMsThisFrame || 0;
+    this.stats[LOGIC_STATS.TICK_MS] = this.tickMsThisFrame || 0;
   }
 }
 

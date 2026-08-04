@@ -93,6 +93,11 @@
         sceneExport: options.sceneExport || DEFAULT_CONFIG.sceneExport,
         // Match demos/index.html: DebugUI on; attach() still disableAll() visual overlays.
         debug: Boolean(options.debug),
+        // Benches default true so VISIBILITY_MS / BOX2D_MS etc. stay populated.
+        collectDetailedStats:
+          options.collectDetailedStats === undefined
+            ? true
+            : Boolean(options.collectDetailedStats),
       };
     }
 
@@ -187,6 +192,15 @@
         createWorkerBenchmarkReader,
         summarizeWorkerBenchmarkWindow,
       } = await loadModules(config.sceneModule, config.sceneExport);
+
+      // Override scene debug.collectDetailedStats before Scene applies defaults / boots workers
+      SceneClass.config = {
+        ...SceneClass.config,
+        debug: {
+          ...(SceneClass.config.debug || {}),
+          collectDetailedStats: config.collectDetailedStats,
+        },
+      };
 
       await cleanupCurrentGame();
 

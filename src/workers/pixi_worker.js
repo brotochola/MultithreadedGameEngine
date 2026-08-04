@@ -528,44 +528,34 @@ class PixiRenderer extends AbstractWorker {
    * Override reportFPS to write stats to SharedArrayBuffer
    */
   reportFPS() {
-    // Write stats to SharedArrayBuffer every frame (no throttling needed - it's just memory writes)
     if (this.stats) {
       this.stats[RENDERER_STATS.FPS] = this.currentFPS;
       this.stats[RENDERER_STATS.STEP_MS] = this.stepTimeThisFrame;
-      this.stats[RENDERER_STATS.DRAW_CALLS] = this.drawCallCount;
+      if (this.collectDetailedStats) {
+        this.stats[RENDERER_STATS.DRAW_CALLS] = this.drawCallCount;
 
-      // Total visible sprites = entities + particles + decorations
-      const totalVisibleSprites =
-        this.visibleEntityCount + this.visibleParticleCount + this.visibleDecorationCount;
+        const totalVisibleSprites =
+          this.visibleEntityCount + this.visibleParticleCount + this.visibleDecorationCount;
 
-      // SPRITES_CREATED = number of instanced Mesh batches (entities/shadows/custom layers).
-      // No per-sprite PIXI objects exist anymore -- everything is one instanced draw call per batch.
-      const instancedBatchCount =
-        (this.entitiesBatch ? 1 : 0) +
-        (this.entitiesGlowBatch ? 1 : 0) +
-        (this.shadowBatch ? 1 : 0) +
-        this._customLayerList.length;
-      this.stats[RENDERER_STATS.SPRITES_CREATED] = instancedBatchCount;
-
-      // VISIBLE_SPRITES = sprites currently visible on screen
-      this.stats[RENDERER_STATS.VISIBLE_SPRITES] = totalVisibleSprites;
-
-      // Keep decoration stats for DebugUI (reuse same values)
-      this.stats[RENDERER_STATS.DECORATION_SPRITES] = instancedBatchCount;
-      this.stats[RENDERER_STATS.VISIBLE_DECORATIONS] = this.visibleDecorationCount;
-
-      // NEW: Separate counts for entities and particles
-      this.stats[RENDERER_STATS.VISIBLE_ENTITIES] = this.visibleEntityCount;
-      this.stats[RENDERER_STATS.VISIBLE_PARTICLES] = this.visibleParticleCount;
-
-      // Active decorations count (derived from free list)
-      this.stats[RENDERER_STATS.ACTIVE_DECORATIONS] = DecorationPool.getActiveCount();
-      this.stats[RENDERER_STATS.MSG_MS] = this.messageTimeThisFrame;
-      this.stats[RENDERER_STATS.LIGHTS_MS] = this.lightsTimeThisFrame;
-      this.stats[RENDERER_STATS.SHADOWS_MS] = this.shadowsTimeThisFrame;
-      this.stats[RENDERER_STATS.SPRITES_MS] = this.spritesTimeThisFrame;
-      this.stats[RENDERER_STATS.CUSTOM_LAYERS_MS] = this.customLayersTimeThisFrame;
-      this.stats[RENDERER_STATS.MISC_MS] = this.miscTimeThisFrame;
+        const instancedBatchCount =
+          (this.entitiesBatch ? 1 : 0) +
+          (this.entitiesGlowBatch ? 1 : 0) +
+          (this.shadowBatch ? 1 : 0) +
+          this._customLayerList.length;
+        this.stats[RENDERER_STATS.SPRITES_CREATED] = instancedBatchCount;
+        this.stats[RENDERER_STATS.VISIBLE_SPRITES] = totalVisibleSprites;
+        this.stats[RENDERER_STATS.DECORATION_SPRITES] = instancedBatchCount;
+        this.stats[RENDERER_STATS.VISIBLE_DECORATIONS] = this.visibleDecorationCount;
+        this.stats[RENDERER_STATS.VISIBLE_ENTITIES] = this.visibleEntityCount;
+        this.stats[RENDERER_STATS.VISIBLE_PARTICLES] = this.visibleParticleCount;
+        this.stats[RENDERER_STATS.ACTIVE_DECORATIONS] = DecorationPool.getActiveCount();
+        this.stats[RENDERER_STATS.MSG_MS] = this.messageTimeThisFrame;
+        this.stats[RENDERER_STATS.LIGHTS_MS] = this.lightsTimeThisFrame;
+        this.stats[RENDERER_STATS.SHADOWS_MS] = this.shadowsTimeThisFrame;
+        this.stats[RENDERER_STATS.SPRITES_MS] = this.spritesTimeThisFrame;
+        this.stats[RENDERER_STATS.CUSTOM_LAYERS_MS] = this.customLayersTimeThisFrame;
+        this.stats[RENDERER_STATS.MISC_MS] = this.miscTimeThisFrame;
+      }
     }
 
     // Reset draw call counter for next frame
@@ -798,7 +788,9 @@ class PixiRenderer extends AbstractWorker {
     this.customLayersTimeThisFrame = 0;
     this.miscTimeThisFrame = 0;
 
-    let t0 = performance.now();
+    const detail = this.collectDetailedStats;
+    let t0 = 0;
+    if (detail) t0 = performance.now();
 
     // Camera is always provided by the pre-render worker via renderQueueCamera.
     // Fall back to live SAB only during the very first frames before init completes.
@@ -827,36 +819,36 @@ class PixiRenderer extends AbstractWorker {
     // Not frame-locked: driven by particle_worker dirty flags, so always poll.
     this.updateDecalTiles();
 
-    this.miscTimeThisFrame = performance.now() - t0;
+    if (detail) this.miscTimeThisFrame = performance.now() - t0;
 
     if (runFrameLockedPasses) {
       // Pre-compute visible lights once (shared by updateLighting, updateShadowSprites)
-      t0 = performance.now();
+      if (detail) t0 = performance.now();
       this.computeVisibleLights();
       this.updateLighting();
-      this.lightsTimeThisFrame = performance.now() - t0;
+      if (detail) this.lightsTimeThisFrame = performance.now() - t0;
 
       // Update shadow RenderTexture with interleaved lights + shadows
-      t0 = performance.now();
+      if (detail) t0 = performance.now();
       this.updateShadowSprites();
-      this.shadowsTimeThisFrame = performance.now() - t0;
+      if (detail) this.shadowsTimeThisFrame = performance.now() - t0;
 
       // Use render queue from pre_render_worker - no fallback
-      t0 = performance.now();
+      if (detail) t0 = performance.now();
       this.updateSpritesFromRenderQueue();
-      this.spritesTimeThisFrame = performance.now() - t0;
+      if (detail) this.spritesTimeThisFrame = performance.now() - t0;
 
       // Update custom layer sprites and render shader layers to their RenderTextures
-      t0 = performance.now();
+      if (detail) t0 = performance.now();
       this.updateCustomLayers();
-      this.customLayersTimeThisFrame = performance.now() - t0;
+      if (detail) this.customLayersTimeThisFrame = performance.now() - t0;
 
       // ========================================
       // LOW-RES OFF-SCREEN RENDERING
       // ========================================
       // Render lighting to lower-resolution texture if configured.
       // This significantly improves performance on GPU-bound systems.
-      t0 = performance.now();
+      if (detail) t0 = performance.now();
       if (this._visPolyEnabled) {
         // Raycasted lighting: render visibility polygon meshes
         this.renderVisibilityLighting();
@@ -868,7 +860,7 @@ class PixiRenderer extends AbstractWorker {
           clear: true,
         });
       }
-      this.lightsTimeThisFrame += performance.now() - t0;
+      if (detail) this.lightsTimeThisFrame += performance.now() - t0;
     }
   }
 

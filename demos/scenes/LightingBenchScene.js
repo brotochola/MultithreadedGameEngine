@@ -52,6 +52,10 @@ function makeLightingBenchConfig(lightingExtra) {
     worldHeight: 3000,
     seed: 424242,
 
+    debug: {
+      collectDetailedStats: true,
+    },
+
     spatial: {
       ...FIXED60,
       cellSize: 128,

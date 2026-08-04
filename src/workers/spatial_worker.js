@@ -360,16 +360,17 @@ class SpatialWorker extends AbstractWorker {
     this.sleepNeighborSkipsThisFrame = 0;
 
     // STEP 1: Rebuild grid (only owned rows)
-    let startTime = this.stats ? performance.now() : 0;
+    const detail = this.collectDetailedStats;
+    let startTime = detail ? performance.now() : 0;
     this.rebuildOwnedRows();
-    if (this.stats) {
+    if (detail) {
       this.rebuildTimeThisFrame = performance.now() - startTime;
     }
 
     // STEP 2: Find neighbors (only for entities in owned rows)
-    startTime = this.stats ? performance.now() : 0;
+    startTime = detail ? performance.now() : 0;
     this.findNeighborsForOwnedEntities();
-    if (this.stats) {
+    if (detail) {
       this.neighborSearchTimeThisFrame = performance.now() - startTime;
     }
   }
@@ -814,18 +815,18 @@ class SpatialWorker extends AbstractWorker {
    * Report FPS and stats to SharedArrayBuffer
    */
   reportFPS() {
-    if (this.stats) {
-      this.stats[SPATIAL_STATS.FPS] = this.currentFPS;
-      this.stats[SPATIAL_STATS.STEP_MS] = this.stepTimeThisFrame;
-      this.stats[SPATIAL_STATS.ENTITIES_PROCESSED] = this.entitiesProcessedThisFrame;
-      this.stats[SPATIAL_STATS.NEIGHBOR_CHECKS] = this.neighborsFoundThisFrame;
-      this.stats[SPATIAL_STATS.GRID_CELLS_CHECKED] = this.cellsCheckedThisFrame;
-      this.stats[SPATIAL_STATS.REBUILD_MS] = this.rebuildTimeThisFrame;
-      this.stats[SPATIAL_STATS.NEIGHBOR_MS] = this.neighborSearchTimeThisFrame;
-      this.stats[SPATIAL_STATS.MSG_MS] = this.messageTimeThisFrame;
-      this.stats[SPATIAL_STATS.NEIGHBORS_REUSED] = this.neighborsReusedThisFrame;
-      this.stats[SPATIAL_STATS.SLEEP_NEIGHBOR_SKIPS] = this.sleepNeighborSkipsThisFrame;
-    }
+    if (!this.stats) return;
+    this.stats[SPATIAL_STATS.FPS] = this.currentFPS;
+    this.stats[SPATIAL_STATS.STEP_MS] = this.stepTimeThisFrame;
+    if (!this.collectDetailedStats) return;
+    this.stats[SPATIAL_STATS.ENTITIES_PROCESSED] = this.entitiesProcessedThisFrame;
+    this.stats[SPATIAL_STATS.NEIGHBOR_CHECKS] = this.neighborsFoundThisFrame;
+    this.stats[SPATIAL_STATS.GRID_CELLS_CHECKED] = this.cellsCheckedThisFrame;
+    this.stats[SPATIAL_STATS.REBUILD_MS] = this.rebuildTimeThisFrame;
+    this.stats[SPATIAL_STATS.NEIGHBOR_MS] = this.neighborSearchTimeThisFrame;
+    this.stats[SPATIAL_STATS.MSG_MS] = this.messageTimeThisFrame;
+    this.stats[SPATIAL_STATS.NEIGHBORS_REUSED] = this.neighborsReusedThisFrame;
+    this.stats[SPATIAL_STATS.SLEEP_NEIGHBOR_SKIPS] = this.sleepNeighborSkipsThisFrame;
   }
 }
 

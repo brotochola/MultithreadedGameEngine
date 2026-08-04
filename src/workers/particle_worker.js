@@ -604,7 +604,7 @@ class ParticleWorker extends AbstractWorker {
 
     // Build active particle list AND calculate visibility in one fused pass
     // Writes to: activeParticlesData SAB, visibleParticlesData SAB, isItOnScreen flags
-    const shouldProfile = !!this.stats;
+    const shouldProfile = this.collectDetailedStats;
     let startTime = shouldProfile ? performance.now() : 0;
     this.buildActiveAndVisibleParticleLists();
     if (shouldProfile) {
@@ -2143,19 +2143,19 @@ class ParticleWorker extends AbstractWorker {
   // ========================================
 
   reportFPS() {
-    if (this.stats) {
-      this.stats[PARTICLE_STATS.FPS] = this.currentFPS;
-      this.stats[PARTICLE_STATS.STEP_MS] = this.stepTimeThisFrame;
-      this.stats[PARTICLE_STATS.ACTIVE_PARTICLES] = this.activeParticleCount;
-      this.stats[PARTICLE_STATS.TOTAL_PARTICLES] = this.maxParticles;
-      this.stats[PARTICLE_STATS.PARTICLES_STAMPED] = this.particlesStampedThisFrame;
-      this.stats[PARTICLE_STATS.FLASHES_UPDATED] = 0; // Flashes now handled elsewhere
-      this.stats[PARTICLE_STATS.ACTIVE_ENTITIES] = this.activeEntitiesData ? this.activeEntitiesData[0] : 0;
-      this.stats[PARTICLE_STATS.TOTAL_ENTITIES] = this.globalEntityCount || 0;
-      this.stats[PARTICLE_STATS.MSG_MS] = this.messageTimeThisFrame;
-      this.stats[PARTICLE_STATS.BUILD_ACTIVE_VISIBLE_MS] = this.buildActiveVisibleTimeThisFrame;
-      this.stats[PARTICLE_STATS.PARTICLE_PHYSICS_MS] = this.particlePhysicsTimeThisFrame;
-    }
+    if (!this.stats) return;
+    this.stats[PARTICLE_STATS.FPS] = this.currentFPS;
+    this.stats[PARTICLE_STATS.STEP_MS] = this.stepTimeThisFrame;
+    if (!this.collectDetailedStats) return;
+    this.stats[PARTICLE_STATS.ACTIVE_PARTICLES] = this.activeParticleCount;
+    this.stats[PARTICLE_STATS.TOTAL_PARTICLES] = this.maxParticles;
+    this.stats[PARTICLE_STATS.PARTICLES_STAMPED] = this.particlesStampedThisFrame;
+    this.stats[PARTICLE_STATS.FLASHES_UPDATED] = 0; // Flashes now handled elsewhere
+    this.stats[PARTICLE_STATS.ACTIVE_ENTITIES] = this.activeEntitiesData ? this.activeEntitiesData[0] : 0;
+    this.stats[PARTICLE_STATS.TOTAL_ENTITIES] = this.globalEntityCount || 0;
+    this.stats[PARTICLE_STATS.MSG_MS] = this.messageTimeThisFrame;
+    this.stats[PARTICLE_STATS.BUILD_ACTIVE_VISIBLE_MS] = this.buildActiveVisibleTimeThisFrame;
+    this.stats[PARTICLE_STATS.PARTICLE_PHYSICS_MS] = this.particlePhysicsTimeThisFrame;
   }
 }
 

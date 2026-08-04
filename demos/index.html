@@ -15,8 +15,8 @@
 
     .scene_chooser_button {
       margin: 10px;
-      width: 200px;
-      height: 30px;
+      width: 250px;
+      height: 40px;
       background: #000;
       color: white;
       border: 1px solid white;
@@ -97,7 +97,7 @@
       }
       button.textContent = scene.name;
       document.getElementById('scene_list').appendChild(button);
-      document.getElementById('scene_list').appendChild(document.createElement('br'));
+      if (i % 2 == 1) document.getElementById('scene_list').appendChild(document.createElement('br'));
     }
 
 

@@ -391,6 +391,9 @@ export const NAVIGATION_DEFAULTS = Object.freeze({
 
 export const DEBUG_DEFAULTS = Object.freeze({
   maxDebugDrawEntries: 256,
-  /** Ray wraps + logic per-entity tick now(). Coarse STEP_MS / FPS SAB writes stay on. */
+  /**
+   * Worker subtimers + SAB detail fields (Collect/Sort/Vis/Ray/Lights/…).
+   * false → only FPS + STEP_MS written; DebugUI shows Step / Load% / Fps.
+   */
   collectDetailedStats: false,
 });

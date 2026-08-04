@@ -16,6 +16,7 @@ import {
 } from '../stats/StatsCollector.js';
 
 const COMMON_KEYS = ['STEP_MS', 'LOAD', 'FPS', 'MSG_MS'];
+const LEAN_KEYS = ['STEP_MS', 'LOAD', 'FPS'];
 const SCHEMA_BY_TYPE = {
   renderer: RENDERER_STATS,
   particle: PARTICLE_STATS,
@@ -278,6 +279,10 @@ export class PerformancePanel {
     return row;
   }
 
+  _collectDetailedStatsEnabled() {
+    return !!this.debugUI.scene?.config?.debug?.collectDetailedStats;
+  }
+
   _createWorkerStatRow(workerType, workerIndex) {
     const stats = this.debugUI.stats;
     const config = WORKER_DISPLAY_CONFIG[workerType];
@@ -286,7 +291,9 @@ export class PerformancePanel {
         ? stats.workerStatViews[workerType].length
         : 1;
     const title = count > 1 ? `${config.label} #${workerIndex}` : config.label;
-    const detailCount = Math.max(0, config.stats.length - COMMON_KEYS.length);
+    const detailed = this._collectDetailedStatsEnabled();
+    const headKeys = detailed ? COMMON_KEYS : LEAN_KEYS;
+    const detailCount = detailed ? Math.max(0, config.stats.length - COMMON_KEYS.length) : 0;
     const rowId = `${workerType}:${workerIndex}`;
     const { row, metrics, loadFill, details } = this._createRowShell(rowId, config.color, title, {
       expandable: detailCount > 0,
@@ -294,19 +301,21 @@ export class PerformancePanel {
 
     const elements = { _loadFill: loadFill, _extras: details };
 
-    for (const key of COMMON_KEYS) {
+    for (const key of headKeys) {
       const cell = this._metricCell(config.color, key);
       metrics.appendChild(cell);
       elements[key] = cell;
     }
 
-    for (let s = COMMON_KEYS.length; s < config.stats.length; s++) {
-      const stat = config.stats[s];
-      const chip = document.createElement('span');
-      chip.className = 'debug-ui-worker-detail';
-      chip.textContent = `${stat.label}: —`;
-      details.appendChild(chip);
-      elements[stat.key] = chip;
+    if (detailed) {
+      for (let s = COMMON_KEYS.length; s < config.stats.length; s++) {
+        const stat = config.stats[s];
+        const chip = document.createElement('span');
+        chip.className = 'debug-ui-worker-detail';
+        chip.textContent = `${stat.label}: —`;
+        details.appendChild(chip);
+        elements[stat.key] = chip;
+      }
     }
 
     return { row, elements };

@@ -113,6 +113,9 @@ function buildBenchmarkOptions(cliArgs) {
     DEFAULT_SAMPLE_INTERVAL_MS
   );
 
+  // Benches default collectDetailedStats on; --no-collect-detailed-stats for lean A/B.
+  const collectDetailedStats = !cliArgs['no-collect-detailed-stats'];
+
   return {
     warmupMs,
     durationMs,
@@ -120,6 +123,7 @@ function buildBenchmarkOptions(cliArgs) {
     sceneModule: cliArgs.scene || DEFAULT_SCENE_MODULE,
     sceneExport: cliArgs['scene-export'] || DEFAULT_SCENE_EXPORT,
     debug: Boolean(cliArgs.debug),
+    collectDetailedStats,
     ...(canvasWidth != null ? { canvasWidth } : {}),
     ...(canvasHeight != null ? { canvasHeight } : {}),
   };
@@ -314,6 +318,7 @@ async function main() {
       chromiumBackgroundThrottleMitigation: !allowThrottle,
       chromiumExtraArgs: launchArgs,
       gameEngineDebug: Boolean(benchmarkOptions.debug),
+      collectDetailedStats: Boolean(benchmarkOptions.collectDetailedStats),
       benchmarkNote:
         'Headed runs: keep the Chromium window visible and not minimized for comparable FPS; hidden/occluded windows can still throttle despite launch flags.',
       ...(screenshotPaths.length > 0

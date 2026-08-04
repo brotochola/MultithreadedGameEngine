@@ -78,6 +78,7 @@
   let angChan = null;
   let sleepingU8 = null;
   let statsF32 = null;
+  let collectDetailedStats = false;
 
   // Published pose double-buffer (render-queue style): visuals read post-step snapshot
   let poseSync = null; // Int32Array [readyFrame, consumedFrame]
@@ -1072,7 +1073,7 @@
     jointSyncChanges,
     commandCount,
   ) {
-    if (!statsF32) return;
+    if (!statsF32 || !collectDetailedStats) return;
     statsF32[PS.BODY_COUNT] = denseCount;
     statsF32[PS.JOINT_COUNT] = world ? world.getJointCount() : 0;
     statsF32[PS.BODY_SYNC_MS] = bodySyncMs;
@@ -1176,6 +1177,18 @@
     // Service even when dt==0 / paused so sync box2dQueryAABB callers do not hang.
     if (!(dt > 0)) {
       serviceQueryAabb();
+      return;
+    }
+    if (!collectDetailedStats) {
+      syncBodies(entityCount);
+      syncJoints();
+      drainCommands();
+      serviceQueryAabb();
+      snapshotPrevPose(entityCount);
+      applyForcesAndTorque();
+      world.step(dt, solverSteps);
+      publishPose(entityCount);
+      afterStep();
       return;
     }
     const t0 = performance.now();
@@ -1360,6 +1373,7 @@
     } else {
       statsF32 = null;
     }
+    collectDetailedStats = !!data.collectDetailedStats;
     const entityCount = data.entityCount | 0;
     hasBody = new Uint8Array(entityCount);
     createFailed = new Uint8Array(entityCount);

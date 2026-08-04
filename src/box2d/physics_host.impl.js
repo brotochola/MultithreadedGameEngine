@@ -296,6 +296,7 @@
     posePublish: null,
     workerPorts: new Map(),
     timeoutId: 0,
+    collectDetailedStats: false,
   };
 
   function reportReady() {
@@ -319,7 +320,9 @@
     }
     if (state.stats) {
       state.stats[PS.FPS] = state.currentFPS;
-      state.stats[PS.MSG_MS] = state.messageTimeThisFrame;
+      if (state.collectDetailedStats) {
+        state.stats[PS.MSG_MS] = state.messageTimeThisFrame;
+      }
     }
   }
 
@@ -400,6 +403,7 @@
       jointBreakSab: state.jointBreakSab,
       hitEventThreshold: s.hitEventThreshold,
       stats: state.stats ? packView(state.stats) : null,
+      collectDetailedStats: !!state.collectDetailedStats,
       posePublish: state.posePublish
         ? {
             dataA: state.posePublish.dataA,
@@ -538,6 +542,7 @@
     state.config = data.config || {};
     state.globalEntityCount = data.globalEntityCount | 0;
     state.posePublish = data.posePublish || null;
+    state.collectDetailedStats = !!(state.config.debug && state.config.debug.collectDetailedStats);
 
     if (data.buffers && data.buffers.physicsStats) {
       state.stats = new Float32Array(data.buffers.physicsStats);
