@@ -68,6 +68,8 @@ export class Ray {
   static _traverseResult = { entityIndex: -1, distance: Infinity }; // Reused by _traverseGrid
 
   // Per-worker SAB stats (outermost public call only — nested Ray.* not double-counted)
+  /** Set from worker init via config.debug.collectDetailedStats */
+  static collectDetailedStats = false;
   static _statsMs = 0;
   static _statsCount = 0;
   static _statsDepth = 0;
@@ -92,10 +94,12 @@ export class Ray {
   }
 
   static _enterStats() {
+    if (!this.collectDetailedStats) return;
     if (this._statsDepth++ === 0) this._statsT0 = performance.now();
   }
 
   static _leaveStats() {
+    if (!this.collectDetailedStats) return;
     if (--this._statsDepth === 0) {
       this._statsMs += performance.now() - this._statsT0;
       this._statsCount++;

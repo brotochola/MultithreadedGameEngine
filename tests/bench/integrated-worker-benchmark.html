@@ -91,6 +91,8 @@
         worldHeight: normalizePositiveInteger(options.worldHeight, canvasHeight),
         sceneModule: options.sceneModule || DEFAULT_CONFIG.sceneModule,
         sceneExport: options.sceneExport || DEFAULT_CONFIG.sceneExport,
+        // Match demos/index.html: DebugUI on; attach() still disableAll() visual overlays.
+        debug: Boolean(options.debug),
       };
     }
 
@@ -195,7 +197,7 @@
         injectStyles: false,
         preventContextMenu: false,
         preventDefaultKeys: false,
-        debug: false,
+        debug: config.debug,
       });
       currentGame = game;
 

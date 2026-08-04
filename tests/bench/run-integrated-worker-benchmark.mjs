@@ -119,6 +119,7 @@ function buildBenchmarkOptions(cliArgs) {
     sampleIntervalMs,
     sceneModule: cliArgs.scene || DEFAULT_SCENE_MODULE,
     sceneExport: cliArgs['scene-export'] || DEFAULT_SCENE_EXPORT,
+    debug: Boolean(cliArgs.debug),
     ...(canvasWidth != null ? { canvasWidth } : {}),
     ...(canvasHeight != null ? { canvasHeight } : {}),
   };
@@ -312,6 +313,7 @@ async function main() {
       playwrightHeadless: !headed,
       chromiumBackgroundThrottleMitigation: !allowThrottle,
       chromiumExtraArgs: launchArgs,
+      gameEngineDebug: Boolean(benchmarkOptions.debug),
       benchmarkNote:
         'Headed runs: keep the Chromium window visible and not minimized for comparable FPS; hidden/occluded windows can still throttle despite launch flags.',
       ...(screenshotPaths.length > 0

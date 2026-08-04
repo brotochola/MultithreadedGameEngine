@@ -342,6 +342,9 @@ export class AbstractWorker {
     // Store config for worker access
     this.config = data.config || {};
 
+    // Fine-grained Ray / logic tick timers (config.debug.collectDetailedStats)
+    Ray.collectDetailedStats = !!(this.config.debug?.collectDetailedStats);
+
     // Check nested config for fixedFps / noLimitFPS (class name → config key)
     const workerType = this.constructor.name.replace('Worker', '').toLowerCase();
     const configKeyAliases = {

@@ -481,7 +481,9 @@ class LogicWorker extends AbstractWorker {
     this.entityTimeThisFrame = 0;
     this.raycastMsThisFrame = 0;
     this.raycastCountThisFrame = 0;
-    Ray.beginFrame();
+    this.decimateMsThisFrame = 0;
+    this.tickMsThisFrame = 0;
+    if (Ray.collectDetailedStats) Ray.beginFrame();
 
     // Process bullet impacts from particle_worker (SAB poll - no message needed)
     // Gated on the batch sequence so each batch is processed exactly once,
@@ -534,7 +536,8 @@ class LogicWorker extends AbstractWorker {
     const frameNum = this.frameNumber;
     const transformActive = Transform.active; // Cache for active check
 
-    const tEntity0 = performance.now();
+    const collectDetailed = Ray.collectDetailedStats;
+    const tEntity0 = collectDetailed ? performance.now() : 0;
     let decimateMs = 0;
     let tickMs = 0;
 
@@ -565,9 +568,13 @@ class LogicWorker extends AbstractWorker {
         activeCount++;
         this.entitiesProcessedThisFrame++;
 
-        const tTick0 = performance.now();
-        obj.tick(dtRatio, deltaTime, accTime, frameNum);
-        tickMs += performance.now() - tTick0;
+        if (collectDetailed) {
+          const tTick0 = performance.now();
+          obj.tick(dtRatio, deltaTime, accTime, frameNum);
+          tickMs += performance.now() - tTick0;
+        } else {
+          obj.tick(dtRatio, deltaTime, accTime, frameNum);
+        }
 
         if (needsScreenCallbacks) this.checkScreenVisibility(entityIndex, obj);
       }
@@ -607,12 +614,12 @@ class LogicWorker extends AbstractWorker {
           activeCount++;
           this.entitiesProcessedThisFrame++;
 
-          const tVisit0 = performance.now();
+          const tVisit0 = collectDetailed ? performance.now() : 0;
 
           // TICK DECIMATION: Check countdown
           if (--nextTick[entityIndex] > 0) {
             if (needsScreenCallbacks) this.checkScreenVisibility(entityIndex, obj);
-            decimateMs += performance.now() - tVisit0;
+            if (collectDetailed) decimateMs += performance.now() - tVisit0;
             continue;
           }
 
@@ -628,17 +635,19 @@ class LogicWorker extends AbstractWorker {
           rbAy[entityIndex] *= tickInterval;
 
           if (needsScreenCallbacks) this.checkScreenVisibility(entityIndex, obj);
-          tickMs += performance.now() - tVisit0;
+          if (collectDetailed) tickMs += performance.now() - tVisit0;
         }
       }
     }
 
-    this.entityTimeThisFrame = performance.now() - tEntity0;
-    this.decimateMsThisFrame = decimateMs;
-    this.tickMsThisFrame = tickMs;
-    const rayStats = Ray.consumeStats();
-    this.raycastMsThisFrame = rayStats.ms;
-    this.raycastCountThisFrame = rayStats.count;
+    if (collectDetailed) {
+      this.entityTimeThisFrame = performance.now() - tEntity0;
+      this.decimateMsThisFrame = decimateMs;
+      this.tickMsThisFrame = tickMs;
+      const rayStats = Ray.consumeStats();
+      this.raycastMsThisFrame = rayStats.ms;
+      this.raycastCountThisFrame = rayStats.count;
+    }
 
     // Entity processing system executed
     if (this.entitiesProcessedThisFrame > 0) {

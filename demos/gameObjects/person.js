@@ -514,30 +514,26 @@ export class Person extends Lootable {
   }
 
   shootingSparks(dirX, dirY, muzzleX, muzzleY, muzzleHeightPx) {
-    // Cone around aim: sample speed + small lateral offset in CS space (no atan2)
-    const count = Math.floor(Math.random() * 10) + 10;
-    for (let n = 0; n < count; n++) {
-      const speed = 0.1 + Math.random() * 9.9;
-      const lateral = (Math.random() - 0.5) * 0.35; // ~±10° small-angle
-      const sx = dirX - dirY * lateral;
-      const sy = dirY + dirX * lateral;
-      ParticleEmitter.emit({
-        count: 1,
-        x: muzzleX,
-        y: muzzleY + 1,
-        z: muzzleHeightPx,
-        vx: sx * speed,
-        vy: sy * speed,
-        vz: { min: -1, max: 5 },
-        gravity: 0.4,
-        lifespan: { min: 33, max: 100 },
-        scale: { min: 0.15, max: 0.5 },
-        texture: '_whiteCircle',
-        tint: { min: 0xffff00, max: 0xffffff },
-        alpha: { min: 0.5, max: 0.8 },
-        despawnOnGroundContact: true,
-      });
-    }
+    // One emit: angleXY/speed ranges (atan2 once cheaper than N× emit paths)
+    const angleDeg = (Math.atan2(dirY, dirX) * 180) / Math.PI;
+    const spreadDeg = 10;
+    ParticleEmitter.emit({
+      count: Math.floor(Math.random() * 10) + 10,
+      x: muzzleX,
+      y: muzzleY + 1,
+      z: muzzleHeightPx,
+      angleXY: { min: angleDeg - spreadDeg / 2, max: angleDeg + spreadDeg / 2 },
+      speed: { min: 0.1, max: 10 },
+      rotation: { min: 0, max: 360 },
+      vz: { min: -1, max: 5 },
+      gravity: 0.4,
+      lifespan: { min: 33, max: 100 },
+      scale: { min: 0.15, max: 0.5 },
+      texture: '_whiteCircle',
+      tint: { min: 0xffff00, max: 0xffffff },
+      alpha: { min: 0.5, max: 0.8 },
+      despawnOnGroundContact: true,
+    });
   }
 
   /**
