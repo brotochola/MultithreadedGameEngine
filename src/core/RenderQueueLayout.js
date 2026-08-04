@@ -7,11 +7,10 @@
 //
 // SHADER LAYER (two-RT) PIPELINE:
 //   1. pre_render_worker collects visible entities assigned to the layer
-//   2. Y-sorts them, resolves textures/animation, writes to layer's render queue SAB
-//   3. pixi_worker reads the queue, updates ParticleContainer sprites
-//   4. Renders ParticleContainer (additive blend) → raw density RenderTexture
-//   5. Renders fullscreen Mesh (custom fragment shader reads density RT) → output RenderTexture
-//   6. Output RT displayed on stage via Sprite at the layer's zIndex
+//   2. Resolves textures/animation, writes composite sortKey + pose to layer SAB
+//   3. pixi_worker uploads InstancedSpriteBatch (GPU depth when layer.ySorting)
+//   4. Shader layers: instanced Mesh → raw density RT → fullscreen threshold → output RT
+//   5. Output RT (or mesh) displayed on stage at the layer's zIndex
 //
 // Adding a new field: add it to FIELDS, bump version. All consumers update automatically.
 

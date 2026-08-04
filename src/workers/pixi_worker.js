@@ -162,7 +162,6 @@ class PixiRenderer extends AbstractWorker {
     this.shadowBatch = null;
     this.spriteMesh = null; // entitiesBatch.mesh alias for layer refs
     this.spriteGlowMesh = null; // entitiesGlowBatch.mesh
-    this.instancedSprites = true;
     this._texLut = null;
     this._texLutCount = 0;
     this.backgroundSprite = null;
@@ -2793,10 +2792,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         ? !!rendererConfig.autoGenerateMipmaps
         : RENDERER_DEFAULTS.autoGenerateMipmaps;
 
-    this.instancedSprites =
-      rendererConfig.instancedSprites !== undefined
-        ? !!rendererConfig.instancedSprites
-        : RENDERER_DEFAULTS.instancedSprites;
+    // instancedSprites: always on (ParticleContainer path removed; false ignored)
 
     // Configure decoration zoom culling thresholds
     this.decorationFadeStartZoom =
@@ -3126,11 +3122,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
       // Instanced Mesh batch for this layer (replaces per-sprite ParticleContainer)
       const containerBlend = layerObj.containerBlendMode;
+      const layerYSort = !!layerObj.ySorting;
       const batch = new InstancedSpriteBatch({
         capacity: maxItems,
         label: `custom-layer-${layerName}`,
         atlasSource: this._resolveAtlasSource(),
-        depthTest: false,
+        depthTest: layerYSort,
       });
       batch.mesh.blendMode = containerBlend;
 
@@ -3138,6 +3135,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         layerId,
         layerName,
         maxItems,
+        ySorting: layerYSort,
         baseResolution: resolution,
         resolution,
         buffers,
@@ -3246,6 +3244,17 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       const count = ref.count[0];
       cl.prevCount = count;
       const renderToRT = !!cl.rt;
+      const useSortKey = !!(cl.ySorting && ref.sortKey);
+      const uploadBase = {
+        depthMode: useSortKey ? 'sortKey' : 'index',
+        depthDenom: cl.maxItems,
+        worldHeight: this.config?.worldHeight || 10000,
+        sortKey: useSortKey ? ref.sortKey : null,
+        texLut: this._texLut,
+        texLutCount: this._texLutCount,
+        textures: this.flatTextures,
+        type: ref.type,
+      };
 
       cl.batch.upload(
         {
@@ -3269,19 +3278,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
             cameraX: this._renderCameraX,
             cameraY: this._renderCameraY,
             resolution: cl.resolution || 1.0,
-            depthMode: 'index',
-            depthDenom: cl.maxItems,
-            texLut: this._texLut,
-            texLutCount: this._texLutCount,
-            textures: this.flatTextures,
+            ...uploadBase,
           }
           : {
             space: 'world',
-            depthMode: 'index',
-            depthDenom: cl.maxItems,
-            texLut: this._texLut,
-            texLutCount: this._texLutCount,
-            textures: this.flatTextures,
+            ...uploadBase,
           }
       );
 

@@ -293,7 +293,7 @@ export const RENDERER_DEFAULTS = Object.freeze({
   autoGenerateMipmaps: false,
   /**
    * Instanced Mesh pipeline for ENTITIES / cast shadows / custom layers.
-   * Default on — ParticleContainer sprite path removed.
+   * Always on — ParticleContainer path removed. Scene `false` is ignored.
    */
   instancedSprites: true,
 });

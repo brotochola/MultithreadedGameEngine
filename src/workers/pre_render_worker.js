@@ -1579,67 +1579,6 @@ class PreRenderWorker extends AbstractWorker {
     }
 
     /**
-     * In-place heapsort for any renderable collector triplet (Y, type, index).
-     * Used by both main ENTITIES queue and custom layer queues.
-     */
-    _heapsortCollector(count, yArr, typeArr, indexArr, px, py, rc, rs) {
-        for (let i = (count >> 1) - 1; i >= 0; i--) {
-            this._heapifyRenderables(count, i, yArr, typeArr, indexArr, px, py, rc, rs);
-        }
-
-        for (let i = count - 1; i > 0; i--) {
-            this._swapCollector(0, i, yArr, typeArr, indexArr, px, py, rc, rs);
-            this._heapifyRenderables(i, 0, yArr, typeArr, indexArr, px, py, rc, rs);
-        }
-    }
-
-    _heapsortRenderables(count) {
-        this._heapsortCollector(
-            count,
-            this._renderableY,
-            this._renderableType,
-            this._renderableIndex,
-            this._renderablePx,
-            this._renderablePy,
-            this._renderableRotC,
-            this._renderableRotS
-        );
-    }
-
-    _swapCollector(a, b, yArr, typeArr, indexArr, px, py, rc, rs) {
-        let t = yArr[a]; yArr[a] = yArr[b]; yArr[b] = t;
-        t = typeArr[a]; typeArr[a] = typeArr[b]; typeArr[b] = t;
-        t = indexArr[a]; indexArr[a] = indexArr[b]; indexArr[b] = t;
-        if (px) {
-            t = px[a]; px[a] = px[b]; px[b] = t;
-            t = py[a]; py[a] = py[b]; py[b] = t;
-            t = rc[a]; rc[a] = rc[b]; rc[b] = t;
-            t = rs[a]; rs[a] = rs[b]; rs[b] = t;
-        }
-    }
-
-    _heapifyRenderables(heapSize, i, yArr, typeArr, indexArr, px, py, rc, rs) {
-        while (true) {
-            let largest = i;
-            const left = (i << 1) + 1;
-            const right = left + 1;
-
-            if (left < heapSize && yArr[left] > yArr[largest]) {
-                largest = left;
-            }
-
-            if (right < heapSize && yArr[right] > yArr[largest]) {
-                largest = right;
-            }
-
-            if (largest === i) break;
-
-            this._swapCollector(i, largest, yArr, typeArr, indexArr, px, py, rc, rs);
-            i = largest;
-        }
-    }
-
-    /**
      * Build the final render queue
      */
     buildRenderQueue(deltaTime) {
@@ -1653,53 +1592,10 @@ class PreRenderWorker extends AbstractWorker {
         const collectorType = this._renderableType;
         const collectorIndex = this._renderableIndex;
 
-        const entitiesLayer = Layer.getById(Layer.ENTITIES_ID);
-        const shouldSortByY = entitiesLayer ? entitiesLayer.ySorting : true;
-        // Instanced path: GPU depth from composite sortKey — skip CPU heapsort.
-        const skipCpuYSort = !!(shouldSortByY && this.config?.renderer?.instancedSprites !== false);
-
-        // Sort by Y (ENTITIES layer policy). Skipped when GPU depth handles ordering.
+        // Y-order via GPU depth + composite sortKey (instanced path always on).
+        // No CPU heapsort when Layer.ENTITIES.ySorting — pixi depthMode sortKey.
         const detail = this.collectDetailedStats;
-        let tSort = 0;
-        if (detail) tSort = performance.now();
-        if (shouldSortByY && count > 1 && !skipCpuYSort) {
-            if (count > 256) {
-                this._heapsortRenderables(count);
-            } else {
-                const px = this._renderablePx;
-                const py = this._renderablePy;
-                const rc = this._renderableRotC;
-                const rs = this._renderableRotS;
-                for (let i = 1; i < count; i++) {
-                    const currentY = collectorY[i];
-                    const currentType = collectorType[i];
-                    const currentIndex = collectorIndex[i];
-                    const currentPx = px[i];
-                    const currentPy = py[i];
-                    const currentRc = rc[i];
-                    const currentRs = rs[i];
-                    let j = i - 1;
-                    while (j >= 0 && collectorY[j] > currentY) {
-                        collectorY[j + 1] = collectorY[j];
-                        collectorType[j + 1] = collectorType[j];
-                        collectorIndex[j + 1] = collectorIndex[j];
-                        px[j + 1] = px[j];
-                        py[j + 1] = py[j];
-                        rc[j + 1] = rc[j];
-                        rs[j + 1] = rs[j];
-                        j--;
-                    }
-                    collectorY[j + 1] = currentY;
-                    collectorType[j + 1] = currentType;
-                    collectorIndex[j + 1] = currentIndex;
-                    px[j + 1] = currentPx;
-                    py[j + 1] = currentPy;
-                    rc[j + 1] = currentRc;
-                    rs[j + 1] = currentRs;
-                }
-            }
-        }
-        if (detail) this.sortTimeThisFrame = performance.now() - tSort;
+        if (detail) this.sortTimeThisFrame = 0;
         const tEmit = detail ? performance.now() : 0;
 
         // Cache output arrays
@@ -2172,29 +2068,7 @@ class PreRenderWorker extends AbstractWorker {
             const cType = collector.type;
             const cIndex = collector.index;
 
-            // Y-sort (per-layer policy), same threshold as main ENTITIES queue
-            if (collector.ySorting && layerCount > 1) {
-                if (layerCount > 256) {
-                    this._heapsortCollector(layerCount, cY, cType, cIndex);
-                } else {
-                    for (let i = 1; i < layerCount; i++) {
-                        const currentY = cY[i];
-                        const currentType = cType[i];
-                        const currentIndex = cIndex[i];
-                        let j = i - 1;
-                        while (j >= 0 && cY[j] > currentY) {
-                            cY[j + 1] = cY[j];
-                            cType[j + 1] = cType[j];
-                            cIndex[j + 1] = cIndex[j];
-                            j--;
-                        }
-                        cY[j + 1] = currentY;
-                        cType[j + 1] = currentType;
-                        cIndex[j + 1] = currentIndex;
-                    }
-                }
-            }
-
+            // Y-order via GPU depth + sortKey when layer.ySorting — no CPU heapsort.
             const rqX = ref.x;
             const rqY = ref.y;
             const rqScaleX = ref.scaleX;
@@ -2208,24 +2082,28 @@ class PreRenderWorker extends AbstractWorker {
             const rqAnchorY = ref.anchorY;
             const rqType = ref.type;
             const rqEntityIndex = ref.entityIndex;
+            const rqSortKey = ref.sortKey;
             const layerRef = this._emitRef;
             layerRef.x = rqX; layerRef.y = rqY; layerRef.scaleX = rqScaleX; layerRef.scaleY = rqScaleY;
             layerRef.rotC = rqRotC; layerRef.rotS = rqRotS; layerRef.alpha = rqAlpha; layerRef.tint = rqTint;
             layerRef.textureId = rqTextureId; layerRef.anchorX = rqAnchorX; layerRef.anchorY = rqAnchorY;
             layerRef.type = rqType; layerRef.entityIndex = rqEntityIndex;
+            layerRef.sortKey = rqSortKey;
 
             let writeCount = 0;
 
             for (let i = 0; i < layerCount && writeCount < collector.maxItems; i++) {
                 const type = cType[i];
                 const idx = cIndex[i];
+                const sk = cY[i];
 
                 if (type === 6) {
-                    writeCount = this._emitAdobePieces(layerRef, writeCount, idx);
+                    writeCount = this._emitAdobePieces(layerRef, writeCount, idx, sk);
                     continue;
                 }
 
                 const out = writeCount++;
+                if (rqSortKey) rqSortKey[out] = sk;
 
                 if (type === 0) {
                     // === ENTITY ===
