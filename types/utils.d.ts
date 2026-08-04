@@ -99,7 +99,9 @@ export function validatePhysicsConfig(currentConfig: unknown, newConfig: unknown
 export function normalizeAngle(angle: number): number;
 export function normalizeAngleSigned(angle: number): number;
 export function normalizeAngleDifference(angle1: number, angle2: number): number;
-export function getDirectionFromAngle(angle: number): Vec2Like;
+export function getDirectionFromAngle(angle: number): string;
+export function getDirectionFromVector(dx: number, dy: number): string;
+export function getDirection8FromVector(dx: number, dy: number): string;
 export function seededRandom(seed: number): () => number;
 export function rng(): number;
 export function query(componentClasses: unknown[]): number[];
@@ -116,7 +118,6 @@ export function extractRGBNormalizedMut(
   result: { r: number; g: number; b: number },
 ): void;
 export function calculateSpeed(vx: number, vy: number): number;
-export function calculateVelocityAngle(vx: number, vy: number): number;
 export function loadEntityScripts(
   scriptsToLoad: string[],
   globalContext?: unknown,

@@ -44,7 +44,7 @@ import { ParticleComponent } from '../components/ParticleComponent.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { SharedAtomicPool } from './SharedAtomicPool.js';
 import { CAMERA_TYPES } from './ConfigDefaults.js';
-import { randomRange, randomColor } from './utils.js';
+import { randomRange, randomColor, rng } from './utils.js';
 
 export const DECAL_STAMPS_BLEND_MODE = Object.freeze({
   normal: 0,
@@ -216,7 +216,28 @@ export class ParticleEmitter extends SharedAtomicPool {
 
       let particleVx, particleVy;
 
-      if (cfg.angleXY !== undefined && cfg.speed !== undefined) {
+      if (cfg.dirX != null && cfg.dirY != null && cfg.speed !== undefined) {
+        // Unit dir + speed (+ optional spread radians) — no deg/atan2
+        const speed = randomRange(cfg.speed, 0);
+        let dx = cfg.dirX;
+        let dy = cfg.dirY;
+        if (cfg.spread != null) {
+          const ang =
+            typeof cfg.spread === 'number'
+              ? (rng() * 2 - 1) * cfg.spread
+              : randomRange(cfg.spread, 0);
+          if (ang !== 0) {
+            const sc = Math.cos(ang);
+            const ss = Math.sin(ang);
+            const rdx = dx * sc - dy * ss;
+            const rdy = dx * ss + dy * sc;
+            dx = rdx;
+            dy = rdy;
+          }
+        }
+        particleVx = dx * speed;
+        particleVy = dy * speed;
+      } else if (cfg.angleXY !== undefined && cfg.speed !== undefined) {
         const angleDeg = randomRange(cfg.angleXY, 0);
         const angleRad = (angleDeg * Math.PI) / 180;
         const speed = randomRange(cfg.speed, 0);

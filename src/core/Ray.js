@@ -18,9 +18,11 @@ import { MAX_POLYGON_VERTICES, ShapeType } from './ConfigDefaults.js';
  *
  * Methods:
  *   - cast(x1, y1, x2, y2, maxDist, mask)              → entityIndex or -1
+ *   - castDir(x, y, dirX, dirY, maxDist, mask)         → entityIndex or -1 (unit dir; skip sqrt)
  *   - castWithInfo(x1, y1, x2, y2, maxDist, mask, out)  → { hit, entityIndex, distance, hitX, hitY }
  *   - castAll(x1, y1, x2, y2, maxDist, maxHits, mask, out) → Array<{ entityIndex, distance, hitX, hitY }>
  *   - linecast(x1, y1, x2, y2, exclude, mask, out)      → { blocked, entityIndex, distance }
+ *   - linecastDir(x1, y1, dirX, dirY, len, exclude, mask, out) → same; skip sqrt when dir is unit
  *   - linecastBetweenEntities(a, b, mask, out)           → { blocked, entityIndex, distance }
  *   - hasLineOfSight(a, b, mask)                         → boolean (true if clear)
  *   - getLineOfSightInfo(a, b, mask, out)                → { blocked, entityIndex, distance }
@@ -70,6 +72,8 @@ export class Ray {
   // Per-worker SAB stats (outermost public call only — nested Ray.* not double-counted)
   /** Set from worker init via config.debug.collectDetailedStats */
   static collectDetailedStats = false;
+  /** Warn when linecastDir gets a non-unit dir (config.debug.assertRotCSUnit) */
+  static assertRotCSUnit = false;
   static _statsMs = 0;
   static _statsCount = 0;
   static _statsDepth = 0;
@@ -127,6 +131,28 @@ export class Ray {
     }
   }
 
+  /**
+   * Cast with pre-normalized unit dir + length (skip sqrt).
+   * @param {number} maxDist must be finite and > 0
+   */
+  static castDir(x, y, dirX, dirY, maxDist, mask = 0xFFFFFFFF) {
+    Ray._enterStats();
+    try {
+      if (!(maxDist > 0) || maxDist === Infinity) return -1;
+      if (Ray.assertRotCSUnit) {
+        const n = dirX * dirX + dirY * dirY;
+        if (!(n > 0.998 && n < 1.002) || !Number.isFinite(dirX) || !Number.isFinite(dirY)) {
+          console.warn('Ray.castDir: non-unit dir', dirX, dirY, 'normSq=', n);
+        }
+      }
+      const xTo = x + dirX * maxDist;
+      const yTo = y + dirY * maxDist;
+      return Ray._castUnitDir(x, y, xTo, yTo, dirX, dirY, maxDist, mask);
+    } finally {
+      Ray._leaveStats();
+    }
+  }
+
   static _castImpl(xFrom, yFrom, xTo, yTo, maxDist, mask) {
     // Calculate ray direction and length
     const dx = xTo - xFrom;
@@ -144,7 +170,13 @@ export class Ray {
     // Normalize direction
     const dirX = dx / rayLength;
     const dirY = dy / rayLength;
+    const capped = maxDist !== Infinity && maxDist < rayLength ? maxDist : rayLength;
+    const xEnd = capped < rayLength ? xFrom + dirX * capped : xTo;
+    const yEnd = capped < rayLength ? yFrom + dirY * capped : yTo;
+    return Ray._castUnitDir(xFrom, yFrom, xEnd, yEnd, dirX, dirY, capped, mask);
+  }
 
+  static _castUnitDir(xFrom, yFrom, xTo, yTo, dirX, dirY, rayLength, mask) {
     // Get grid data from Grid class
     const invCellSize = Grid.invCellSize;
     const gridCols = Grid.gridWidth;
@@ -191,7 +223,7 @@ export class Ray {
 
     // Track closest hit
     let closestHit = -1;
-    let closestDist = maxDist;
+    let closestDist = rayLength;
 
     // Traverse cells using DDA
     const maxSteps = gridCols + gridRows; // Safety limit
@@ -373,6 +405,12 @@ export class Ray {
       result.entityIndex = -1;
       result.distance = Infinity;
       if (!(rayLength > 0)) return result;
+      if (Ray.assertRotCSUnit) {
+        const n = dirX * dirX + dirY * dirY;
+        if (!(n > 0.998 && n < 1.002) || !Number.isFinite(dirX) || !Number.isFinite(dirY)) {
+          console.warn('Ray.linecastDir: non-unit dir', dirX, dirY, 'normSq=', n);
+        }
+      }
       const x2 = x1 + dirX * rayLength;
       const y2 = y1 + dirY * rayLength;
       return Ray._linecastDirImpl(x1, y1, x2, y2, dirX, dirY, rayLength, excludeEntities, mask, result);

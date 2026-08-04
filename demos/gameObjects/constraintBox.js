@@ -12,6 +12,8 @@ import { BoxPart } from './boxPart.js';
 
 const { GameObject, SpriteRenderer, Transform, Joint, RigidBody } = WEED;
 
+const _partIndices = new Int32Array(4);
+
 // Part layout (row-major corners + center):
 // 0 -- 1
 // | \/ |
@@ -138,32 +140,38 @@ export class ConstraintBox extends GameObject {
         const partCount = this.constraintBoxComponent.partCount;
         if (partCount < 5) return;
 
-        const indices = [];
         for (let i = 0; i < 4; i++) {
             const idx = this.constraintBoxComponent[PART_KEYS[i]];
             if (!(idx > 0 && Transform.active[idx])) return;
-            indices.push(idx);
+            _partIndices[i] = idx;
         }
 
         const centerIdx = this.constraintBoxComponent.part4Index;
         if (!(centerIdx > 0 && Transform.active[centerIdx])) return;
 
-        const [p0, p1, p2, p3] = indices;
+        const p0 = _partIndices[0];
+        const p1 = _partIndices[1];
+        const p2 = _partIndices[2];
+        const p3 = _partIndices[3];
 
         const centerX = (Transform.x[p0] + Transform.x[p1] + Transform.x[p2] + Transform.x[p3]) * 0.25;
         const centerY = (Transform.y[p0] + Transform.y[p1] + Transform.y[p2] + Transform.y[p3]) * 0.25;
-        Transform.x[this.index] = centerX;
-        Transform.y[this.index] = centerY;
+        const self = this.index;
+        Transform.x[self] = centerX;
+        Transform.y[self] = centerY;
 
-        // Left edge midpoint (0,2) → right edge midpoint (1,3)
-        const leftX = (Transform.x[p0] + Transform.x[p2]) * 0.5;
-        const leftY = (Transform.y[p0] + Transform.y[p2]) * 0.5;
-        const rightX = (Transform.x[p1] + Transform.x[p3]) * 0.5;
-        const rightY = (Transform.y[p1] + Transform.y[p3]) * 0.5;
-
-        const angle = Math.atan2(rightY - leftY, rightX - leftX);
-        this.constraintBoxComponent.angle = angle;
-        this.rotation = angle;
+        // Left edge midpoint (0,2) → right edge midpoint (1,3) → unit CS (no atan2→cos/sin)
+        const dx = (Transform.x[p1] + Transform.x[p3]) * 0.5 - (Transform.x[p0] + Transform.x[p2]) * 0.5;
+        const dy = (Transform.y[p1] + Transform.y[p3]) * 0.5 - (Transform.y[p0] + Transform.y[p2]) * 0.5;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq > 1e-12) {
+            const inv = 1 / Math.sqrt(lenSq);
+            const c = dx * inv;
+            const s = dy * inv;
+            if (Transform.rotC) Transform.rotC[self] = c;
+            if (Transform.rotS) Transform.rotS[self] = s;
+            this.constraintBoxComponent.angle = Math.atan2(s, c);
+        }
 
         // Soft-body angular damping: strip tangential velocity around centroid
         const damp = this.constraintBoxComponent.angularDamping;

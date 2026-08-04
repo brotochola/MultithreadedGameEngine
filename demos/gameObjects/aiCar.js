@@ -46,8 +46,8 @@ export class AICar extends Car {
         // cross/dot vs Transform.rotC/S facing — no atan2(nav) / cos(angleDiff)
         const cross = fx * ny - fy * nx;
         const alignment = fx * nx + fy * ny;
-        const angleDiff = Math.atan2(cross, alignment);
-        const turnInput = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff) * 2, 1) * this.constructor.aiTurnStrength;
+        // cross ≈ sinθ for unit vectors; k=2 matches prior atan2 gain + clamp
+        const turnInput = Math.max(-1, Math.min(1, cross * 2)) * this.constructor.aiTurnStrength;
 
         const forwardSpeed = dot2(
             this.carComponent.vx,

@@ -244,4 +244,14 @@ export class Decoration {
     DecorationComponent.rotC[i] = DecorationComponent.baseRotC[i];
     DecorationComponent.rotS[i] = DecorationComponent.baseRotS[i];
   }
+
+  /** Facing as unit complex (no atan2/cos/sin). */
+  setBaseRotCS(c, s) {
+    if (!this._isCurrent()) return;
+    const i = this.index;
+    DecorationComponent.baseRotC[i] = c;
+    DecorationComponent.baseRotS[i] = s;
+    DecorationComponent.rotC[i] = c;
+    DecorationComponent.rotS[i] = s;
+  }
 }

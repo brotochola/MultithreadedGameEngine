@@ -88,13 +88,15 @@ class WaterBall extends GameObject {
     const massFactor = Math.min(3, Math.sqrt(Math.max(1, rb.mass[otherIndex]) / 2000));
     const intensity = Math.min(1.4, ((impactSpeed - SPLASH_SPEED_MIN) / (SPLASH_SPEED_FULL - SPLASH_SPEED_MIN)) * massFactor);
 
-    const impactAngle = Math.atan2(relVy, relVx) * (180 / Math.PI);
-    const fan = 55 + intensity * 70;
+    const invImpact = 1 / impactSpeed;
+    const dirX = relVx * invImpact;
+    const dirY = relVy * invImpact;
+    const fanRad = ((55 + intensity * 70) * Math.PI) / 180;
     // Convert impact to particle frame-speed — punchy spray.
     const spray = Math.min(28, Math.max(6, (impactSpeed / PX_PER_FRAME) * 0.85));
     const r = this.radius;
 
-    // Main droplets — big, bright, long arc.
+    // Main droplets — big, bright, long arc (dir + spread, no atan2→deg).
     ParticleEmitter.emit({
       count: Math.floor(18 + intensity * 55),
       x: this.x,
@@ -105,7 +107,9 @@ class WaterBall extends GameObject {
       alpha: { min: 0.55, max: 1 },
       scale: { min: 0.55, max: 1.6 + intensity * 1.4 },
       lifespan: { min: 500, max: 1400 + intensity * 1200 },
-      angleXY: { min: impactAngle - fan, max: impactAngle + fan },
+      dirX,
+      dirY,
+      spread: fanRad,
       speed: { min: spray * 0.55, max: spray },
       gravity: 0.55,
       vz: { min: -(3 + intensity * 8), max: -(1 + intensity * 3) },

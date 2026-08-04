@@ -745,7 +745,6 @@ export declare class GameObject {
   get isStatic(): boolean;
   set isStatic(value: boolean);
   get speed(): number;
-  get velocityAngle(): number;
   get alpha(): number;
   set alpha(value: number);
   get tint(): number;
@@ -2010,7 +2009,6 @@ export declare class RigidBody extends Component {
     linearDamping: typeof Float32Array;
     angularDamping: typeof Float32Array;
     fixedRotation: typeof Uint8Array;
-    velocityAngle: typeof Float32Array;
     speed: typeof Float32Array;
     sleepThreshold: typeof Float32Array;
   };
@@ -2035,7 +2033,6 @@ export declare class RigidBody extends Component {
   static linearDamping: Float32Array;
   static angularDamping: Float32Array;
   static fixedRotation: Uint8Array;
-  static velocityAngle: Float32Array;
   static speed: Float32Array;
   /** HEAP-bound after `box2dReady`. */
   static sleeping: Uint8Array;
@@ -2861,6 +2858,8 @@ export interface WeedNamespace {
   containerRadius: typeof import('./utils').containerRadius;
   distanceSq2D: typeof import('./utils').distanceSq2D;
   getDirectionFromAngle: typeof import('./utils').getDirectionFromAngle;
+  getDirectionFromVector: typeof import('./utils').getDirectionFromVector;
+  getDirection8FromVector: typeof import('./utils').getDirection8FromVector;
   mixTint: typeof import('./utils').mixTint;
   randomColor: typeof import('./utils').randomColor;
   rng: typeof import('./utils').rng;

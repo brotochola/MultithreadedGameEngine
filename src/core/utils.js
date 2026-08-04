@@ -828,32 +828,23 @@ export function normalizeAngleDifference(angle1, angle2) {
 }
 
 /**
- * Convert angle (radians) to cardinal direction string
- * @param {number} angle - Angle from RigidBody.velocityAngle (already has +PI/2 offset for rotation)
- * @returns {string} One of: "right", "down", "left", "up"
+ * Convert angle (radians, atan2(vy,vx)+PI/2 convention) to cardinal string.
+ * Prefer getDirectionFromVector for new code.
+ * @returns {"right"|"down"|"left"|"up"}
  */
 export function getDirectionFromAngle(angle) {
-  // velocityAngle = atan2(vy, vx) + PI/2 (for sprite rotation)
-  // So we need to account for that offset:
-  // Moving RIGHT: velocityAngle = PI/2
-  // Moving DOWN: velocityAngle = PI
-  // Moving LEFT: velocityAngle = 3*PI/2
-  // Moving UP: velocityAngle = 0 (or 2*PI)
-
-  // Normalize angle to [0, 2*PI]
   const normalizedAngle = normalizeAngle(angle);
   const PI = Math.PI;
   const PI_4 = PI / 4;
 
-  // Map velocityAngle to cardinal directions (accounting for +PI/2 offset)
   if (normalizedAngle < PI_4 || normalizedAngle >= (PI * 7) / 4) {
-    return 'up'; // 315° to 45° (North)
+    return 'up';
   } else if (normalizedAngle < (PI * 3) / 4) {
-    return 'right'; // 45° to 135° (East)
+    return 'right';
   } else if (normalizedAngle < (PI * 5) / 4) {
-    return 'down'; // 135° to 225° (South)
+    return 'down';
   } else {
-    return 'left'; // 225° to 315° (West)
+    return 'left';
   }
 }
 
@@ -866,6 +857,27 @@ export function getDirectionFromVector(dx, dy) {
   const ay = dy < 0 ? -dy : dy;
   if (ay >= ax) return dy >= 0 ? 'down' : 'up';
   return dx >= 0 ? 'right' : 'left';
+}
+
+/** tan(22.5°) — 8-way sector boundaries */
+const _TAN_22_5 = 0.41421356237;
+
+/**
+ * 8-way facing from velocity/delta (no atan2).
+ * Matches demos/bug.js: getDirection8(atan2(dy,dx)+PI/2) ≡ octant of (-dx,-dy).
+ * @returns {'e'|'se'|'s'|'sw'|'w'|'nw'|'n'|'ne'}
+ */
+export function getDirection8FromVector(dx, dy) {
+  const x = -dx;
+  const y = -dy;
+  const ax = x < 0 ? -x : x;
+  const ay = y < 0 ? -y : y;
+  if (ax * _TAN_22_5 > ay) return x >= 0 ? 'e' : 'w';
+  if (ay * _TAN_22_5 > ax) return y >= 0 ? 's' : 'n';
+  if (x >= 0 && y >= 0) return 'se';
+  if (x < 0 && y >= 0) return 'sw';
+  if (x < 0 && y < 0) return 'nw';
+  return 'ne';
 }
 
 export function seededRandom(seed) {
@@ -1121,17 +1133,6 @@ export function calculateSpeed(vx, vy) {
 }
 
 /**
- * Calculate velocity angle for sprite rotation
- * Returns angle in radians, adjusted for sprite rotation (adds PI/2)
- * @param {number} vx - Velocity X component
- * @param {number} vy - Velocity Y component
- * @returns {number} Angle in radians [0, 2*PI] for sprite rotation
- */
-export function calculateVelocityAngle(vx, vy) {
-  return Math.atan2(vy, vx) + Math.PI / 2;
-}
-
-/**
  * Load entity scripts dynamically and register them globally
  * Unified function used by both main thread and workers
  *
@@ -1262,7 +1263,7 @@ async function loadSingleScript(scriptPath, loadedClasses, globalContext, isBlob
         'GameObject', 'Component', 'FSM', 'FSMState', 'Transform', 'RigidBody', 'Collider',
         'SpriteRenderer', 'ParticleComponent', 'ShadowCaster', 'LightEmitter', 'FlashComponent',
         'DecorationComponent', 'ParticleEmitter', 'DecorationPool', 'Flash', 'Mouse', 'Camera',
-        'NavGrid', 'Ray', 'ShapeType', 'rng', 'randomColor', 'distanceSq2D', 'getDirectionFromAngle',
+        'NavGrid', 'Ray', 'ShapeType', 'rng', 'randomColor', 'distanceSq2D', 'getDirectionFromAngle', 'getDirection8FromVector',
         'containerRadius', 'SpriteSheetRegistry', 'Keyboard', 'SoundManager',
         'CollisionListener', 'CameraInOutListener', 'JointBreakListener',
         // Enum members (previously only ShapeType — anything destructured from
@@ -1306,6 +1307,7 @@ async function loadSingleScript(scriptPath, loadedClasses, globalContext, isBlob
           g.randomColor || WEED.randomColor,
           g.distanceSq2D || WEED.distanceSq2D,
           g.getDirectionFromAngle || WEED.getDirectionFromAngle,
+          g.getDirection8FromVector || WEED.getDirection8FromVector,
           g.containerRadius || WEED.containerRadius,
           g.SpriteSheetRegistry || WEED.SpriteSheetRegistry,
           g.Keyboard || WEED.Keyboard,

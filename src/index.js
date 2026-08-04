@@ -186,11 +186,11 @@ import { SoundManager } from './core/SoundManager.js';
 import * as SaveGameNS from './core/SaveGame.js';
 import { SaveStore } from './core/SaveStore.js';
 import {
-  calculateVelocityAngle,
   containerRadius,
   distanceSq2D,
   getDirectionFromAngle,
   getDirectionFromVector,
+  getDirection8FromVector,
   mixTint,
   randomColor,
   rng,
@@ -346,11 +346,11 @@ const WEED = Object.freeze({
   AbstractWorker,
 
   // Public utility helpers
-  calculateVelocityAngle,
   containerRadius,
   distanceSq2D,
   getDirectionFromAngle,
   getDirectionFromVector,
+  getDirection8FromVector,
   mixTint,
   randomColor,
   rng,

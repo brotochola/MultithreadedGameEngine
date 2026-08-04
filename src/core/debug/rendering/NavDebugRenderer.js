@@ -202,18 +202,20 @@ export class NavDebugRenderer {
     ctx.stroke();
 
     const headLen = arrowLen * 0.4;
-    const angle = Math.atan2(dy, dx);
+    // ±30° from unit (dx,dy) via CS rotate (cos30=√3/2, sin30=1/2)
+    const c30 = 0.86602540378;
+    const s30 = 0.5;
+    const tipX = sx + dx * arrowLen * 0.5;
+    const tipY = sy + dy * arrowLen * 0.5;
+    const bx0 = -(dx * c30 - dy * s30) * headLen;
+    const by0 = -(dx * s30 + dy * c30) * headLen;
+    const bx1 = -(dx * c30 + dy * s30) * headLen;
+    const by1 = -(-dx * s30 + dy * c30) * headLen;
     ctx.beginPath();
-    ctx.moveTo(sx + dx * arrowLen * 0.5, sy + dy * arrowLen * 0.5);
-    ctx.lineTo(
-      sx + dx * arrowLen * 0.5 - headLen * Math.cos(angle - Math.PI / 6),
-      sy + dy * arrowLen * 0.5 - headLen * Math.sin(angle - Math.PI / 6)
-    );
-    ctx.moveTo(sx + dx * arrowLen * 0.5, sy + dy * arrowLen * 0.5);
-    ctx.lineTo(
-      sx + dx * arrowLen * 0.5 - headLen * Math.cos(angle + Math.PI / 6),
-      sy + dy * arrowLen * 0.5 - headLen * Math.sin(angle + Math.PI / 6)
-    );
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX + bx0, tipY + by0);
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX + bx1, tipY + by1);
     ctx.stroke();
   }
 }

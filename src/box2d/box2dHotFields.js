@@ -6,6 +6,7 @@
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { STATE_CHANNELS } from './box2dConstants.js';
+import { setRotCSFromAngle } from '../core/rotCS.js';
 
 export { STATE_CHANNELS };
 
@@ -54,6 +55,5 @@ export function isBox2dHotFieldsBound(payload) {
 /** Keep rotC/rotS coherent when JS writes an angle before the next physics export. */
 export function syncRotCSFromAngle(index, angle) {
   if (!Transform.rotC || !Transform.rotS) return;
-  Transform.rotC[index] = Math.cos(angle);
-  Transform.rotS[index] = Math.sin(angle);
+  setRotCSFromAngle(Transform.rotC, Transform.rotS, index, angle);
 }

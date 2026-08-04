@@ -24,6 +24,7 @@ import {
   distanceSq2D,
   getDirectionFromAngle,
   getDirectionFromVector,
+  getDirection8FromVector,
   containerRadius,
 } from '../core/utils.js';
 import { Camera } from '../core/Camera.js';
@@ -31,6 +32,7 @@ import { Sun } from '../core/Sun.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { Ray } from '../core/Ray.js';
+import { setAssertRotCSUnit } from '../box2d/box2dCommandRing.js';
 import { SceneBridge } from '../core/SceneBridge.js';
 import { DebugDraw } from '../core/debug/DebugDraw.js';
 import { Grid } from '../core/Grid.js';
@@ -345,6 +347,8 @@ export class AbstractWorker {
     // Fine worker subtimers + SAB detail fields (config.debug.collectDetailedStats)
     this.collectDetailedStats = !!(this.config.debug?.collectDetailedStats);
     Ray.collectDetailedStats = this.collectDetailedStats;
+    Ray.assertRotCSUnit = !!(this.config.debug?.assertRotCSUnit);
+    setAssertRotCSUnit(!!this.config.debug?.assertRotCSUnit);
 
     // Check nested config for fixedFps / noLimitFPS (class name → config key)
     const workerType = this.constructor.name.replace('Worker', '').toLowerCase();
@@ -819,6 +823,7 @@ export class AbstractWorker {
     self.distanceSq2D = distanceSq2D;
     self.getDirectionFromAngle = getDirectionFromAngle;
     self.getDirectionFromVector = getDirectionFromVector;
+    self.getDirection8FromVector = getDirection8FromVector;
     self.containerRadius = containerRadius;
   }
 

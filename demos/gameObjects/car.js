@@ -4,6 +4,7 @@
 import WEED from '/src/index.js';
 import { CarComponent, CAR_DEFAULTS } from '../components/carComponent.js';
 import { dot2 } from '/src/core/utils.js';
+import { randomUnitCS } from '/src/core/rotCS.js';
 
 const {
     GameObject,
@@ -22,6 +23,22 @@ const TWO_PI = Math.PI * 2;
 
 // Reused by applyForces / friction (zero alloc)
 const _heading = { angle: 0, frontX: 0, frontY: 0, rightX: 0, rightY: 0 };
+
+/** Cached numeric anim keys per spritesheet name — avoid rebuild/sort every tick. */
+const _angleKeysBySheet = new Map();
+const _randCS = { c: 1, s: 0 };
+
+function getAngleKeys(spritesheet) {
+    let keys = _angleKeysBySheet.get(spritesheet);
+    if (keys) return keys;
+    const animNames = SpriteSheetRegistry.getAnimationNames(spritesheet);
+    keys = animNames
+        .map(k => ({ num: parseFloat(k), key: k }))
+        .filter(p => !isNaN(p.num))
+        .sort((a, b) => a.num - b.num);
+    _angleKeysBySheet.set(spritesheet, keys);
+    return keys;
+}
 
 export class Car extends GameObject {
     static scriptUrl = import.meta.url;
@@ -153,10 +170,6 @@ export class Car extends GameObject {
 
         this.carComponent.vx = RigidBody.vx[i];
         this.carComponent.vy = RigidBody.vy[i];
-        this.carComponent.angle = Math.atan2(
-            Transform.rotS ? Transform.rotS[i] : 0,
-            Transform.rotC ? Transform.rotC[i] : 1,
-        );
 
         this._updateFriction();
         this._emitDust();
@@ -164,26 +177,29 @@ export class Car extends GameObject {
     }
 
     _updateSpriteFrame() {
+        const i = this.index;
         const spritesheetId = this.spriteRenderer.spritesheetId;
         if (!spritesheetId) return;
         const spritesheet = SpriteSheetRegistry.getSpritesheetName(spritesheetId);
         if (!spritesheet) return;
 
-        const animNames = SpriteSheetRegistry.getAnimationNames(spritesheet);
-        const angleKeys = animNames
-            .map(k => ({ num: parseFloat(k), key: k }))
-            .filter(p => !isNaN(p.num))
-            .sort((a, b) => a.num - b.num);
+        const angleKeys = getAngleKeys(spritesheet);
         if (angleKeys.length === 0) return;
 
-        let angle = this.carComponent.angle;
-        if (angle == null || isNaN(angle)) return;
+        // atan2 only for discrete frame sector (cached keys; no rebuild/sort)
+        let angle = Math.atan2(
+            Transform.rotS ? Transform.rotS[i] : 0,
+            Transform.rotC ? Transform.rotC[i] : 1,
+        );
+        this.carComponent.angle = angle;
         if (angle < 0) angle += TWO_PI;
-        const degrees = (angle * 180) / Math.PI;
-        const degreesNorm = ((degrees % 360) + 360) % 360;
-
+        const degreesNorm = (((angle * 180) / Math.PI) % 360 + 360) % 360;
         const index = Math.round((degreesNorm / 360) * angleKeys.length) % angleKeys.length;
-        this.setAnimation(angleKeys[index].key);
+        const key = angleKeys[index].key;
+        if (this._lastAnimKey !== key) {
+            this._lastAnimKey = key;
+            this.setAnimation(key);
+        }
     }
 
     _emitDust() {
@@ -205,6 +221,7 @@ export class Car extends GameObject {
         const dirY = -c * ss - s * sc;
         const spd = 0.2 + Math.random() * 1.0;
 
+        randomUnitCS(_randCS);
         ParticleEmitter.emit({
             count: Math.floor(Math.random() * 2) + 1,
             x: backX + (Math.random() - 0.5) * 8,
@@ -214,7 +231,8 @@ export class Car extends GameObject {
             vy: dirY * spd,
             vz: -Math.random() * 0.5,
             gravity: 0,
-            rotation: { min: 0, max: 360 },
+            rotC: _randCS.c,
+            rotS: _randCS.s,
             flipX: Math.random() > 0.5,
             flipY: Math.random() > 0.5,
             lifespan: { min: 300, max: 1800 },

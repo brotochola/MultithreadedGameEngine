@@ -41,7 +41,7 @@ import { SceneBridge } from './SceneBridge.js';
 import {
   enqueueSetTransform,
   enqueueSetVelocity,
-  enqueueSetAngle,
+  enqueueSetRotCS,
   enqueueSetAngularVelocity,
   enqueueSetFixedRotation,
   isCommandRingBound,
@@ -517,7 +517,7 @@ export class GameObject {
     if (Transform.rotation) Transform.rotation[i] = value;
     syncRotCSFromAngle(i, value);
     if (isCommandRingBound() && this._hasComponents.RigidBody) {
-      enqueueSetAngle(
+      enqueueSetRotCS(
         i,
         Transform.rotC ? Transform.rotC[i] : Math.cos(value),
         Transform.rotS ? Transform.rotS[i] : Math.sin(value),
@@ -604,22 +604,16 @@ export class GameObject {
     return RigidBody.speed[this.index];
   }
 
-  /** Velocity angle in radians - read-only, computed by physics worker */
-  get velocityAngle() {
-    if (!this._hasComponents.RigidBody) return 0;
-    return RigidBody.velocityAngle[this.index];
-  }
-
   /**
    * Body heading unit X (from Transform.rotC / Box2D b2Rot).
    */
   get forwardX() {
-    return Transform.rotC ? Transform.rotC[this.index] : 1;
+    return Transform.rotC[this.index];
   }
 
   /** Body heading unit Y */
   get forwardY() {
-    return Transform.rotS ? Transform.rotS[this.index] : 0;
+    return Transform.rotS[this.index];
   }
 
   /** Right unit X (rotate forward by -90°) */
@@ -639,9 +633,8 @@ export class GameObject {
    * @returns {typeof out}
    */
   static getHeadingAxes(index, out) {
-    const frontX = Transform.rotC ? Transform.rotC[index] : 1;
-    const frontY = Transform.rotS ? Transform.rotS[index] : 0;
-    out.angle = Transform.rotation ? Transform.rotation[index] : 0;
+    const frontX = Transform.rotC[index];
+    const frontY = Transform.rotS[index];
     out.frontX = frontX;
     out.frontY = frontY;
     out.rightX = frontY;
@@ -1971,7 +1964,6 @@ export class GameObject {
       RigidBody.linearDamping[i] = 0;
       RigidBody.angularDamping[i] = 0;
       RigidBody.speed[i] = 0;
-      RigidBody.velocityAngle[i] = 0;
       RigidBody.fixedRotation[i] = 0;
       // Reset sleeping state (entity must start awake for physics to work)
       RigidBody.sleeping[i] = 0;

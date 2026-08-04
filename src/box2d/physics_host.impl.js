@@ -63,7 +63,6 @@
     linearDamping: Float32Array,
     angularDamping: Float32Array,
     fixedRotation: Uint8Array,
-    velocityAngle: Float32Array,
     speed: Float32Array,
     sleepThreshold: Float32Array,
   };

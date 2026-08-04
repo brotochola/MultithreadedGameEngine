@@ -298,7 +298,7 @@ class NavScratch {
  * 2. Blood decal stamping
  * 3. Decoration sway animation
  * 4. Navigation (flowfields, A*, walkability grid)
- * 5. Derived properties (speed, velocityAngle) — sleeping owned by Box2D
+ * 5. Derived properties (speed) — sleeping owned by Box2D
  * 6. Cell sleeping state updates (reads RigidBody.sleeping from Box2D HEAP)
  */
 class ParticleWorker extends AbstractWorker {
@@ -647,7 +647,7 @@ class ParticleWorker extends AbstractWorker {
     // Process navigation requests
     this.processNavigationRequests();
 
-    // Update derived properties (speed, velocityAngle). Sleeping: Box2D → RigidBody.sleeping
+    // Update derived properties (speed). Sleeping: Box2D → RigidBody.sleeping
     this.updateDerivedProperties();
 
     // Update cell sleeping states

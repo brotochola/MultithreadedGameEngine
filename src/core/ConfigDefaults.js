@@ -396,4 +396,6 @@ export const DEBUG_DEFAULTS = Object.freeze({
    * false → only FPS + STEP_MS written; DebugUI shows Step / Load% / Fps.
    */
   collectDetailedStats: false,
+  /** Warn when cmd-ring / Ray get non-unit (rotC,rotS) or dir. Off in prod. */
+  assertRotCSUnit: false,
 });

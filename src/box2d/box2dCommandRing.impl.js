@@ -2,7 +2,7 @@
 // ESM: imported as side-effect by box2dCommandRing.js
 // Classic: importScripts from weedjs_post.js
 // Writers: GameObject / logic / main (MPSC). Reader: weedjs_post drain pre-step (SPSC consumer).
-// Units: px, px/s, rad, rad/s.
+// Units: px, px/s; facing as unit complex (rotC, rotS); angular vel rad/s.
 //
 // Sequence-slot MPSC: HDR_WRITE/HDR_READ are monotonic claim counters.
 // Per-slot seq at base+0; payload at base+1..6. Init seq[i]=i.
@@ -12,7 +12,7 @@
   var BOX2D_CMD = Object.freeze({
     SET_TRANSFORM: 1, // entity, x, y, rotC, rotS
     SET_VELOCITY: 2, // entity, vx, vy
-    SET_ANGLE: 3, // entity, rotC, rotS
+    SET_ROT_CS: 3, // entity, rotC, rotS (opcode 3; was SET_ANGLE)
     SET_ANGULAR_VELOCITY: 4, // entity, w
     SET_FIXED_ROTATION: 5, // entity, flag (0|1)
     EXPLODE: 6, // maskBits as entity, x, y, radius, impulsePerLength (falloff=0.5*radius)
@@ -31,6 +31,24 @@
   var ringI32 = null;
   var ringF32 = null;
   var capacity = 0;
+  /** When true, warn if enqueued (rotC,rotS) is not near unit length. */
+  var assertRotCSUnit = false;
+
+  function setAssertRotCSUnit(on) {
+    assertRotCSUnit = !!on;
+  }
+
+  function checkRotCS(rotC, rotS) {
+    if (!assertRotCSUnit) return;
+    if (!isFinite(rotC) || !isFinite(rotS)) {
+      console.warn('Box2dCommandRing: non-finite rotCS', rotC, rotS);
+      return;
+    }
+    var n = rotC * rotC + rotS * rotS;
+    if (n < 0.998 || n > 1.002) {
+      console.warn('Box2dCommandRing: non-unit rotCS', rotC, rotS, 'normSq=', n);
+    }
+  }
 
   function createCommandRingSab(cmdCapacity) {
     var cap = Math.max(64, (cmdCapacity == null ? BOX2D_CMD_DEFAULT_CAPACITY : cmdCapacity) | 0);
@@ -93,14 +111,10 @@
   }
 
   function enqueueSetTransform(entity, x, y, rotC, rotS) {
-    return enqueue(
-      BOX2D_CMD.SET_TRANSFORM,
-      entity,
-      x,
-      y,
-      rotC == null ? 1 : rotC,
-      rotS == null ? 0 : rotS,
-    );
+    var c = rotC == null ? 1 : rotC;
+    var s = rotS == null ? 0 : rotS;
+    checkRotCS(c, s);
+    return enqueue(BOX2D_CMD.SET_TRANSFORM, entity, x, y, c, s);
   }
 
   function enqueueSetVelocity(entity, vx, vy) {
@@ -108,15 +122,11 @@
   }
 
   /** @param {number} rotC cosθ @param {number} rotS sinθ */
-  function enqueueSetAngle(entity, rotC, rotS) {
-    return enqueue(
-      BOX2D_CMD.SET_ANGLE,
-      entity,
-      rotC == null ? 1 : rotC,
-      rotS == null ? 0 : rotS,
-      0,
-      0,
-    );
+  function enqueueSetRotCS(entity, rotC, rotS) {
+    var c = rotC == null ? 1 : rotC;
+    var s = rotS == null ? 0 : rotS;
+    checkRotCS(c, s);
+    return enqueue(BOX2D_CMD.SET_ROT_CS, entity, c, s, 0, 0);
   }
 
   function enqueueSetAngularVelocity(entity, w) {
@@ -164,8 +174,8 @@
         case BOX2D_CMD.SET_VELOCITY:
           if (handlers.setVelocity) handlers.setVelocity(entity, a, b);
           break;
-        case BOX2D_CMD.SET_ANGLE:
-          if (handlers.setAngle) handlers.setAngle(entity, a, b);
+        case BOX2D_CMD.SET_ROT_CS:
+          if (handlers.setRotCS) handlers.setRotCS(entity, a, b);
           break;
         case BOX2D_CMD.SET_ANGULAR_VELOCITY:
           if (handlers.setAngularVelocity) handlers.setAngularVelocity(entity, a);
@@ -197,9 +207,10 @@
     createCommandRingSab: createCommandRingSab,
     bindCommandRing: bindCommandRing,
     isCommandRingBound: isCommandRingBound,
+    setAssertRotCSUnit: setAssertRotCSUnit,
     enqueueSetTransform: enqueueSetTransform,
     enqueueSetVelocity: enqueueSetVelocity,
-    enqueueSetAngle: enqueueSetAngle,
+    enqueueSetRotCS: enqueueSetRotCS,
     enqueueSetAngularVelocity: enqueueSetAngularVelocity,
     enqueueSetFixedRotation: enqueueSetFixedRotation,
     enqueueExplode: enqueueExplode,

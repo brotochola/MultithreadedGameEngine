@@ -514,15 +514,15 @@ export class Person extends Lootable {
   }
 
   shootingSparks(dirX, dirY, muzzleX, muzzleY, muzzleHeightPx) {
-    // One emit: angleXY/speed ranges (atan2 once cheaper than N× emit paths)
-    const angleDeg = (Math.atan2(dirY, dirX) * 180) / Math.PI;
-    const spreadDeg = 10;
+    // Unit dir + spread rad — no atan2→deg→angleXY round-trip
     ParticleEmitter.emit({
       count: Math.floor(Math.random() * 10) + 10,
       x: muzzleX,
       y: muzzleY + 1,
       z: muzzleHeightPx,
-      angleXY: { min: angleDeg - spreadDeg / 2, max: angleDeg + spreadDeg / 2 },
+      dirX,
+      dirY,
+      spread: (10 * Math.PI) / 180,
       speed: { min: 0.1, max: 10 },
       rotation: { min: 0, max: 360 },
       vz: { min: -1, max: 5 },

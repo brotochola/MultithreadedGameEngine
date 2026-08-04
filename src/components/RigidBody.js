@@ -40,7 +40,6 @@ export class RigidBody extends Component {
     fixedRotation: Uint8Array,
 
     // Computed values
-    velocityAngle: Float32Array,
     speed: Float32Array,
 
     // Linear sleep speed threshold (m/s). 0 = Box2D default (~0.05 * lengthUnits)

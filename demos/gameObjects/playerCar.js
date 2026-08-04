@@ -24,7 +24,11 @@ export class PlayerCar extends Car {
         super.tick(dtRatio);
         const shadow = this.getAttachedDecoration(0);
         if (shadow) {
-            shadow.baseRotation = this.carComponent.angle;
+            const i = this.index;
+            shadow.setBaseRotCS(
+                Transform.rotC ? Transform.rotC[i] : 1,
+                Transform.rotS ? Transform.rotS[i] : 0,
+            );
         }
         this._updateCamera(dtRatio);
         this._handleInput();

@@ -10,7 +10,7 @@ import { PersonComponent, DIRECTION_NAMES } from '../components/personComponent.
 
 import { LootableComponent } from '../components/lootableComponent.js';
 
-const { distanceSq2D, Ray, DebugDraw, FSM, FSMState, Transform, RigidBody, GameObject, Collider, getDirectionFromAngle } = WEED;
+const { distanceSq2D, Ray, DebugDraw, FSM, FSMState, Transform, RigidBody, GameObject, Collider } = WEED;
 
 // ==========================================
 // REUSABLE OBJECTS - Zero allocation

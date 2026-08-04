@@ -1,22 +1,6 @@
 import WEED from '/src/index.js';
 
-const { Mouse, distanceSq2D, GameObject, Collider, SpriteRenderer, rng, RigidBody, ShadowCaster, calculateVelocityAngle } = WEED;
-
-// Speed threshold for animation
-
-// 8-directional mapping for bicho spritesheet (n, ne, e, se, s, sw, w, nw)
-// Angles: 0° = right (e), 90° = down (s), 180° = left (w), 270° = up (n)
-const DIRECTIONS_8 = ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'];
-
-function getDirection8(angleRadians) {
-    // Normalize angle to 0-2π
-    let angle = (angleRadians + Math.PI * 0.5) % (Math.PI * 2);
-    if (angle < 0) angle += Math.PI * 2;
-
-    // Each sector is 45° (π/4 radians), offset by half a sector (22.5°) for centering
-    const sector = Math.floor((angle + Math.PI / 8) / (Math.PI / 4)) % 8;
-    return DIRECTIONS_8[sector];
-}
+const { Mouse, distanceSq2D, GameObject, Collider, SpriteRenderer, rng, RigidBody, ShadowCaster, getDirection8FromVector } = WEED;
 
 export class Bug extends GameObject {
     static ANIMATION_SPEED_MULTIPLIER = 0.007
@@ -67,8 +51,7 @@ export class Bug extends GameObject {
 
         this.followMouse();
 
-        // Local atan2 only for this bug (no global RigidBody.velocityAngle pass)
-        const direction = getDirection8(calculateVelocityAngle(RigidBody.vx[i], RigidBody.vy[i]));
+        const direction = getDirection8FromVector(RigidBody.vx[i], RigidBody.vy[i]);
 
         // Only change animation if direction changed
         if (direction !== this._facingDirection) {

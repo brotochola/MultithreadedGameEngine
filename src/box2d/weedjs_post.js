@@ -864,7 +864,7 @@
       if (!hasBody[entity]) return;
       bodySetLinearVelocityFn(entity, vx, vy);
     },
-    setAngle(entity, rotC, rotS) {
+    setRotCS(entity, rotC, rotS) {
       if (!hasBody[entity]) return;
       const x = pxChan[entity];
       const y = pyChan[entity];

@@ -45,7 +45,6 @@ import { Layer } from '../core/Layer.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
 import { DECORATION_NO_PARENT } from '../core/DecorationPool.js';
 import { AdobeAnimRegistry } from '../core/AdobeAnimRegistry.js';
-
 const INVALID_TEXTURE_ID = 0xFFFF;
 /** Composite depth sort: worldY * scale + innerZ (entities, decorations, bullets) */
 const Y_SORT_K = DECORATION_Y_SORT_SCALE;
@@ -1476,7 +1475,7 @@ class PreRenderWorker extends AbstractWorker {
         this._displayPose(entityIndex, pose);
         const rootX = pose.x;
         const rootY = pose.y;
-        // body pose CS × AdobeAnimComponent CS
+        // body pose CS × AdobeAnimComponent CS (inline — hot piece loop)
         const ac = AdobeAnimComponent.rotC[entityIndex];
         const as = AdobeAnimComponent.rotS[entityIndex];
         const rootC = pose.rotC * ac - pose.rotS * as;
@@ -2726,9 +2725,8 @@ class PreRenderWorker extends AbstractWorker {
                 const anchorX = spriteAnchorX[neighborIdx] ?? 0.5;
                 const anchorY = spriteAnchorY[neighborIdx] ?? 0.95;
 
-                const dist = Math.sqrt(distSq);
-
-                const distRatio = dist * 0.00390625;
+                const invDist = 1 / Math.sqrt(distSq);
+                const distRatio = distSq * invDist * 0.00390625; // dist / 256
                 const clampedDistRatio = distRatio > 1 ? 1 : distRatio;
                 const lengthScale = -(0.3 + clampedDistRatio * 0.9) * entityScaleY * heightMult;
 
@@ -2747,7 +2745,6 @@ class PreRenderWorker extends AbstractWorker {
                 if (alpha < MIN_POINT_SHADOW_ALPHA) continue;
 
                 // Facing = light→caster dir rotated -90°: cos(θ-π/2)=sin(θ)=dy/r, sin(θ-π/2)=-cos(θ)=-dx/r
-                const invDist = 1 / dist;
                 const shadowIdx = shadowStartIdx + shadowsForThisLight;
                 rqX[shadowIdx] = casterX;
                 rqY[shadowIdx] = casterY;
