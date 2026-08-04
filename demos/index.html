@@ -46,10 +46,7 @@
     import { OrientedBoxScene } from '/demos/scenes/OrientedBoxScene.js';
     import { WeldBreakScene } from '/demos/scenes/WeldBreakScene.js';
     import { Box2dQueryAabbScene } from '/demos/scenes/Box2dQueryAabbScene.js';
-    import {
-      LightingBenchCookieScene,
-      LightingBenchRaycastScene,
-    } from '/demos/scenes/LightingBenchScene.js';
+
     // Destructure what we need from WEED
     const { GameEngine } = WEED;
 
@@ -78,8 +75,6 @@
       { name: 'Oriented Boxes', class: OrientedBoxScene },
       { name: 'Weld Break', class: WeldBreakScene },
       { name: 'Box2D QueryAABB', class: Box2dQueryAabbScene },
-      { name: 'Lighting Bench (cookies)', class: LightingBenchCookieScene },
-      { name: 'Lighting Bench (raycast)', class: LightingBenchRaycastScene },
     ]
     // Register available scenes with DebugUI for scene switching
     if (game.debugUI) {

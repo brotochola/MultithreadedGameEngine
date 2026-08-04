@@ -71,7 +71,7 @@ import {
   NAVIGATION_DEFAULTS,
   DEBUG_DEFAULTS,
   SUN_DEFAULTS,
-  LAYER_DEFAULTS,
+  ASSETS_DEFAULTS,
   DEFAULT_LAYERS,
 } from './ConfigDefaults.js';
 import { Sun } from './Sun.js';
@@ -1333,11 +1333,11 @@ class Scene {
     const bakedBigAtlas = imageUrls?.bigAtlas;
     const assetsConfig = this.config.assets || {};
     const atlasOptions = {
-      maxAtlasWidth: assetsConfig.maxAtlasWidth ?? 4096,
-      maxAtlasHeight: assetsConfig.maxAtlasHeight ?? 4096,
-      atlasPadding: assetsConfig.atlasPadding ?? 2,
-      trimImages: assetsConfig.trimImages ?? true,
-      trimAlphaThreshold: assetsConfig.trimAlphaThreshold ?? 0,
+      maxAtlasWidth: assetsConfig.maxAtlasWidth ?? ASSETS_DEFAULTS.maxAtlasWidth,
+      maxAtlasHeight: assetsConfig.maxAtlasHeight ?? ASSETS_DEFAULTS.maxAtlasHeight,
+      atlasPadding: assetsConfig.atlasPadding ?? ASSETS_DEFAULTS.atlasPadding,
+      trimImages: assetsConfig.trimImages ?? ASSETS_DEFAULTS.trimImages,
+      trimAlphaThreshold: assetsConfig.trimAlphaThreshold ?? ASSETS_DEFAULTS.trimAlphaThreshold,
       heuristic: 'best-short-side',
     };
 

@@ -28,7 +28,7 @@ export class AdobeAnimateScene extends Scene {
     },
     renderer: {
       noLimitFPS: false,
-      maxVisibleRenderables: 100000,
+      maxVisibleRenderables: 160000,
       ySorting: true,
     },
     lighting: {

@@ -54,7 +54,7 @@ const Y_SORT_K = DECORATION_Y_SORT_SCALE;
  * Responsibilities:
  * 1. Screen visibility for entities, particles, and decorations
  * 2. Animation frame advancement for entities
- * 3. Building main render queue (Y-sorted, interpolated)
+ * 3. Building main render queue (Y-sorted)
  * 4. Building shadow render queue (light cookies + black shadow sprites)
  * 5. Computing screenX/screenY for all visible renderables
  *
@@ -828,7 +828,7 @@ class PreRenderWorker extends AbstractWorker {
         this.collectVisibleBullets();
         if (detail) this.collectTimeThisFrame = performance.now() - t0;
 
-        // Build the final render queue (sorts by Y, applies interpolation, writes to SAB)
+        // Build the final render queue (sorts by Y, writes to SAB)
         this.buildRenderQueue(deltaTime);
 
         // Build custom layer render queues (entities routed by SpriteRenderer.layerId)
@@ -1801,7 +1801,7 @@ class PreRenderWorker extends AbstractWorker {
                 // === PARTICLE ===
                 rqX[out] = particleX[idx];
                 // Zenithal: height → scale (and alpha). Never fold z into Y.
-                // Flat: y only. Else (topdown/side): screenY = y + z.
+                // Flat: y only. Else (topdown): screenY = y + z.
                 if (particleViewMode && particleViewMode[idx] === CAMERA_TYPES.ZENITHAL && !(particleFlat && particleFlat[idx])) {
                     rqY[out] = particleY[idx];
                     const height = -particleZ[idx];
@@ -2180,7 +2180,7 @@ class PreRenderWorker extends AbstractWorker {
                     // === PARTICLE ===
                     rqX[out] = particleX[idx];
                     // Zenithal: height → scale (and alpha). Never fold z into Y.
-                    // Flat: y only. Else (topdown/side): screenY = y + z.
+                    // Flat: y only. Else (topdown): screenY = y + z.
                     if (particleViewMode && particleViewMode[idx] === CAMERA_TYPES.ZENITHAL && !(particleFlat && particleFlat[idx])) {
                         rqY[out] = particleY[idx];
                         const height = -particleZ[idx];

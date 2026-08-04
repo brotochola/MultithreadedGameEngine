@@ -80,13 +80,11 @@ export class CarScene extends WEED.Scene {
             gravity: { x: 0, y: 0 },
             sleeping: true,
             // fixedFps: 60,
-            // interpolation: true,
         },
 
         renderer: {
             noLimitFPS: false,
             ySorting: true,
-            interpolation: false,
             cullingRatio: 0.5,
             maxVisibleRenderables: 50000, // Must fit: cars + rocks + particles + decorations (500 cars + 1000 particles = 1500+)
             // fixedFps: 60,

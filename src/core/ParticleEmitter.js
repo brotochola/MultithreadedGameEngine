@@ -8,7 +8,7 @@
 // SPAWN MODES
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// emit(config)         — heighted; screenY = y + z (topdown / side / iso)
+// emit(config)         — heighted; screenY = y + z (topdown / iso)
 // emitZenithal(config) — heighted; XY on floor, scale/alpha from -z
 // emitFlat(config)     — no ground; always integrate XY; screenY = y
 //

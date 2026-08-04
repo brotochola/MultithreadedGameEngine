@@ -27,7 +27,7 @@ test('pixi custom layers use sortKey depth when layer.ySorting', () => {
   assert.doesNotMatch(pixi, /this\.instancedSprites\s*=/);
 });
 
-test('instancedSprites default documents always-on', () => {
-  assert.match(defaults, /Always on/);
-  assert.match(defaults, /instancedSprites:\s*true/);
+test('instancedSprites config flag removed (always instanced)', () => {
+  assert.doesNotMatch(defaults, /instancedSprites/);
+  assert.doesNotMatch(defaults, /\binterpolation\s*:/);
 });

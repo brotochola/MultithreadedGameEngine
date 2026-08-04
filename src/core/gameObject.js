@@ -895,7 +895,7 @@ export class GameObject {
 
   /**
    * Set rendering layer for this entity
-   * Entities in different layers are rendered into separate ParticleContainers
+   * Entities in different layers are rendered into separate instanced batches
    * and can have custom shaders applied (e.g., metaball water effect).
    * @param {string} layerName - Layer name (e.g., 'water') or 'ENTITIES' for default
    * @returns {this} For chaining

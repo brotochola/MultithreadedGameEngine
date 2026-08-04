@@ -6,7 +6,7 @@
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { STATE_CHANNELS } from './box2dConstants.js';
-import { setRotCSFromAngle } from '../core/rotCS.js';
+import { setRotCSFromAngle } from '../core/utils.js';
 
 export { STATE_CHANNELS };
 

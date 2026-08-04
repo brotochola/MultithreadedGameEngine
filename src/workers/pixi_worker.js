@@ -68,8 +68,6 @@ import {
   TextureSource,
   ImageSource,
   Ticker,
-  ParticleContainer,
-  Particle,
   Matrix,
   // Shader/Mesh for lighting system
   Geometry,
@@ -115,8 +113,6 @@ const PIXI = Object.freeze({
   TextureSource,
   ImageSource,
   Ticker,
-  ParticleContainer,
-  Particle,
   Matrix,
   Geometry,
   Mesh,
@@ -149,7 +145,6 @@ class PixiRenderer extends AbstractWorker {
 
     // Renderer configuration options (set during initialize)
     this.ySorting = false; // Enable/disable Y-sorting for depth ordering
-    this.interpolation = true; // Enable/disable interpolation based on physics FPS
     this.physicsWorkerIndex = 1; // Updated during initialize() based on spatial worker count
 
     // PIXI application and rendering
@@ -183,22 +178,12 @@ class PixiRenderer extends AbstractWorker {
     this.customLayersTimeThisFrame = 0;
     this.miscTimeThisFrame = 0;
 
-    // Entity rendering goes exclusively through the render queue from pre_render_worker
+    // Entity / particle / decoration rendering goes through the render queue
     // (see updateSpritesFromRenderQueue). Animation/texture selection happens in
     // pre_render_worker, which writes resolved textureIds into the queue.
-
-    // Particle rendering (separate from entities)
-    this.particleSprites = []; // Array of PIXI.Particle references (indexed 0 to maxParticles-1, null if not active)
-    this.particleSpritePoolIndices = null; // Int32Array - Maps particle index to pool index (or -1 if no sprite)
-    this.maxParticles = 0; // Number of particle slots
-    this.particleAppliedTextureId = null; // Uint16Array - Track last-applied textureId per particle (0xFFFF = none)
-
-    // Decoration rendering (separate from entities, static sprites)
-    this.decorationSprites = []; // Array of PIXI.Particle references (indexed by decoration, null if not spawned)
-    this.decorationSpritePoolIndices = null; // Int32Array - Maps decoration index to pool index (or -1 if no sprite)
-    this.decorationSpriteTextureIds = null; // Uint16Array - Track current textureId per decoration (for texture change detection)
-    this.maxDecorations = 0; // Number of decoration slots
-    this.visibleDecorationCount = 0; // Number of visible decorations
+    this.maxParticles = 0;
+    this.maxDecorations = 0;
+    this.visibleDecorationCount = 0;
 
     // World and viewport dimensions
     this.worldWidth = 0;
@@ -363,7 +348,7 @@ class PixiRenderer extends AbstractWorker {
     this.shadowDisplaySprite = null; // Sprite to display shadowRT with multiply blend
     this.shadowResolution = 1.0; // Resolution multiplier for shadow RT
 
-    // Reusable render-state for interpolation
+    // Reusable camera render-state
     this._renderCameraX = 0;
     this._renderCameraY = 0;
     this._renderZoom = 1.0;
@@ -2321,45 +2306,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
   }
 
-  /**
-   * Initialize particle sprite tracking arrays
-   * OPTIMIZATION: Sprites are acquired lazily from central pool when particles spawn
-   */
-  createParticleSprites() {
-    if (this.maxParticles === 0) return;
-
-    // Initialize particle tracking arrays
-    this.particleSprites = new Array(this.maxParticles).fill(null);
-    this.particleSpritePoolIndices = new Uint16Array(this.maxParticles).fill(0xFFFF);
-    this.particleAppliedTextureId = new Uint16Array(this.maxParticles).fill(0xFFFF); // 0xFFFF = no texture applied
-    this.particleSpriteCount = 0; // Number of sprites currently allocated for particles
-
-    console.log(
-      `PIXI WORKER: Particle system initialized (${this.maxParticles} slots, using central particle pool)`
-    );
-  }
-
-  /**
-   * Create decoration sprites (separate from entity sprites)
-   * OPTIMIZATION: Uses lazy creation - sprites are acquired from central pool when needed
-   */
-  createDecorationSprites() {
-    if (this.maxDecorations === 0) return;
-
-    // Initialize arrays for decoration tracking
-    this.decorationSprites = new Array(this.maxDecorations).fill(null);
-    this.decorationSpritePoolIndices = new Uint16Array(this.maxDecorations).fill(0xFFFF);
-    this.decorationSpriteTextureIds = new Uint16Array(this.maxDecorations);
-    this.decorationSpriteCount = 0; // Track allocated sprites for cleanup
-
-    console.log(
-      `PIXI WORKER: Decoration system initialized (${this.maxDecorations} slots, using central particle pool)`
-    );
-  }
-
-  /**
-   * Handle custom messages
-   */
   handleCustomMessage(data) {
     const { msg } = data;
     if (msg === 'box2dReady' && data.channelOffsets) {
@@ -2422,8 +2368,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     if (!layer) return;
     displayObject.zIndex = layer.zIndex;
     displayObject.alpha = layer.alpha;
-    const useContainerBlend = forceContainerBlend || displayObject instanceof PIXI.ParticleContainer;
-    displayObject.blendMode = useContainerBlend ? layer.containerBlendMode : layer.blendMode;
+    displayObject.blendMode = forceContainerBlend ? layer.containerBlendMode : layer.blendMode;
   }
 
   _registerLayerDisplayObject(layerName, displayObject, forceContainerBlend) {
@@ -2776,23 +2721,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
     // Configure Y-sorting (default: true)
     this.ySorting = rendererConfig.ySorting !== undefined ? rendererConfig.ySorting : true;
-    // console.log(
-    //   `PIXI WORKER: Y-sorting ${this.ySorting ? "enabled" : "disabled"}`
-    // );
-
-    // Configure interpolation (default: true)
-    this.interpolation =
-      rendererConfig.interpolation !== undefined ? rendererConfig.interpolation : true;
-    // console.log(
-    //   `PIXI WORKER: Interpolation ${this.interpolation ? "enabled" : "disabled"}`
-    // );
 
     this.autoGenerateMipmaps =
       rendererConfig.autoGenerateMipmaps !== undefined
         ? !!rendererConfig.autoGenerateMipmaps
         : RENDERER_DEFAULTS.autoGenerateMipmaps;
-
-    // instancedSprites: always on (ParticleContainer path removed; false ignored)
 
     // Configure decoration zoom culling thresholds
     this.decorationFadeStartZoom =
@@ -3030,14 +2963,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     // Note: Debug visualization is now handled by DebugUI on main thread
     // This removes ~400 lines of debug rendering code from pixi_worker
 
-    // Entity sprites come from the render queue (see updateSpritesFromRenderQueue);
-    // no per-entity sprite arrays are needed in this worker.
-    // Create particle sprites (separate pool)
-    this.createParticleSprites();
-    this.reportLog('finished creating particle sprites');
-    // Create decoration sprites (separate pool)
-    this.createDecorationSprites();
-    this.reportLog('finished creating decoration sprites');
+    // Entity / particle / decoration sprites come from the render queue
+    // (see updateSpritesFromRenderQueue); no per-slot sprite arrays in this worker.
 
     // ========================================
     // CUSTOM LAYER RENDERING INFRASTRUCTURE

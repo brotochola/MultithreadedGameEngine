@@ -82,7 +82,6 @@ export class BichosScene extends WEED.Scene {
     renderer: {
       noLimitFPS: false,
       ySorting: true,
-      interpolation: true,
       cullingRatio: 0.33,
       startFadingDecorationsAtZoom: 0.5,
       hideDecorationsAtZoom: 0.25,

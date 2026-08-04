@@ -4,11 +4,11 @@ Particles are a dedicated pool (`ParticleComponent` + `ParticleEmitter`), not Ga
 
 ## Spawn API
 
-Mode is chosen at the call site. Do not set scene `particle.cameraView` for mode (deprecated / ignored by pre_render).
+Mode is chosen at the call site via `emit` / `emitZenithal` / `emitFlat`.
 
 | Method | Physics | Screen mapping |
 | --- | --- | --- |
-| `ParticleEmitter.emit(config)` | Heighted: `z`, gravity, floor flags | `screenY = y + z` (topdown / side / iso) |
+| `ParticleEmitter.emit(config)` | Heighted: `z`, gravity, floor flags | `screenY = y + z` (topdown / iso) |
 | `ParticleEmitter.emitZenithal(config)` | Same heighted physics | XY on floor plane; scale (+ optional alpha) from `-z` |
 | `ParticleEmitter.emitFlat(config)` | No ground; always integrate XY | `screenY = y` (ignore `z`) |
 | `ParticleEmitter.stampDecal(config)` | Instant floor stamp via heighted `emit` | Decal on tilemap |
@@ -95,7 +95,6 @@ Reads per-particle `viewMode` / `flat`:
 | `zenithalMaxHeight` | Reference height for full zenithal scale boost |
 | `zenithalScaleFactor` | How hard scale grows with height |
 | `zenithalAlphaFade` | How hard alpha dies with height (0 = off) |
-| `cameraView` | **Deprecated.** Ignored for mode; use `emit` / `emitZenithal` / `emitFlat` |
 
 Zenithal curve knobs are scene-level only (like FOV). Per-burst look uses emit fields (`z`, `vz`, `scale`, `alpha`), not per-particle curve overrides.
 

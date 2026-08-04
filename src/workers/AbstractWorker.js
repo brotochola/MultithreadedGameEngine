@@ -196,9 +196,7 @@ export class AbstractWorker {
     const instantaneousFPS = 1000 / Math.max(deltaTime, FPS_MIN_DELTA_MS);
     this.currentFPS = instantaneousFPS;
 
-    // Write instantaneous FPS to shared frameRateData buffer
-    // This allows the renderer to know each worker's FPS for smooth interpolation
-    // (e.g., renderer interpolates positions when rendering faster than physics)
+    // Write instantaneous FPS to shared frameRateData buffer (debug / stats)
     if (this.frameRateData && this.frameRateIndex >= 0) {
       this.frameRateData[this.frameRateIndex * this.frameRateStride] = instantaneousFPS;
     }

@@ -33,7 +33,7 @@ import {
   screenBoundsToWorldBounds,
 } from '../core/utils.js';
 import { PARTICLE_STATS, createStatsWriter } from './workers-utils.js';
-import { NAVIGATION_DEFAULTS, PHYSICS_DEFAULTS } from '../core/ConfigDefaults.js';
+import { NAVIGATION_DEFAULTS } from '../core/ConfigDefaults.js';
 import {
   getColliderBounds,
   getCellRange,
@@ -358,8 +358,6 @@ class ParticleWorker extends AbstractWorker {
 
     // Derived properties
     this.globalEntityCount = 0;
-    this.minSpeedForRotation = 0.1;
-    this.sleepingEnabled = true;
     this._queryRigidBody = null;
 
     // Physics pose publish (read-only latch; pre_render owns consume)
@@ -523,12 +521,7 @@ class ParticleWorker extends AbstractWorker {
     // DERIVED PROPERTIES - Initialize
     // ========================================
     if (data.buffers?.componentData?.RigidBody && data.componentPools?.RigidBody) {
-      const physicsConfig = data.config?.physics || {};
-      this.minSpeedForRotation = physicsConfig.minSpeedForRotation ?? PHYSICS_DEFAULTS.minSpeedForRotation;
-      this.sleepingEnabled = physicsConfig.sleeping ?? PHYSICS_DEFAULTS.sleeping;
       this._queryRigidBody = [RigidBody];
-
-      // console.log('[PARTICLE WORKER] Derived properties initialized');
     }
 
     // Sway decimation config

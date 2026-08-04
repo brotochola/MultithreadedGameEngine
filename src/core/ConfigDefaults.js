@@ -112,8 +112,6 @@ export const CAMERA_TYPES = Object.freeze({
   TOPDOWN: 0,
   /** Zenithal (bird's-eye): Z affects scale (and optionally alpha) */
   ZENITHAL: 1,
-  /** Side / platformer: Z offsets screen Y (same as topdown for particles) */
-  SIDE: 2,
 });
 
 // ============================================================================
@@ -154,7 +152,6 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   contactHertz: 30,
   /** Soft contact damping ratio ζ → b2WorldDef.contactDampingRatio. */
   contactDampingRatio: 0.7,
-  minSpeedForRotation: 6,
   maxJoints: 0,
   /** Gravity (px/s²). */
   gravity: Object.freeze({ x: 0, y: 0 }),
@@ -216,11 +213,6 @@ export const PARTICLE_DEFAULTS = Object.freeze({
   decals: false,
   decalsTileSize: 256,
   decalsResolution: 0.5,
-  /**
-   * @deprecated Mode is per-particle via ParticleEmitter.emit / emitFlat / emitZenithal
-   * (ParticleComponent.viewMode). Kept for old scenes; ignored by pre_render.
-   */
-  cameraView: CAMERA_TYPES.TOPDOWN,
   /** Zenithal projection curve (scene-level). Used when viewMode === ZENITHAL. */
   zenithalMaxHeight: 50,
   zenithalScaleFactor: 0.5,
@@ -283,7 +275,6 @@ export const RENDERER_DEFAULTS = Object.freeze({
   noLimitFPS: false,
   fixedFps: 0,
   ySorting: false,
-  interpolation: true,
   cullingRatio: 0.1,
   startFadingDecorationsAtZoom: 0.5,
   hideDecorationsAtZoom: 0.25,
@@ -291,11 +282,6 @@ export const RENDERER_DEFAULTS = Object.freeze({
   maxDecalTileUploadsPerFrame: 32,
   /** Pixi ImageSource mip chain for atlases/textures/tilesets. Off by default (VRAM + atlas bleed risk; STEP flat in benches). */
   autoGenerateMipmaps: false,
-  /**
-   * Instanced Mesh pipeline for ENTITIES / cast shadows / custom layers.
-   * Always on — ParticleContainer path removed. Scene `false` is ignored.
-   */
-  instancedSprites: true,
 });
 
 // ============================================================================
@@ -353,7 +339,6 @@ export const LAYER_DEFAULTS = Object.freeze({
   maxItemsPerLayer: 5000,
   resolution: 1.0,
   alpha: 1.0,             // mutable at runtime via layer.alpha = v (SAB + Atomics)
-  shader: null,
   blendMode: BLEND_MODES.NORMAL,
   // ySorting intentionally omitted: custom layers inherit the scene-level
   // renderer.ySorting setting (Layer._defaultYSorting) when not specified.
