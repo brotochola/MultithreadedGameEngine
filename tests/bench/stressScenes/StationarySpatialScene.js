@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { StationarySpatialEntity } from '../gameObjects/stationarySpatialEntity.js';
+import { StationarySpatialEntity } from './stationary/stationarySpatialEntity.js';
 
 const { Scene, Camera } = WEED;
 

@@ -1,4 +1,4 @@
-import WEED from '../../src/index.js';
+import WEED from '/src/index.js';
 
 const { Component } = WEED;
 

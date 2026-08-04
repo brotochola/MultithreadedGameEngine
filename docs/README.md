@@ -25,6 +25,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 | [`FLASHES.md`](./FLASHES.md)                           | Flash.create, castShadows, lighting budget vs persistent lights            |
 | [`TILEMAP.md`](./TILEMAP.md)                           | Tiled JSON loading, SAB-backed tile data, and tile query APIs               |
 | [`RAYCASTING.md`](./RAYCASTING.md)                     | DDA grid raycasts, line-of-sight checks, and layer-mask filtering           |
+| [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md)     | L1 isolated / L2 stressScenes / L3 demo pyramid; feature catalog + commands |
 
 ## Related Project Areas
 
@@ -37,7 +38,9 @@ This folder contains the engine notes that are closest to the code. The docs are
 | [`../tests/bench/`](../tests/bench/) | Playwright harness (`integrated-worker-benchmark.html`) plus scripts below |
 | [`../tests/bench/run-integrated-worker-benchmark.mjs`](../tests/bench/run-integrated-worker-benchmark.mjs) | `npm run test:bench` — worker FPS comparison (`BallsScene`) |
 | [`../tests/bench/scene-cycle-smoke.mjs`](../tests/bench/scene-cycle-smoke.mjs) | Scene load/destroy leak smoke (heap, `Layer`/`NavGrid`/`Sound` statics) |
-| [`../tests/bench/ray-microbench.mjs`](../tests/bench/ray-microbench.mjs) | Ray DDA correctness vs brute force + microbench |
+| [`../tests/bench/ray-microbench.mjs`](../tests/bench/ray-microbench.mjs) | Ray DDA L1 microbench (`pnpm bench:micro:ray`) |
+| [`../tests/bench/stressScenes/`](../tests/bench/stressScenes/) | L2 feature stress scenes (Ray, QueryChurn, StationarySpatial, RenderQueue) |
+| [`./FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md) | Feature bench pyramid + catalog |
 | [`./spatial_worker_hypothesis_report.md`](./spatial_worker_hypothesis_report.md) | Spatial hyp campaign + neighbor-reuse defaults (H3) |
 
 ## Documentation Policy

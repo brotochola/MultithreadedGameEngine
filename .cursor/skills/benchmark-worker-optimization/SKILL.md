@@ -21,6 +21,8 @@ Change **physics** or **spatial** / **renderer** code, then **verify impact** us
 - **Runner:** `node tests/bench/run-integrated-worker-benchmark.mjs` — `pnpm test:bench` (see `package.json`).
 - **Page:** `tests/bench/integrated-worker-benchmark.html` — dynamic scene import; worker metrics from shared stat buffers (`tests/bench/workerBenchmarkMetrics.js`).
 - **Output:** `tests/results/integrated-worker-benchmark.json` (override with `--output` or positional 4th arg).
+- **L2 stress scenes:** `tests/bench/stressScenes/` (Ray, QueryChurn, StationarySpatial, RenderQueue) — see `docs/FEATURE_BENCHMARKS.md`.
+- **L1 Ray:** `pnpm bench:micro:ray` → `tests/bench/ray-microbench.mjs`.
 - **Predator helper:** `tests/results/_bench-helpers.mjs` → `runPredatorBench(name)` (headed + screenshots).
 
 ## Headless vs headed
@@ -91,6 +93,13 @@ Example (headed, comparable to demos):
 ```bash
 pnpm test:bench:headed
 # or: pnpm test:bench -- --headed
+```
+
+Feature L2 (Ray stress scene):
+
+```bash
+pnpm bench:feature:ray
+# L1 isolated: pnpm bench:micro:ray
 ```
 
 Predator with screenshots:

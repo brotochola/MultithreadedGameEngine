@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { QueryChurnTag } from '../components/queryChurnTag.js';
+import { QueryChurnTag } from './queryChurnTag.js';
 import { QueryChurnEntity } from './queryChurnEntity.js';
 
 const { GameObject, SpriteRenderer } = WEED;

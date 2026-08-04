@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { RenderQueueStressEntity } from '../gameObjects/renderQueueStressEntity.js';
+import { RenderQueueStressEntity } from './renderQueue/renderQueueStressEntity.js';
 
 const { Scene, Camera } = WEED;
 

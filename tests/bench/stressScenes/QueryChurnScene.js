@@ -1,7 +1,7 @@
 import WEED from '/src/index.js';
-import { QueryChurnTag } from '../components/queryChurnTag.js';
-import { QueryChurnDriver } from '../gameObjects/queryChurnDriver.js';
-import { QueryChurnEntity } from '../gameObjects/queryChurnEntity.js';
+import { QueryChurnTag } from './queryChurn/queryChurnTag.js';
+import { QueryChurnDriver } from './queryChurn/queryChurnDriver.js';
+import { QueryChurnEntity } from './queryChurn/queryChurnEntity.js';
 
 const { Scene, Camera, SpriteRenderer } = WEED;
 

@@ -43,6 +43,8 @@ node tests/bench/run-integrated-worker-benchmark.mjs --headed \
 
 Use scene selection for targeted checks:
 
+- **Feature pyramid (L1/L2/L3):** see [`docs/FEATURE_BENCHMARKS.md`](../../docs/FEATURE_BENCHMARKS.md). L2 stress scenes live under `tests/bench/stressScenes/`.
+- **Raycasts:** L1 `pnpm bench:micro:ray`; L2 `pnpm bench:feature:ray` (`RayStressScene`).
 - **Spatial/physics:** `BallsScene`, `BallsAndRectanglesScene`, or `StationarySpatialScene`.
 - **Query churn:** `QueryChurnScene` for spawn/despawn list updates and custom precomputed active-query publication.
 - **Pre-render/render queues:** `RenderQueueStressScene` for many visible renderables and Y-sorted queue pressure.
@@ -52,7 +54,7 @@ Stationary spatial reuse check:
 
 ```bash
 node tests/bench/run-integrated-worker-benchmark.mjs --headed \
-  --scene /demos/scenes/StationarySpatialScene.js \
+  --scene /tests/bench/stressScenes/StationarySpatialScene.js \
   --scene-export StationarySpatialScene \
   --output tests/results/stationary-spatial-headed.json
 ```
@@ -61,7 +63,7 @@ Query churn check:
 
 ```bash
 node tests/bench/run-integrated-worker-benchmark.mjs --headed \
-  --scene /demos/scenes/QueryChurnScene.js \
+  --scene /tests/bench/stressScenes/QueryChurnScene.js \
   --scene-export QueryChurnScene \
   --output tests/results/query-churn-headed.json
 ```
@@ -70,9 +72,27 @@ Render queue stress check:
 
 ```bash
 node tests/bench/run-integrated-worker-benchmark.mjs --headed \
-  --scene /demos/scenes/RenderQueueStressScene.js \
+  --scene /tests/bench/stressScenes/RenderQueueStressScene.js \
   --scene-export RenderQueueStressScene \
   --output tests/results/render-queue-stress-headed.json
+```
+
+Ray stress (L2) check:
+
+```bash
+pnpm bench:feature:ray
+# or:
+node tests/bench/run-integrated-worker-benchmark.mjs --headed \
+  --scene /tests/bench/stressScenes/RayStressScene.js \
+  --scene-export RayStressScene \
+  --output tests/results/ray-stress-headed.json
+```
+
+Ray microbench (L1):
+
+```bash
+pnpm bench:micro:ray
+# optional: --entities 2000 --rays 200000 --cell-size 128 --seed 12648430 --output tests/results/ray-micro.json
 ```
 
 Physics kernel study (isolated JavaScript loop research, not an engine scene):
