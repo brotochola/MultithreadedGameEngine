@@ -2,10 +2,17 @@
 // Handles locomotion (idle/walk/run) and action animations (shoot, melee, hurt, die)
 
 import WEED from '/src/index.js';
-import { PersonComponent, DIRECTION_NAMES } from '../components/personComponent.js';
+import {
+  PersonComponent,
+  DIRECTION_NAMES,
+  DIRECTION_UP,
+  DIRECTION_LEFT,
+  DIRECTION_DOWN,
+  DIRECTION_RIGHT,
+} from '../components/personComponent.js';
 import { LootableComponent } from '../components/lootableComponent.js';
 
-const { FSM, FSMState, RigidBody, getDirectionFromVector } = WEED;
+const { FSM, FSMState, RigidBody } = WEED;
 
 const ACTION_ANIM_SPEED = 0.25;
 const DYING_ANIM_SPEED = 0.5;
@@ -29,6 +36,14 @@ export const WALK_SPEED_THRESHOLD = 4; // was 0.066 frame → ×60 (~3.96)
 const RUN_ANIMATION_MULTIPLIER = 0.002; // was 0.12 / 60
 const WALK_ANIMATION_MULTIPLIER = 0.00277; // was 0.166 / 60
 const IDLE_ANIMATION_MULTIPLIER = 0.05; // idle is not speed-scaled
+
+/** Same octants as getDirectionFromVector — returns DIRECTION_* index (no string/indexOf). */
+function facingIndexFromVelocity(vx, vy) {
+  const ax = vx < 0 ? -vx : vx;
+  const ay = vy < 0 ? -vy : vy;
+  if (ay >= ax) return vy >= 0 ? DIRECTION_DOWN : DIRECTION_UP;
+  return vx >= 0 ? DIRECTION_RIGHT : DIRECTION_LEFT;
+}
 
 // ==========================================
 // IDLE STATE - standing still
@@ -58,9 +73,7 @@ class IdleState extends FSMState {
       this.fsm.changeState(i, this.fsm.states.WALKING);
     }
 
-    // Update idle animation if facing direction changed
-    const facingDir = DIRECTION_NAMES[PersonComponent.facingDirection[i]] || 'down';
-    owner.setAnimation(`idle_${facingDir}`);
+    // Facing only changes in walk/run/actions; onEnter already set idle_* — skip per-tick setAnimation
   }
 }
 
@@ -85,18 +98,15 @@ class WalkingState extends FSMState {
 
     const speed = RigidBody.speed[i];
 
-    // Update facing from vx/vy (no velocityAngle atan2)
+    // Update facing from vx/vy; setAnimation only when facing changes
     if (speed > WALK_SPEED_THRESHOLD) {
-      const direction = getDirectionFromVector(RigidBody.vx[i], RigidBody.vy[i]);
-      const dirIndex = DIRECTION_NAMES.indexOf(direction);
-      if (dirIndex >= 0) {
+      const dirIndex = facingIndexFromVelocity(RigidBody.vx[i], RigidBody.vy[i]);
+      if (dirIndex !== PersonComponent.facingDirection[i]) {
         PersonComponent.facingDirection[i] = dirIndex;
+        owner.setAnimation(`walk_${DIRECTION_NAMES[dirIndex]}`);
       }
     }
 
-    // Update animation
-    const facingDir = DIRECTION_NAMES[PersonComponent.facingDirection[i]] || 'down';
-    owner.setAnimation(`walk_${facingDir}`);
     owner.setAnimationSpeed(speed * WALK_ANIMATION_MULTIPLIER);
 
     // Stopped moving? -> Idle immediately
@@ -136,13 +146,12 @@ class RunningState extends FSMState {
 
     const speed = RigidBody.speed[i];
 
-    const direction = getDirectionFromVector(RigidBody.vx[i], RigidBody.vy[i]);
-    const dirIndex = DIRECTION_NAMES.indexOf(direction);
-    if (dirIndex >= 0) {
+    const dirIndex = facingIndexFromVelocity(RigidBody.vx[i], RigidBody.vy[i]);
+    if (dirIndex !== PersonComponent.facingDirection[i]) {
       PersonComponent.facingDirection[i] = dirIndex;
+      owner.setAnimation(`run_${DIRECTION_NAMES[dirIndex]}`);
     }
 
-    owner.setAnimation(`run_${direction}`);
     owner.setAnimationSpeed(speed * RUN_ANIMATION_MULTIPLIER);
 
     // Want to walk? Wait for one run cycle to complete

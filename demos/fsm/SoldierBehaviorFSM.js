@@ -18,8 +18,6 @@ const { distanceSq2D, Ray, DebugDraw, FSM, FSMState, Transform, RigidBody, GameO
 
 const _closestResult = { index: -1, distSq: Infinity };
 const _navVec = { x: 0, y: 0 };
-const ENABLE_TEAM_DATA_THROTTLE = true;
-const TEAM_DATA_INTERVAL_MS = 16;
 
 /** Max LOS rays per findACivilianToShoot scan (closest-first). */
 const SHOOT_LOS_CANDIDATE_K = 4;
@@ -190,8 +188,6 @@ class IdleSoldierState extends FSMState {
   }
 
   static onUpdate(owner, i, dt) {
-    const nowMs = performance.now();
-
     // Scan for civilians: gun → need LOS; no gun → closest (melee)
     const closest = owner.hasGun() ? findACivilianToShoot(owner) : findClosestCivilian(owner);
 
@@ -217,15 +213,8 @@ class IdleSoldierState extends FSMState {
       return;
     }
 
-    // No enemies - flock with team
-    if (
-      !ENABLE_TEAM_DATA_THROTTLE ||
-      TEAM_DATA_INTERVAL_MS <= 0 ||
-      nowMs - PersonComponent.lastTeamDataUpdateTime[i] >= TEAM_DATA_INTERVAL_MS
-    ) {
-      owner.updateTeamData();
-      PersonComponent.lastTeamDataUpdateTime[i] = nowMs;
-    }
+    // No enemies — flock apply (group/separate) disabled; skip updateTeamData neighbor walk
+    // owner.updateTeamData();
     // owner.groupWithMyTeam();
     // owner.separateFromTeam();
 

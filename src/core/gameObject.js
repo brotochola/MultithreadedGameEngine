@@ -1219,9 +1219,17 @@ export class GameObject {
       GameObject._globalAnimationCache[cacheKey] = animIndex;
     }
 
+    const loopFlag = loop ? 1 : 0;
+    if (
+      SpriteRenderer.animationState[this.index] === animIndex &&
+      SpriteRenderer.loop[this.index] === loopFlag
+    ) {
+      return;
+    }
+
     // Set the animation and loop flag
     this.setAnimationState(animIndex);
-    SpriteRenderer.loop[this.index] = loop ? 1 : 0;
+    SpriteRenderer.loop[this.index] = loopFlag;
   }
 
   /**
