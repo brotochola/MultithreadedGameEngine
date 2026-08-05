@@ -40,7 +40,6 @@ export const RENDERER_STATS = Object.freeze({
 /**
  * Particle Worker Stats Schema
  * Single particle worker with particle counts.
- * Index 5 unused (was SHADOWS_UPDATED; shadows live in PRE_RENDER_STATS) — keep hole, no renumber.
  */
 export const PARTICLE_STATS = Object.freeze({
   FPS: 0,
@@ -48,6 +47,7 @@ export const PARTICLE_STATS = Object.freeze({
   TOTAL_PARTICLES: 2,
   PARTICLES_STAMPED: 3,
   FLASHES_UPDATED: 4,
+  DECAL_STAMP_MS: 5,
   ACTIVE_ENTITIES: 6,
   TOTAL_ENTITIES: 7,
   MSG_MS: 8,
@@ -239,6 +239,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
       { key: 'MSG_MS', label: 'Msg', format: fmtMs },
       { key: 'ACTIVE_PARTICLES', label: 'Active', format: fmtNum },
       { key: 'PARTICLES_STAMPED', label: 'Stamped', format: fmtNum },
+      { key: 'DECAL_STAMP_MS', label: 'Stamp', format: fmtMs },
       { key: 'PARTICLE_PHYSICS_MS', label: 'Sim', format: fmtMs },
       { key: 'BUILD_ACTIVE_VISIBLE_MS', label: 'Lists', format: fmtMs },
     ],

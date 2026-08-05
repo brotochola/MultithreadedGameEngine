@@ -23,33 +23,39 @@ pnpm test
 L3 only if the change can affect real demo load / other workers
 ```
 
-## Commands (Ray pilot — headless)
+## Commands (Ray / Decals / Particles — headless)
 
 ```bash
-# L1 — isolated Ray DDA
+# Ray (prod = H6+H1; headed Predator pick kept Ray+D2+P45)
 pnpm bench:micro:ray
-# knobs: --entities --rays --cell-size --seed --output
-
-# L2 — RayStressScene (headless)
 pnpm bench:feature:ray
-
-# L3 — PredatorScene (headless), ray-relevant gate
 pnpm bench:feature:ray:predator
-
-# Hypothesis campaign (BASE + patches, headless L1/L2/L3)
-node tests/bench/run-ray-hyp-campaign.mjs --only BASE,H1
-
-# Tournament (singles → pairs → stacks)
 pnpm bench:ray:tournament
+
+# Decals Wave A (champion D2 merged — UV DDA)
+pnpm bench:micro:decal
+pnpm bench:feature:decal
+pnpm bench:decal:tournament
+
+# Particles Wave B (emit + integrate)
+pnpm bench:micro:particle-emit
+pnpm bench:micro:particle-integrate
+pnpm bench:feature:particle-emit
+pnpm bench:feature:particle-integrate
+pnpm bench:particle:tournament
 ```
 
-See [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) for H1–H6, tournament results, and champion **H6+H1** (merged).
+Hypothesis index + fill order: [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md).
+Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`](./DECAL_HYPOTHESES.md). Particles: [`PARTICLE_HYPOTHESES.md`](./PARTICLE_HYPOTHESES.md).
 
 ## Catalog
 
 | Feature | Hot module | L1 | L2 stress scene | L3 demo | Primary metric |
 |---------|------------|----|-----------------|---------|----------------|
-| Grid Ray (DDA) | `src/core/Ray.js` | `ray-microbench.mjs` | `stressScenes/RayStressScene` | Predator / bullets | L1 ops/s; L2 `logic` `RAYCAST_MS` |
+| Grid Ray (DDA) | `src/core/Ray.js` | `ray-microbench.mjs` | `stressScenes/RayStressScene` | Predator / bullets | L1 ops/s; L2 `RAYCAST_MS` — **H6+H1 shipped** (w/ D2+P45 on Predator pick) |
+| Stamp decals | `decalStamp.js`, particle_worker | `decal-microbench.mjs` | `stressScenes/DecalStampStressScene` | zenithal / Predator | `DECAL_STAMP_MS`, particle `STEP_MS` — **champion D2** |
+| Particle emit | `ParticleEmitter.js`, free list | `particle-emit-microbench.mjs` | `stressScenes/ParticleEmitStressScene` | zenithalParticleTest | emit ops/s; particle `STEP_MS` — **champion includes P5** |
+| Particle integrate | `particleIntegrate.js`, particle_worker | `particle-integrate-microbench.mjs` | `stressScenes/ParticleIntegrateStressScene` | zenithalParticleTest | `PARTICLE_PHYSICS_MS`, `BUILD_ACTIVE_VISIBLE_MS` — **champion P4+P5** |
 | Spatial rebuild + neighbors | `spatial_worker.js`, `Grid.js` | (todo) | `stressScenes/StationarySpatialScene` | Balls | `NEIGHBOR_MS`, `REBUILD_MS` |
 | Box2D step / sync | `weedjs_post.js` | semi (WASM) | Balls / BallsAndRectangles | Balls | `STEP_MS`, `BOX2D_MS`, `BODY_COUNT` |
 | Box2D QueryAABB | `box2dQueryAabb.js` | semi | `demos/.../Box2dQueryAabbScene` | — | query / physics STEP |
@@ -61,13 +67,14 @@ See [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) for H1–H6, tournament results, 
 | DecorationsSpatial | `DecorationSpatial.js` | (todo) | (todo) | zenithal | `queryCircle` ms |
 | Bullet tick + Ray | `BulletPool`, particle_worker | (todo) | can share RayStress | Predator | particle `STEP_MS` |
 | Treiber free list / rings | `atomicFreeList`, rings | (todo) | (todo) spawn-storm | Balls spawn | pop/push/s |
-| Particle integrate | particle_worker | (todo) | (todo) | zenithalParticleTest | `PARTICLE_PHYSICS_MS` |
 
-Fill order after Ray: Spatial L1 → NavGrid L1+L2 → AngularSweep L1 → TileMap L1 → QuerySystem L1.
+Fill order after Decals + Particles: **C Spatial L1 + formal tournament** → D AngularSweep → E NavGrid → F QuerySystem L1 → G DecorationsSpatial → H Pre-render cull → I Treiber/rings → J Bullet → K TileMap L1.
+
+See [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md) for hyp summaries per wave.
 
 ## L1 scaffold
 
-Shared helpers: [`tests/bench/microbench-helpers.mjs`](../tests/bench/microbench-helpers.mjs) (`mulberry32`, `timeIt`, `writeReport`, `parseArgs`).
+Shared helpers: [`tests/bench/microbench-helpers.mjs`](../tests/bench/microbench-helpers.mjs) (`mulberry32`, `timeIt`, `writeReport`, `parseArgs`). Tournament helpers: [`tests/bench/feature-tournament-lib.mjs`](../tests/bench/feature-tournament-lib.mjs).
 
 Microbenches import production `src/...` code (no algorithm copies). Run a correctness gate before timing.
 
@@ -76,6 +83,9 @@ Microbenches import production `src/...` code (no algorithm copies). Run a corre
 | Scene | Path | Stresses |
 |-------|------|----------|
 | RayStressScene | `/tests/bench/stressScenes/RayStressScene.js` | Many deterministic raycasts/tick → `RAYCAST_MS` |
+| DecalStampStressScene | `/tests/bench/stressScenes/DecalStampStressScene.js` | Deterministic `stampDecal` storm → `DECAL_STAMP_MS` |
+| ParticleEmitStressScene | `/tests/bench/stressScenes/ParticleEmitStressScene.js` | Fixed-rate `emitFlat` → emit / STEP |
+| ParticleIntegrateStressScene | `/tests/bench/stressScenes/ParticleIntegrateStressScene.js` | Heighted churn → `PARTICLE_PHYSICS_MS`, lists |
 | StationarySpatialScene | `/tests/bench/stressScenes/StationarySpatialScene.js` | Stationary neighbor reuse |
 | QueryChurnScene | `/tests/bench/stressScenes/QueryChurnScene.js` | Spawn/despawn + query publication |
 | RenderQueueStressScene | `/tests/bench/stressScenes/RenderQueueStressScene.js` | Cull / Y-sort / render queue |

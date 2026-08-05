@@ -212,9 +212,7 @@ export class ParticleEmitter extends SharedAtomicPool {
 
       x[i] = randomRange(cfg.x);
       y[i] = randomRange(cfg.y);
-      // P5: flat particles never read z (see particleIntegrate.js's flat branch) —
-      // skip the write + randomRange call entirely.
-      if (!flatMode) z[i] = randomRange(cfg.z, 0);
+      z[i] = randomRange(cfg.z, 0);
 
       let particleVx, particleVy;
 
@@ -253,8 +251,7 @@ export class ParticleEmitter extends SharedAtomicPool {
 
       vx[i] = particleVx;
       vy[i] = particleVy;
-      // P5: flat particles never read vz either — skip the write.
-      if (!flatMode) vz[i] = randomRange(cfg.vz, 0);
+      vz[i] = randomRange(cfg.vz, 0);
 
       lifespan[i] = randomRange(cfg.lifespan, 1000);
       currentLife[i] = 0;

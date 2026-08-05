@@ -51,14 +51,21 @@ Screening: `--runs 2`, warmup 8s, duration 10s, headless.
 | 1 | Winners: **H6, H1, H4, H5** (H2/H3 reject) |
 | 2 | Best pair by L2: **H6+H1** (−37% `RAYCAST_MS` vs BASE). Auto-reject on LOS noise overridden. H4/H5 pairs did not beat H6 alone. |
 | 3 | Full stack H6+H1+H4+H5 rejected (LOS noise + no gain over H6+H1). |
-| **Champion** | **H6+H1** (stamp dedup + castAll top-N early-out) |
+| **Champion (L2 RayStress)** | **H6+H1** (stamp dedup + castAll top-N early-out) — big win on synthetic castAll flood |
 
-### Merged into production
+### Production status (2026-08-05): **SHIPPED again (with Decals/Particles)**
 
-`src/core/Ray.js` now contains the H6+H1 champion.  
-`tests/bench/ray-hyps/baseline_*.js` remain the **pre-opt** snapshots (for re-applying patches in experiments). Do not `restoreAll()` without re-applying the champion if you need production code.
+H6+H1 was briefly reverted after a noisy **headless** Predator matrix, then **re-selected** by a headed Predator pick (`tests/bench/run-predator-headed-pick.mjs`, 3 runs × 25s/18s):
 
-Post-merge sanity: L1 correctness OK; L2 RayStress `logic` STEP_MS ~2.2 ms (was ~2.8 ms BASE in round1).
+| Config | logic max STEP vs BASE |
+|--------|------------------------|
+| RAY alone | −1.2% |
+| D2 / P45 / D2+P45 | ~flat / slight regress |
+| **RAY+D2+P45** | **−6.8%** (winner) |
+
+Production now: Ray H6+H1 + Decal D2 + Particle P4+P5. Artefact: `tests/results/predator-headed-pick/summary.json`.
+
+Post-merge sanity (RayStress L2): logic STEP ~2.2 ms (was ~2.8 ms BASE).
 
 ## Patch layout
 

@@ -1,0 +1,83 @@
+# Feature hypothesis program
+
+Same pipeline as Ray for every isolatable hot subsystem:
+
+1. **L1** isolated microbench (`tests/bench/*-microbench.mjs`)
+2. **L2** stress scene under `tests/bench/stressScenes/`
+3. **Hyps** composable patches (`tests/bench/<feature>-hyps/`)
+4. **Tournament** headless singles → pairs → stacks → merge champion
+5. **L3** demo gate when relevant
+
+Shared helpers: [`tests/bench/feature-tournament-lib.mjs`](../tests/bench/feature-tournament-lib.mjs), [`microbench-helpers.mjs`](../tests/bench/microbench-helpers.mjs).
+
+## Protocol (headless)
+
+- Screen: `--runs 2 --warmup-ms 8000 --duration-ms 10000`
+- Accept single: target ≥3% median, non-target L1 not worse than −5%, workload ±5%
+- Accept combo: better than BASE on primary ms; not >3% worse than best parent
+- Regressions → new hyp id + re-enter
+
+## Waves
+
+| Wave | Feature | Status | Primary metric | L3 |
+|------|---------|--------|----------------|-----|
+| **Done** | Grid Ray | H6+H1 shipped (headed Predator pick w/ D2+P45) | `RAYCAST_MS` | Predator |
+| **A** | Stamp decals | Champion **D2** merged (UV DDA) | `DECAL_STAMP_MS` / particle `STEP_MS` | zenithal / Predator |
+| **B** | Particle emit + integrate | Champion **P4+P5** merged | `PARTICLE_PHYSICS_MS`, `BUILD_ACTIVE_VISIBLE_MS` | zenithalParticleTest |
+| C | Spatial neighbors | Next | `NEIGHBOR_MS` | Balls |
+| D | AngularSweep | Next | polygons/s | Predator |
+| E | NavGrid | Next | ms/flowfield | car / Predator |
+| F | QuerySystem | Next | publish ms | — |
+| G | DecorationsSpatial | Next | queryCircle ops/s | zenithal |
+| H | Pre-render cull | Next | `VISIBILITY_MS` | Predator |
+| I | Treiber / rings | Next | pop-push/s | Balls |
+| J | Bullet tick | Next | particle STEP | Predator |
+| K | TileMap queries | L1 only | ns/getTileId | — |
+
+Skip: full Box2D WASM step.
+
+## Wave A — Decals hyps
+
+| ID | Claim |
+|----|-------|
+| D1 | Blend per-pixel — opaque/tint hoist / skip multiply work |
+| D2 | UV nearest — row `srcY` + integer `srcX` DDA |
+| D3 | Stamp budget / `DECAL_STAMP_MS` instrumentation |
+| D4 | Multi-tile clip cache |
+| D5 | Pixi dirty upload path |
+| D6 | Direct stamp API bypass pool |
+
+Commands:
+
+```bash
+pnpm bench:micro:decal
+pnpm bench:feature:decal
+pnpm bench:decal:tournament
+```
+
+## Wave B — Particles hyps
+
+| ID | Claim |
+|----|-------|
+| P1 | Dense active ring vs scan `maxParticles` |
+| P2 | `_mergeCfg` typed scratch |
+| P3 | Prefer `dirX/dirY` / LUT over deg+cos |
+| P4 | Split flat vs heighted lists |
+| P5 | Skip unused SoA writes on flat spawn |
+| P6 | Batch free-list acquire |
+
+Commands:
+
+```bash
+pnpm bench:micro:particle-emit
+pnpm bench:micro:particle-integrate
+pnpm bench:feature:particle-emit
+pnpm bench:feature:particle-integrate
+pnpm bench:particle:tournament
+```
+
+## Related
+
+- [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md) — catalog + pyramid
+- [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) — completed Ray tournament
+- [`PARTICLES.md`](./PARTICLES.md) — emit / stamp / integrate docs
