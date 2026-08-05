@@ -144,3 +144,5 @@ The ray checks `(1 << (entity.collisionLayer & 31)) & mask` per entity -- one bi
 - `_excludeSet` for `linecastBetweenEntities` is a static `Set` that gets `.clear()`-ed and reused.
 - `castAll` reuses a pool of hit objects; only allocates new ones if the pool grows (one-time cost).
 - Correctness + throughput regression: `node tests/bench/ray-microbench.mjs` (20k brute-force comparisons + timed workloads).
+- Optimization hypotheses + headless L1/L2/L3 campaign: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md).
+- Production Ray path includes tournament champion **H6+H1** (stamp dedup + `castAll` top-N early-out).

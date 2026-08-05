@@ -23,20 +23,27 @@ pnpm test
 L3 only if the change can affect real demo load / other workers
 ```
 
-## Commands (Ray pilot)
+## Commands (Ray pilot — headless)
 
 ```bash
 # L1 — isolated Ray DDA
 pnpm bench:micro:ray
 # knobs: --entities --rays --cell-size --seed --output
 
-# L2 — RayStressScene via integrated harness
+# L2 — RayStressScene (headless)
 pnpm bench:feature:ray
-# or:
-node tests/bench/run-integrated-worker-benchmark.mjs --headed \
-  --scene /tests/bench/stressScenes/RayStressScene.js --scene-export RayStressScene \
-  --output tests/results/ray-stress-headed.json
+
+# L3 — PredatorScene (headless), ray-relevant gate
+pnpm bench:feature:ray:predator
+
+# Hypothesis campaign (BASE + patches, headless L1/L2/L3)
+node tests/bench/run-ray-hyp-campaign.mjs --only BASE,H1
+
+# Tournament (singles → pairs → stacks)
+pnpm bench:ray:tournament
 ```
+
+See [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) for H1–H6, tournament results, and champion **H6+H1** (merged).
 
 ## Catalog
 

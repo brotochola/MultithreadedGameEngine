@@ -66,26 +66,8 @@ export class Ray {
   static _tempHitsArray = []; // Reusable array for castAll
   static _tempAllHitsArray = []; // Reusable array for castAll internal hits
   static _tempAllHitsCount = 0; // Reused counter to avoid allocations
-  static _tempAllHitsFarthest = -1; // H1: farthest distance among top-N castAll hits
   static _checkedEntities = new Set(); // Reused Set for castAll
   static _traverseResult = { entityIndex: -1, distance: Infinity }; // Reused by _traverseGrid
-  // Per-cast generation stamp (skip entities already shape-tested this ray)
-  static _rayGen = 1;
-  static _rayGenStamp = new Uint32Array(0);
-
-  static _beginRayGen() {
-    let gen = (Ray._rayGen + 1) >>> 0;
-    if (gen === 0) {
-      Ray._rayGenStamp.fill(0);
-      gen = 1;
-    }
-    Ray._rayGen = gen;
-    const need = Transform.active ? Transform.active.length : 0;
-    if (Ray._rayGenStamp.length < need) {
-      Ray._rayGenStamp = new Uint32Array(Math.max(need, 256));
-    }
-    return gen;
-  }
 
   // Per-worker SAB stats (outermost public call only — nested Ray.* not double-counted)
   /** Set from worker init via config.debug.collectDetailedStats */
@@ -599,29 +581,34 @@ export class Ray {
     outHits.length = 0;
     Ray._tempAllHitsArray.length = 0;
     Ray._tempAllHitsCount = 0;
-    Ray._tempAllHitsFarthest = -1;
-    Ray._beginRayGen();
+    Ray._checkedEntities.clear();
 
     const dx = xTo - xFrom;
     const dy = yTo - yFrom;
-    const distSq = dx * dx + dy * dy;
+    const distSq = dx * dx + dy * dy; // OPTIMIZED: Calculate distSq first for early exit check
 
+    // Early exit if ray is too short or too long (avoid sqrt if possible)
     if (distSq === 0 || (maxDist !== Infinity && distSq > maxDist * maxDist)) {
       return outHits;
     }
 
+    // Calculate length only if we pass the early exit (OPTIMIZED: avoid sqrt in early exit path)
     const rayLength = Math.sqrt(distSq);
+
     const dirX = dx / rayLength;
     const dirY = dy / rayLength;
-    const hitCap = maxHits > 0 ? maxHits : 1;
 
+    // Get grid params
     const invCellSize = Grid.invCellSize;
     const gridCols = Grid.gridWidth;
     const gridRows = Grid.gridHeight;
     const cellSize = Grid.cellSize;
 
+    // Collect all hits across the entire ray path
+    const checkedEntities = Ray._checkedEntities;
     const allHits = Ray._tempAllHitsArray;
 
+    // DDA setup
     const startCellX = Math.floor(xFrom * invCellSize);
     const startCellY = Math.floor(yFrom * invCellSize);
     const endCellX = Math.floor(xTo * invCellSize);
@@ -657,7 +644,7 @@ export class Ray {
     const maxSteps = gridCols + gridRows;
     let steps = 0;
 
-    // H1: keep at most hitCap closest hits; stop DDA once farthest kept <= cell exit.
+    // Traverse all cells
     while (steps++ < maxSteps) {
       if (
         currentCellX >= 0 &&
@@ -666,22 +653,19 @@ export class Ray {
         currentCellY < gridRows
       ) {
         const cellIndex = currentCellY * gridCols + currentCellX;
-        Ray._collectCellHitsTopN(
+
+        // Check all entities in this cell
+        Ray._collectCellHits(
           cellIndex,
           xFrom,
           yFrom,
           dirX,
           dirY,
           rayLength,
+          checkedEntities,
           allHits,
-          mask,
-          hitCap
+          mask
         );
-      }
-
-      const cellExit = tMaxX < tMaxY ? tMaxX : tMaxY;
-      if (Ray._tempAllHitsCount >= hitCap && Ray._tempAllHitsFarthest <= cellExit) {
-        break;
       }
 
       if (currentCellX === endCellX && currentCellY === endCellY) {
@@ -697,21 +681,28 @@ export class Ray {
       }
     }
 
+    // Finalize hit list and sort by distance
     allHits.length = Ray._tempAllHitsCount;
     allHits.sort((a, b) => a.distance - b.distance);
 
-    const count = allHits.length;
+    // Copy to output array (limited by maxHits)
+    const count = Math.min(allHits.length, maxHits);
     for (let i = 0; i < count; i++) {
       const hit = allHits[i];
-      let slot = outHits[i];
-      if (!slot) {
-        slot = { entityIndex: -1, distance: 0, hitX: 0, hitY: 0 };
-        outHits[i] = slot;
+      let out = outHits[i];
+      if (!out) {
+        out = {
+          entityIndex: -1,
+          distance: 0,
+          hitX: 0,
+          hitY: 0,
+        };
+        outHits[i] = out;
       }
-      slot.entityIndex = hit.entityIndex;
-      slot.distance = hit.distance;
-      slot.hitX = xFrom + dirX * hit.distance;
-      slot.hitY = yFrom + dirY * hit.distance;
+      out.entityIndex = hit.entityIndex;
+      out.distance = hit.distance;
+      out.hitX = xFrom + dirX * hit.distance;
+      out.hitY = yFrom + dirY * hit.distance;
     }
     outHits.length = count;
 
@@ -883,72 +874,6 @@ export class Ray {
   }
 
   /**
-   * H1: Collect hits into a top-N buffer (closest maxHits only), deduped via generation stamp.
-   * @private
-   */
-  static _collectCellHitsTopN(cellIndex, rayX, rayY, dirX, dirY, rayLength, allHits, rayMask, maxHits) {
-    const count = Grid.getCellCount(cellIndex);
-    if (count === 0) return;
-
-    const cellBase = Grid.getCellBase(cellIndex);
-    const gridEntities = Grid._gridEntities;
-    const active = Transform.active;
-    const colliderActive = Collider.active;
-    const cCollisionLayer = Collider.collisionLayer;
-    const stamp = Ray._rayGenStamp;
-    const gen = Ray._rayGen;
-
-    for (let i = 0; i < count; i++) {
-      const entityIndex = gridEntities[cellBase + i];
-
-      if (stamp[entityIndex] === gen) continue;
-      stamp[entityIndex] = gen;
-
-      if (!active[entityIndex]) continue;
-      if (!colliderActive[entityIndex]) continue;
-      if (!((1 << (cCollisionLayer[entityIndex] & 31)) & rayMask)) continue;
-
-      const shapeMax =
-        Ray._tempAllHitsCount >= maxHits && Ray._tempAllHitsFarthest >= 0
-          ? Ray._tempAllHitsFarthest
-          : rayLength;
-      const distance = Ray._shapeRayDistance(entityIndex, rayX, rayY, dirX, dirY, shapeMax);
-      if (distance < 0) continue;
-
-      let hitCount = Ray._tempAllHitsCount;
-      if (hitCount < maxHits) {
-        let hit = allHits[hitCount];
-        if (!hit) {
-          hit = { entityIndex: -1, distance: 0 };
-          allHits[hitCount] = hit;
-        }
-        hit.entityIndex = entityIndex;
-        hit.distance = distance;
-        Ray._tempAllHitsCount = hitCount + 1;
-        if (distance > Ray._tempAllHitsFarthest) Ray._tempAllHitsFarthest = distance;
-      } else if (distance < Ray._tempAllHitsFarthest) {
-        let worst = 0;
-        let worstDist = allHits[0].distance;
-        for (let h = 1; h < maxHits; h++) {
-          const d = allHits[h].distance;
-          if (d > worstDist) {
-            worstDist = d;
-            worst = h;
-          }
-        }
-        allHits[worst].entityIndex = entityIndex;
-        allHits[worst].distance = distance;
-        let far = allHits[0].distance;
-        for (let h = 1; h < maxHits; h++) {
-          const d = allHits[h].distance;
-          if (d > far) far = d;
-        }
-        Ray._tempAllHitsFarthest = far;
-      }
-    }
-  }
-
-  /**
    * Internal: Collect ALL hits in a cell (for castAll)
    * @private
    */
@@ -963,14 +888,11 @@ export class Ray {
     const colliderActive = Collider.active;
     const cCollisionLayer = Collider.collisionLayer;
 
-    const stamp = Ray._rayGenStamp;
-    const gen = Ray._rayGen;
-
     for (let i = 0; i < count; i++) {
       const entityIndex = gridEntities[cellBase + i];
 
-      if (stamp[entityIndex] === gen) continue;
-      stamp[entityIndex] = gen;
+      if (checkedEntities.has(entityIndex)) continue;
+      checkedEntities.add(entityIndex);
 
       if (!active[entityIndex]) continue;
       if (!colliderActive[entityIndex]) continue;

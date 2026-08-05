@@ -25,6 +25,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 | [`FLASHES.md`](./FLASHES.md)                           | Flash.create, castShadows, lighting budget vs persistent lights            |
 | [`TILEMAP.md`](./TILEMAP.md)                           | Tiled JSON loading, SAB-backed tile data, and tile query APIs               |
 | [`RAYCASTING.md`](./RAYCASTING.md)                     | DDA grid raycasts, line-of-sight checks, and layer-mask filtering           |
+| [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md)             | Ray perf hypotheses H1–H6 + headless L1/L2/L3 campaign                      |
 | [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md)     | L1 isolated / L2 stressScenes / L3 demo pyramid; feature catalog + commands |
 
 ## Related Project Areas
