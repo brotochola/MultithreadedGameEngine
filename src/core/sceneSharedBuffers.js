@@ -386,8 +386,9 @@ function initializeLightingAndRenderBuffers(scene) {
     scene.maxPolygonVertices = maxPolyVerts;
 
     const maxSelfLit = config.lighting.maxOccluderSelfLit || 512;
-    // header(4) + entries: entityIdx(i32) lightIdx(i32) textureId(u16) maskMode(u8) pad(u8) = 12
-    const selfLitItemBytes = 12;
+    // header(4) + entries: entityIdx, lightIdx, x,y,rotC,rotS (display pose), texId, maskMode, pad = 28
+    // Pose baked at write so pixi stays frame-locked with sprites (not live Transform).
+    const selfLitItemBytes = 28;
     const selfLitBufferSize = 4 + maxSelfLit * selfLitItemBytes;
     buffers.occluderSelfLitDataA = new SharedArrayBuffer(selfLitBufferSize);
     buffers.occluderSelfLitDataB = new SharedArrayBuffer(selfLitBufferSize);

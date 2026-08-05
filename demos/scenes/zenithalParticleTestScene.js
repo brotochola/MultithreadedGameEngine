@@ -25,8 +25,8 @@ export class ZenithalParticleTestScene extends Scene {
       zenithalAlphaFade: 0.2,
     },
 
-    logic: { noLimitFPS: true },
-    physics: { gravity: { x: 0, y: 0 }, noLimitFPS: true },
+    logic: { noLimitFPS: false },
+    physics: { gravity: { x: 0, y: 0 }, noLimitFPS: false },
     spatial: { noLimitFPS: false, cellSize: 128, maxNeighbors: 64 },
     renderer: {
       noLimitFPS: false,

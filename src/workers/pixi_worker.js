@@ -370,7 +370,7 @@ class PixiRenderer extends AbstractWorker {
     this._visPolyRT = null;          // RenderTexture for visibility lighting
     this._visPolyDisplaySprite = null; // Sprite displaying the RT with multiply blend
     this._selfLitBuffers = [null, null];
-    this._selfLitItemBytes = 12;
+    this._selfLitItemBytes = 28;
     this._selfLitContainer = null;
     this._selfLitColliderMesh = null;
     this._selfLitSpriteMeshes = [];
@@ -1194,7 +1194,8 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
     }
 
     // Self-lit queue (collider / sprite fill under occluders)
-    this._selfLitItemBytes = 12;
+    // Layout: entityIdx, lightIdx, x,y,rotC,rotS, texId, maskMode, pad = 28
+    this._selfLitItemBytes = 28;
     const selfLitSabs = [vpConfig.selfLitDataA, vpConfig.selfLitDataB];
     if (selfLitSabs[0] && selfLitSabs[1]) {
       for (let b = 0; b < 2; b++) {
@@ -1202,6 +1203,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
         this._selfLitBuffers[b] = {
           header: new Int32Array(sab, 0, 1),
           i32: new Int32Array(sab),
+          f32: new Float32Array(sab),
           u16: new Uint16Array(sab),
           u8: new Uint8Array(sab),
         };
@@ -1450,6 +1452,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
     if (count <= 0) return;
 
     const i32 = buf.i32;
+    const f32 = buf.f32;
     const u16 = buf.u16;
     const u8 = buf.u8;
     const itemBytes = this._selfLitItemBytes;
@@ -1473,6 +1476,7 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
         j++;
       }
 
+      // Light center: baked into visibility poly; here Transform is fine (lights rarely have RB)
       const lx = Transform.x[lightIdx];
       const ly = Transform.y[lightIdx] - (lightHeight[lightIdx] || 0);
       const intensity = lightIntensityArr[lightIdx];
@@ -1494,19 +1498,21 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
 
       for (let e = i; e < j; e++) {
         const byteOff = 4 + e * itemBytes;
-        const maskMode = u8[byteOff + 10];
+        const maskMode = u8[byteOff + 26];
         if (maskMode === LIGHT_OCCLUDER_MASK_SPRITE) continue;
 
-        const entityIdx = i32[byteOff >> 2];
+        const i32Off = byteOff >> 2;
+        const entityIdx = i32[i32Off];
         if (!Transform.active[entityIdx] || !Collider.active[entityIdx]) continue;
 
         const shape = Collider.shapeType[entityIdx];
         const ox = Collider.offsetX[entityIdx] || 0;
         const oy = Collider.offsetY[entityIdx] || 0;
-        const c = Transform.rotC ? (Transform.rotC[entityIdx] ?? 1) : 1;
-        const s = Transform.rotS ? (Transform.rotS[entityIdx] ?? 0) : 0;
-        const ex = Transform.x[entityIdx];
-        const ey = Transform.y[entityIdx];
+        // Baked display pose from pre_render (same as sprite / umbra)
+        const ex = f32[i32Off + 2];
+        const ey = f32[i32Off + 3];
+        const c = f32[i32Off + 4];
+        const s = f32[i32Off + 5];
 
         if (shape === ShapeType.Circle) {
           const r = Collider.radius[entityIdx];
@@ -1613,11 +1619,12 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
 
         for (let e = i; e < j; e++) {
           const byteOff = 4 + e * itemBytes;
-          const maskMode = u8[byteOff + 10];
+          const maskMode = u8[byteOff + 26];
           if (maskMode !== LIGHT_OCCLUDER_MASK_SPRITE) continue;
 
-          const entityIdx = i32[byteOff >> 2];
-          const texId = u16[(byteOff >> 1) + 4];
+          const i32Off = byteOff >> 2;
+          const entityIdx = i32[i32Off];
+          const texId = u16[(byteOff >> 1) + 12];
           if (texId === 0xFFFF || !this.flatTextures || !this.flatTextures[texId]) continue;
           if (!Transform.active[entityIdx] || !SpriteRenderer.active?.[entityIdx]) continue;
 
@@ -1626,8 +1633,8 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
           if (!entry) continue;
 
           const { mesh, geometry, shader } = entry;
-          const ox = Transform.x[entityIdx];
-          const oy = Transform.y[entityIdx];
+          const ox = f32[i32Off + 2];
+          const oy = f32[i32Off + 3];
           const sx = SpriteRenderer.scaleX[entityIdx];
           const sy = SpriteRenderer.scaleY[entityIdx];
           const ax = SpriteRenderer.anchorX[entityIdx];
@@ -1635,8 +1642,8 @@ RAYCASTED LIGHT OCCLUSION (visibility polygon system)
           const inherit = SpriteRenderer.inheritTransformRotation[entityIdx];
           let c, s;
           if (inherit) {
-            c = Transform.rotC ? (Transform.rotC[entityIdx] ?? 1) : 1;
-            s = Transform.rotS ? (Transform.rotS[entityIdx] ?? 0) : 0;
+            c = f32[i32Off + 4];
+            s = f32[i32Off + 5];
           } else {
             c = SpriteRenderer.spriteRotC[entityIdx];
             s = SpriteRenderer.spriteRotS[entityIdx];

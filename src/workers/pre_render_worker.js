@@ -625,7 +625,7 @@ class PreRenderWorker extends AbstractWorker {
 
             // Self-lit queue (entity under own occluder fill)
             this._selfLitMax = data.visibilityPolygons.maxOccluderSelfLit || 512;
-            this._selfLitItemBytes = 12;
+            this._selfLitItemBytes = 28;
             const selfLitSabs = [
                 data.visibilityPolygons.selfLitDataA,
                 data.visibilityPolygons.selfLitDataB,
@@ -637,6 +637,7 @@ class PreRenderWorker extends AbstractWorker {
                     this._selfLitBuffers[b] = {
                         header: new Int32Array(sab, 0, 1),
                         i32: new Int32Array(sab),
+                        f32: new Float32Array(sab),
                         u16: new Uint16Array(sab),
                         u8: new Uint8Array(sab),
                     };
@@ -2763,10 +2764,6 @@ class PreRenderWorker extends AbstractWorker {
             return;
         }
 
-        const worldX = Transform.x;
-        const worldY = Transform.y;
-        const worldRotC = Transform.rotC;
-        const worldRotS = Transform.rotS;
         const transformActive = Transform.active;
         const occluderActive = LightOccluder.active;
         const occluderMaskMode = LightOccluder.maskMode;
@@ -2803,14 +2800,16 @@ class PreRenderWorker extends AbstractWorker {
         const outY = this._vpOutY;
         const i32 = buf.i32;
         const f32 = buf.f32;
+        const pose = this._displayPoseOut;
 
         const entityLastTextureId = this.entityLastTextureId;
         const maxSelfLit = this._selfLitMax || 0;
         let selfLitCount = 0;
         const selfLitI32 = selfLitBuf ? selfLitBuf.i32 : null;
+        const selfLitF32 = selfLitBuf ? selfLitBuf.f32 : null;
         const selfLitU16 = selfLitBuf ? selfLitBuf.u16 : null;
         const selfLitU8 = selfLitBuf ? selfLitBuf.u8 : null;
-        const selfLitItemBytes = this._selfLitItemBytes || 12;
+        const selfLitItemBytes = this._selfLitItemBytes || 28;
 
         const visibleLights = this.visibleLightsData;
         if (!visibleLights) { buf.header[0] = 0; return; }
@@ -2833,8 +2832,10 @@ class PreRenderWorker extends AbstractWorker {
             const intensity = lightIntensity[lightIdx];
             if (intensity <= 0) continue;
 
-            const lx = worldX[lightIdx];
-            const ly = worldY[lightIdx];
+            // Same display pose as sprites (post-step publish), not live Transform
+            this._displayPose(lightIdx, pose);
+            const lx = pose.x;
+            const ly = pose.y;
             const influenceRadius = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
 
             let occCount = 0;
@@ -2852,19 +2853,23 @@ class PreRenderWorker extends AbstractWorker {
                     const nIdx = neighborData[offset + 1 + k];
                     if (!transformActive[nIdx] || !occluderActive[nIdx] || !colliderActive[nIdx]) continue;
 
+                    this._displayPose(nIdx, pose);
+                    const wx = pose.x;
+                    const wy = pose.y;
+                    const c = pose.rotC;
+                    const s = pose.rotS;
+
                     const shape = shapeType[nIdx];
                     const ox = colOffX[nIdx] || 0;
                     const oy = colOffY[nIdx] || 0;
-                    const c = worldRotC[nIdx];
-                    const s = worldRotS[nIdx];
                     let packed = false;
 
                     if (shape === ShapeType.Circle) {
                         const r = colRadius[nIdx];
                         if (!(r > 0)) continue;
                         kind[occCount] = OCC_CIRCLE;
-                        cX[occCount] = worldX[nIdx] + ox;
-                        cY[occCount] = worldY[nIdx] + oy;
+                        cX[occCount] = wx + ox;
+                        cY[occCount] = wy + oy;
                         cR[occCount] = r;
                         vertStart[occCount] = 0;
                         vertCountArr[occCount] = 0;
@@ -2877,7 +2882,7 @@ class PreRenderWorker extends AbstractWorker {
                         vertStart[occCount] = vertPool;
                         writeOrientedBoxVerts(
                             vertsX, vertsY, vertPool,
-                            worldX[nIdx], worldY[nIdx], w, h, c, s, ox, oy
+                            wx, wy, w, h, c, s, ox, oy
                         );
                         vertCountArr[occCount] = 4;
                         vertPool += 4;
@@ -2890,7 +2895,7 @@ class PreRenderWorker extends AbstractWorker {
                             const base = nIdx * MAX_POLYGON_VERTICES;
                             writePolygonVerts(
                                 vertsX, vertsY, vertPool,
-                                worldX[nIdx], worldY[nIdx], c, s, ox, oy,
+                                wx, wy, c, s, ox, oy,
                                 polyVertX, polyVertY, base, pc
                             );
                             vertCountArr[occCount] = pc;
@@ -2905,7 +2910,7 @@ class PreRenderWorker extends AbstractWorker {
                             vertStart[occCount] = vertPool;
                             writeOrientedBoxVerts(
                                 vertsX, vertsY, vertPool,
-                                worldX[nIdx], worldY[nIdx], w, h, c, s, ox, oy
+                                wx, wy, w, h, c, s, ox, oy
                             );
                             vertCountArr[occCount] = 4;
                             vertPool += 4;
@@ -2915,17 +2920,21 @@ class PreRenderWorker extends AbstractWorker {
 
                     if (!packed) continue;
 
-                    // Self-lit queue: restore unoccluded light under this occluder
+                    // Self-lit queue: bake display pose (frame-locked with sprites / umbra)
                     if (selfLitI32 && selfLitCount < maxSelfLit) {
                         const byteOff = 4 + selfLitCount * selfLitItemBytes;
                         const i32Off = byteOff >> 2;
                         selfLitI32[i32Off] = nIdx;
                         selfLitI32[i32Off + 1] = lightIdx;
+                        selfLitF32[i32Off + 2] = wx;
+                        selfLitF32[i32Off + 3] = wy;
+                        selfLitF32[i32Off + 4] = c;
+                        selfLitF32[i32Off + 5] = s;
                         const u16Off = byteOff >> 1;
                         const texId = entityLastTextureId ? entityLastTextureId[nIdx] : INVALID_TEXTURE_ID;
-                        selfLitU16[u16Off + 4] = texId; // after 2×i32 = 8 bytes = 4 u16
-                        selfLitU8[byteOff + 10] = occluderMaskMode[nIdx] | 0;
-                        selfLitU8[byteOff + 11] = 0;
+                        selfLitU16[u16Off + 12] = texId; // after 6×i32/f32 = 24 bytes
+                        selfLitU8[byteOff + 26] = occluderMaskMode[nIdx] | 0;
+                        selfLitU8[byteOff + 27] = 0;
                         selfLitCount++;
                     }
 
