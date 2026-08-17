@@ -849,6 +849,7 @@ export declare class QuerySystem {
   queryResultsSAB: SharedArrayBuffer | null;
   queryVersionSAB: SharedArrayBuffer | null;
   queryMaskCache: Map<string, bigint>;
+  queryMaskByClasses: WeakMap<object, bigint>;
   entityMetadataView: Uint16Array | null;
   queryCacheView: DataView | Uint8Array | null;
   queryVersionData: Int32Array | null;

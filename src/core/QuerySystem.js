@@ -321,6 +321,13 @@ export class QuerySystem {
      */
     this.queryMaskCache = new Map();
 
+    /**
+     * Identity cache: stable componentClasses array → queryMask.
+     * Hot callers hoist the array (`this._querySpriteRenderer`); skip ids/sort/join after first hit.
+     * ponytail: do not mutate the array after the first query — WeakMap would go stale. Rebuild a new array instead.
+     */
+    this.queryMaskByClasses = new WeakMap();
+
     // Typed array views into SABs
     this.entityMetadataView = null;
     this.queryCacheView = null;
@@ -624,6 +631,9 @@ export class QuerySystem {
    * @returns {BigInt} - Bitmask representing the component combination
    */
   _generateQueryMask(componentClasses) {
+    const identityHit = this.queryMaskByClasses.get(componentClasses);
+    if (identityHit !== undefined) return identityHit;
+
     // Extract and validate component IDs (cheap number operations)
     const ids = [];
     for (const ComponentClass of componentClasses) {
@@ -650,6 +660,7 @@ export class QuerySystem {
     // Check cache first
     const cached = this.queryMaskCache.get(cacheKey);
     if (cached !== undefined) {
+      this.queryMaskByClasses.set(componentClasses, cached);
       return cached;
     }
 
@@ -661,6 +672,7 @@ export class QuerySystem {
 
     // Cache and return
     this.queryMaskCache.set(cacheKey, mask);
+    this.queryMaskByClasses.set(componentClasses, mask);
     return mask;
   }
 
@@ -962,6 +974,8 @@ export function createWorkerQueryFunctions(queryData, buffers, activeEntitiesDat
   // OPTIMIZATION: Cache queryMask generation to avoid repeated BigInt allocations
   // Map: componentIds string (sorted, comma-joined) → queryMask (BigInt)
   const queryMaskCache = new Map();
+  // Identity cache for hoisted componentClasses arrays (see QuerySystem.queryMaskByClasses)
+  const queryMaskByClasses = new WeakMap();
 
   // Cache per-type active list SAB views once entity classes are attached to global scope.
   const cachedTypeActiveLists = new Array(entityMetadata.length);
@@ -979,6 +993,9 @@ export function createWorkerQueryFunctions(queryData, buffers, activeEntitiesDat
 
   // Helper: generate queryMask from component classes (with caching)
   function generateQueryMask(componentClasses) {
+    const identityHit = queryMaskByClasses.get(componentClasses);
+    if (identityHit !== undefined) return identityHit;
+
     // Extract and validate component IDs (cheap number operations)
     const ids = [];
     for (const ComponentClass of componentClasses) {
@@ -1002,6 +1019,7 @@ export function createWorkerQueryFunctions(queryData, buffers, activeEntitiesDat
     // Check cache first
     const cached = queryMaskCache.get(cacheKey);
     if (cached !== undefined) {
+      queryMaskByClasses.set(componentClasses, cached);
       return cached;
     }
 
@@ -1013,6 +1031,7 @@ export function createWorkerQueryFunctions(queryData, buffers, activeEntitiesDat
 
     // Cache and return
     queryMaskCache.set(cacheKey, mask);
+    queryMaskByClasses.set(componentClasses, mask);
     return mask;
   }
 

@@ -125,6 +125,8 @@ const PIXI = Object.freeze({
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker.
 // Game-specific entity classes are loaded dynamically.
 
+const QUERY_LIGHT_EMITTER = [LightEmitter];
+
 // Make PIXI namespace available globally (renderer-specific)
 self.PIXI = PIXI;
 
@@ -1793,7 +1795,7 @@ COMPUTE VISIBLE LIGHTS (used by updateLighting shader)
     // Use pre_render's visible lights buffer when available (avoids duplicate queryActiveEntities)
     const useSharedBuffer = !!this.visibleLightsData;
     const lightCount = useSharedBuffer ? this.visibleLightsData[0] : 0;
-    const lightEntities = useSharedBuffer ? null : this.queryActiveEntities([LightEmitter]);
+    const lightEntities = useSharedBuffer ? null : this.queryActiveEntities(QUERY_LIGHT_EMITTER);
 
     // Reset pool
     this._visibleLightsAllCount = 0;

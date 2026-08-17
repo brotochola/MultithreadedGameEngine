@@ -275,6 +275,20 @@ test('definePrecomputedQueries merges scene-declared custom active queries and d
   }
 });
 
+test('query mask caches by componentClasses array identity', () => {
+  const querySystem = new QuerySystem();
+  const classes = [QueryTestComponentA, QueryTestComponentB];
+
+  const first = querySystem._generateQueryMask(classes);
+  assert.equal(querySystem.queryMaskByClasses.get(classes), first);
+
+  const second = querySystem._generateQueryMask(classes);
+  assert.equal(second, first);
+
+  const equivalent = querySystem._generateQueryMask([QueryTestComponentA, QueryTestComponentB]);
+  assert.equal(equivalent, first);
+});
+
 test('main-thread queryActiveEntities requires precomputed queries', () => {
   const querySystem = new QuerySystem();
 
