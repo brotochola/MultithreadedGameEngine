@@ -11,6 +11,9 @@
 // Upgrade workflow:
 //   npm install pixi.js@<version>
 //   npm run build:pixi
+//
+// WebGPURenderer + CanvasRenderer are stubbed in scripts/build-pixi.mjs
+// (worker forces preference: 'webgl').
 
 import { ExtensionType, extensions } from '../node_modules/pixi.js/lib/extensions/Extensions.mjs';
 
@@ -41,8 +44,6 @@ import { Buffer } from '../node_modules/pixi.js/lib/rendering/renderers/shared/b
 import { BufferUsage } from '../node_modules/pixi.js/lib/rendering/renderers/shared/buffer/const.mjs';
 import { UniformGroup } from '../node_modules/pixi.js/lib/rendering/renderers/shared/shader/UniformGroup.mjs';
 import { NOOP } from '../node_modules/pixi.js/lib/utils/misc/NOOP.mjs';
-import { BindGroup } from '../node_modules/pixi.js/lib/rendering/renderers/gpu/shader/BindGroup.mjs';
-import { GpuProgram } from '../node_modules/pixi.js/lib/rendering/renderers/gpu/shader/GpuProgram.mjs';
 import { ViewContainer } from '../node_modules/pixi.js/lib/scene/view/ViewContainer.mjs';
 import { State } from '../node_modules/pixi.js/lib/rendering/renderers/shared/state/State.mjs';
 import { Bounds } from '../node_modules/pixi.js/lib/scene/container/bounds/Bounds.mjs';
@@ -73,8 +74,6 @@ export {
   UniformGroup,
   NOOP,
   ExtensionType,
-  BindGroup,
-  GpuProgram,
   ViewContainer,
   State,
   Bounds,
