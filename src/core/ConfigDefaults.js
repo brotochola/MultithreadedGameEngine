@@ -271,6 +271,22 @@ export const LOGIC_DEFAULTS = Object.freeze({
 // RENDERER DEFAULTS
 // ============================================================================
 
+export const TILEMAP_CULL_DEFAULTS = Object.freeze({
+  /** Odd integer; 3 = view-overlap chunks + 1 ring (visible). */
+  chunkGrid: 3,
+  /** Odd integer; 5 = keep built meshes ±2 from view-overlap AABB. */
+  cacheGrid: 5,
+  /** Extra tiles around the view rect before chunk overlap (usually 0; ring covers bleed). */
+  safetyMarginTiles: 0,
+  /**
+   * Fixed square chunk size in tiles. 0 = derive from first viewport, then freeze.
+   * Prefer >0 so zoom never invalidates existing meshes.
+   */
+  chunkTiles: 64,
+  /** New CompositeTilemap chunks per pixi frame after the initial fill. */
+  maxChunkBuildsPerFrame: 1,
+});
+
 export const RENDERER_DEFAULTS = Object.freeze({
   noLimitFPS: false,
   fixedFps: 0,
@@ -283,6 +299,8 @@ export const RENDERER_DEFAULTS = Object.freeze({
   maxDecalTileUploadsPerFrame: 32,
   /** Pixi ImageSource mip chain for atlases/textures/tilesets. Off by default (VRAM + atlas bleed risk; STEP flat in benches). */
   autoGenerateMipmaps: false,
+  /** Prebuilt chunk meshes; visibility + stream, no runtime clear/rebuild. */
+  tilemapCull: TILEMAP_CULL_DEFAULTS,
 });
 
 // ============================================================================

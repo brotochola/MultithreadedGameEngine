@@ -28,6 +28,7 @@ import { Sun } from '../core/Sun.js';
 import {
   DEFAULT_LAYERS,
   RENDERER_DEFAULTS,
+  TILEMAP_CULL_DEFAULTS,
   ShapeType,
   MAX_POLYGON_VERTICES,
 } from '../core/ConfigDefaults.js';
@@ -37,6 +38,12 @@ import {
 } from './visibility/AngularSweep.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
+import {
+  deriveViewportChunkSize,
+  listVisibleChunks,
+  listEvictChunkKeys,
+  chunkRing,
+} from '../core/tilemapCull.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
 import {
   sortByY,
@@ -171,16 +178,20 @@ class PixiRenderer extends AbstractWorker {
     this.textures = {}; // Store simple PIXI textures by name
     this.spritesheets = {}; // Store loaded spritesheets by name
     this.tilemaps = {}; // Store PIXI tileset textures by tilemap name (tile data comes from TileMap SAB)
-    this.currentTilemap = null; // Currently active tilemap background
+    this.currentTilemap = null; // Tilemap root Container (camera transform)
     this.tilemapScale = { x: 1, y: 1 }; // Base scale for tilemap (renders at scan * zoom)
     this._tilemapId = null;
-    this._tilemapBuildOptions = null; // layers filter etc. for viewport rebuilds
+    this._tilemapBuildOptions = null; // layers filter etc. for chunk builds
+    this._tilemapTilesetTexture = null;
+    this._tilemapChunks = new Map(); // key "cx,cy" → { mesh, cx, cy }
     this._tilemapCull = {
-      minX: -1,
-      minY: -1,
-      maxX: -1,
-      maxY: -1,
-      margin: 4,
+      frozenW: -1,
+      frozenH: -1,
+      chunkGrid: TILEMAP_CULL_DEFAULTS.chunkGrid,
+      cacheGrid: TILEMAP_CULL_DEFAULTS.cacheGrid,
+      safetyMarginTiles: TILEMAP_CULL_DEFAULTS.safetyMarginTiles,
+      chunkTiles: TILEMAP_CULL_DEFAULTS.chunkTiles,
+      maxChunkBuildsPerFrame: TILEMAP_CULL_DEFAULTS.maxChunkBuildsPerFrame,
     };
 
     // Per-frame subtimers (ms) — written to RENDERER_STATS in reportFPS
@@ -2568,14 +2579,13 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     if (this.currentTilemap) {
       console.log(`PIXI WORKER: Removing existing tilemap`);
       this.pixiApp.stage.removeChild(this.currentTilemap);
-      this.currentTilemap.destroy();
+      this._destroyTilemapChunks();
+      this.currentTilemap.destroy({ children: true });
       this.currentTilemap = null;
       this._tilemapId = null;
       this._tilemapBuildOptions = null;
-      this._tilemapCull.minX = -1;
-      this._tilemapCull.minY = -1;
-      this._tilemapCull.maxX = -1;
-      this._tilemapCull.maxY = -1;
+      this._tilemapTilesetTexture = null;
+      this._resetTilemapCull();
     }
 
     // Create new background based on type
@@ -2677,9 +2687,36 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     console.log(`PIXI WORKER: Tiling background set to "${textureId}" (scale: ${tileScale})`);
   }
 
+  _resetTilemapCull() {
+    const cull = this._tilemapCull;
+    cull.frozenW = -1;
+    cull.frozenH = -1;
+  }
+
+  _destroyTilemapChunks() {
+    for (const entry of this._tilemapChunks.values()) {
+      if (entry.mesh.parent) entry.mesh.parent.removeChild(entry.mesh);
+      entry.mesh.destroy();
+    }
+    this._tilemapChunks.clear();
+  }
+
+  _buildTilemapChunk(tileMapData, chunk) {
+    const mesh = new CompositeTilemap([this._tilemapTilesetTexture]);
+    const opts = this._tilemapBuildOptions || {};
+    tileMapData.buildCompositeTilemap(mesh, {
+      layers: opts.layers,
+      tileRect: chunk.tileRect,
+    });
+    mesh.visible = true;
+    mesh.renderable = true;
+    this.currentTilemap.addChild(mesh);
+    this._tilemapChunks.set(chunk.key, { mesh, cx: chunk.cx, cy: chunk.cy });
+  }
+
   /**
    * Create a tilemap background using @pixi/tilemap (Tiled editor format).
-   * Geometry is filled via updateTilemapViewportCull (viewport + margin), not the full map.
+   * Per-chunk CompositeTilemaps live under a Container; camera moves the root.
    */
   createTilemapBackground(tilemapId, options = {}) {
     console.log(`PIXI WORKER: createTilemapBackground called with "${tilemapId}"`);
@@ -2696,13 +2733,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       return;
     }
 
-    this.currentTilemap = new CompositeTilemap([texEntry.tilesetTexture]);
+    this.currentTilemap = new PIXI.Container();
     this._tilemapId = tilemapId;
     this._tilemapBuildOptions = options || {};
-    this._tilemapCull.minX = -1;
-    this._tilemapCull.minY = -1;
-    this._tilemapCull.maxX = -1;
-    this._tilemapCull.maxY = -1;
+    this._tilemapTilesetTexture = texEntry.tilesetTexture;
+    this._destroyTilemapChunks();
+    this._resetTilemapCull();
 
     // Parse scale option
     if (options.scale !== undefined) {
@@ -2719,7 +2755,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
 
     console.log(
-      `PIXI WORKER: Tilemap "${tilemapId}" ready for viewport cull (scale: ${this.tilemapScale.x}x${this.tilemapScale.y})`
+      `PIXI WORKER: Tilemap "${tilemapId}" ready for chunk cull (scale: ${this.tilemapScale.x}x${this.tilemapScale.y})`
     );
 
     this._registerLayerDisplayObject('BACKGROUND', this.currentTilemap);
@@ -2730,14 +2766,15 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       this.cameraData ? this.cameraData[0] * this.tilemapScale.y : this.tilemapScale.y
     );
 
-    this.updateTilemapViewportCull();
+    this.updateTilemapViewportCull(true);
     console.log(`PIXI WORKER: Tilemap background "${tilemapId}" added to stage`);
   }
 
   /**
-   * Rebuild CompositeTilemap for the camera viewport (+ margin). No-op if tile rect unchanged.
+   * Show/hide prebuilt chunk meshes. Build at most one missing visible chunk per
+   * frame (or all of them when fillAll, used at create). Never clear() a live mesh.
    */
-  updateTilemapViewportCull() {
+  updateTilemapViewportCull(fillAll = false) {
     if (!this.currentTilemap || !this._tilemapId) return;
     if (!(this.canvasWidth > 0) || !(this.canvasHeight > 0)) return;
 
@@ -2749,46 +2786,76 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     const sy = this.tilemapScale.y || 1;
     const tw = tileMapData.tileWidth || 1;
     const th = tileMapData.tileHeight || 1;
-    const margin = this._tilemapCull.margin | 0;
+    const cull = this._tilemapCull;
 
     // Display: local * (zoom*scale) - camera*zoom → local = camera/scale
     const localX0 = this._renderCameraX / sx;
     const localY0 = this._renderCameraY / sy;
     const viewW = this.canvasWidth / (zoom * sx);
     const viewH = this.canvasHeight / (zoom * sy);
+    const margin = cull.safetyMarginTiles | 0;
 
-    let minX = ((localX0 / tw) | 0) - margin;
-    let minY = ((localY0 / th) | 0) - margin;
-    let maxX = ((((localX0 + viewW) / tw) | 0) + 1) + margin;
-    let maxY = ((((localY0 + viewH) / th) | 0) + 1) + margin;
+    const viewMinX = localX0 / tw - margin;
+    const viewMinY = localY0 / th - margin;
+    const viewMaxX = (localX0 + viewW) / tw + margin;
+    const viewMaxY = (localY0 + viewH) / th + margin;
 
-    if (minX < 0) minX = 0;
-    if (minY < 0) minY = 0;
-    if (maxX > tileMapData.mapWidth) maxX = tileMapData.mapWidth;
-    if (maxY > tileMapData.mapHeight) maxY = tileMapData.mapHeight;
-    if (minX >= maxX || minY >= maxY) return;
-
-    const cull = this._tilemapCull;
-    if (
-      cull.minX === minX &&
-      cull.minY === minY &&
-      cull.maxX === maxX &&
-      cull.maxY === maxY
-    ) {
-      return;
+    let chunkW;
+    let chunkH;
+    if (cull.chunkTiles > 0) {
+      chunkW = cull.chunkTiles;
+      chunkH = cull.chunkTiles;
+    } else if (cull.frozenW > 0 && cull.frozenH > 0) {
+      chunkW = cull.frozenW;
+      chunkH = cull.frozenH;
+    } else {
+      const desired = deriveViewportChunkSize(viewW / tw, viewH / th, 0);
+      chunkW = desired.chunkW;
+      chunkH = desired.chunkH;
+      cull.frozenW = chunkW;
+      cull.frozenH = chunkH;
     }
 
-    cull.minX = minX;
-    cull.minY = minY;
-    cull.maxX = maxX;
-    cull.maxY = maxY;
+    const visArgs = {
+      viewMinX,
+      viewMinY,
+      viewMaxX,
+      viewMaxY,
+      chunkW,
+      chunkH,
+      mapW: tileMapData.mapWidth,
+      mapH: tileMapData.mapHeight,
+    };
+    const visible = listVisibleChunks({ ...visArgs, ring: chunkRing(cull.chunkGrid) });
+    const keep = listVisibleChunks({ ...visArgs, ring: chunkRing(cull.cacheGrid) });
+    const visKeys = new Set();
+    for (let i = 0; i < visible.length; i++) visKeys.add(visible[i].key);
+    const keepKeys = new Set();
+    for (let i = 0; i < keep.length; i++) keepKeys.add(keep[i].key);
 
-    this.currentTilemap.clear();
-    const opts = this._tilemapBuildOptions || {};
-    tileMapData.buildCompositeTilemap(this.currentTilemap, {
-      layers: opts.layers,
-      tileRect: { minX, minY, maxX, maxY },
-    });
+    const evict = listEvictChunkKeys(this._tilemapChunks.keys(), keepKeys);
+    for (let i = 0; i < evict.length; i++) {
+      const entry = this._tilemapChunks.get(evict[i]);
+      if (!entry) continue;
+      if (entry.mesh.parent) entry.mesh.parent.removeChild(entry.mesh);
+      entry.mesh.destroy();
+      this._tilemapChunks.delete(evict[i]);
+    }
+
+    for (const [key, entry] of this._tilemapChunks) {
+      const on = visKeys.has(key);
+      entry.mesh.visible = on;
+      entry.mesh.renderable = on;
+    }
+
+    const budget = fillAll ? visible.length : (cull.maxChunkBuildsPerFrame | 0) || 1;
+    let built = 0;
+    for (let i = 0; i < visible.length && built < budget; i++) {
+      const chunk = visible[i];
+      if (this._tilemapChunks.has(chunk.key)) continue;
+      this._buildTilemapChunk(tileMapData, chunk);
+      built++;
+    }
   }
 
   /**
@@ -2859,6 +2926,17 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       Number.isFinite(maxDecalUploads) && maxDecalUploads > 0
         ? maxDecalUploads
         : RENDERER_DEFAULTS.maxDecalTileUploadsPerFrame;
+
+    const cullCfg = {
+      ...TILEMAP_CULL_DEFAULTS,
+      ...(rendererConfig.tilemapCull || {}),
+    };
+    this._tilemapCull.chunkGrid = cullCfg.chunkGrid;
+    this._tilemapCull.cacheGrid = cullCfg.cacheGrid;
+    this._tilemapCull.safetyMarginTiles = cullCfg.safetyMarginTiles;
+    this._tilemapCull.chunkTiles = cullCfg.chunkTiles | 0;
+    this._tilemapCull.maxChunkBuildsPerFrame = cullCfg.maxChunkBuildsPerFrame | 0;
+    this._resetTilemapCull();
 
     // Note: Component arrays are automatically initialized by AbstractWorker.initializeAllComponents()
     // This includes Transform, RigidBody, SpriteRenderer, and all custom components

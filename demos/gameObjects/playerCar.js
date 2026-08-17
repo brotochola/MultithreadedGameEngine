@@ -22,16 +22,17 @@ export class PlayerCar extends Car {
 
     tick(dtRatio) {
         super.tick(dtRatio);
-        const shadow = this.getAttachedDecoration(0);
-        if (shadow) {
-            const i = this.index;
-            shadow.setBaseRotCS(
-                Transform.rotC ? Transform.rotC[i] : 1,
-                Transform.rotS ? Transform.rotS[i] : 0,
-            );
-        }
-        this._updateCamera(dtRatio);
+        // const shadow = this.getAttachedDecoration(0);
+        // if (shadow) {
+        //     const i = this.index;
+        //     shadow.setBaseRotCS(
+        //         Transform.rotC ? Transform.rotC[i] : 1,
+        //         Transform.rotS ? Transform.rotS[i] : 0,
+        //     );
+        // }
+
         this._handleInput();
+        this._updateCamera(dtRatio);
     }
 
     _updateCamera(dtRatio) {
