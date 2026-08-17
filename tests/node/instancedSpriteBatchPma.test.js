@@ -10,9 +10,10 @@ const src = readFileSync(
 );
 
 test('normal fragment scales PMA rgb by instance alpha without re-multiplying tex.a', () => {
+  assert.match(src, /float a = t\.a \* vColor\.a;/);
   assert.match(
     src,
-    /gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, t\.a \* vColor\.a\);/
+    /gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, a\);/
   );
   // Old bugs: passthrough (no instA on rgb) or double-premultiply (× combined a)
   assert.doesNotMatch(src, /gl_FragColor = c;/);
@@ -28,4 +29,5 @@ test('vertex shader uses aInstRotCS without cos/sin of angle', () => {
   assert.match(src, /float c = aInstRotCS\.x/);
   assert.doesNotMatch(src, /cos\(aInstRot\)/);
   assert.match(src, /INSTANCED_SPRITE_FLOATS = 23/);
+  assert.match(src, /this\.buffer\.update\(out \* INSTANCED_SPRITE_STRIDE\)/);
 });

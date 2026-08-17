@@ -156,12 +156,6 @@ export function applyEntitySaveRestore(entityIndex, EntityClass, components) {
       if ('y' in fields) Transform.y[entityIndex] = fields.y;
       if ('rotC' in fields && Transform.rotC) Transform.rotC[entityIndex] = fields.rotC;
       if ('rotS' in fields && Transform.rotS) Transform.rotS[entityIndex] = fields.rotS;
-      if ('rotation' in fields && Transform.rotC && Transform.rotS) {
-        // Legacy saves stored radians
-        Transform.rotC[entityIndex] = Math.cos(fields.rotation);
-        Transform.rotS[entityIndex] = Math.sin(fields.rotation);
-        if (Transform.rotation) Transform.rotation[entityIndex] = fields.rotation;
-      }
     }
 
     if ((ComponentClass === RigidBody || name === 'RigidBody') && RigidBody.vx) {

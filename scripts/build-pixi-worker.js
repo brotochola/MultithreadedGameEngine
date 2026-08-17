@@ -1,66 +1,52 @@
-// PixiJS 8.16 Web Worker Bundle
+// PixiJS 8 Web Worker Bundle
 // ===========================
-// Builds a worker-safe ESM bundle from the pixi.js npm package.
+// Builds a worker-safe ESM bundle from deep pixi.js modules (not the barrel).
 //
 // Why this exists:
 //   The stock pixi.min.mjs includes browser-only extensions (Accessibility,
 //   EventSystem) that reference `document` and crash in a Web Worker.
-//   This entry file imports only what the engine needs and removes
-//   browserExt before any renderer initialization.
+//   `from 'pixi.js'` is worse: package.json sideEffects includes `./lib/index.*`,
+//   so esbuild keeps the whole barrel (~570KB) including Graphics / ParticleContainer.
 //
 // Upgrade workflow:
 //   npm install pixi.js@<version>
 //   npm run build:pixi
-//
-// PixiJS 8.16 changes vs 8.5.2:
-//   - Colors are now standard RGB throughout the API. The old internal BGR
-//     byte order (Particle.color, Container tint) has been fixed — the
-//     convertRGBtoBGR() workaround is no longer needed.
-//   - Blend mode 'normal-npm' → use 'normal' instead. PixiJS 8.16 handles
-//     non-premultiplied alpha internally.
 
-import {
-  extensions,
-  browserExt,
-  // Used by pixi_worker.js
-  Application,
-  Container,
-  Sprite,
-  Texture,
-  Rectangle,
-  Graphics,
-  TilingSprite,
-  TextureSource,
-  ImageSource,
-  Ticker,
-  ParticleContainer,
-  Particle,
-  Matrix,
-  Geometry,
-  Mesh,
-  Shader,
-  GlProgram,
-  RendererType,
-  RenderTexture,
-  DOMAdapter,
-  WebWorkerAdapter,
-  // Used by pixi-tilemap-module.js
-  Buffer,
-  BufferUsage,
-  UniformGroup,
-  NOOP,
-  ExtensionType,
-  BindGroup,
-  GpuProgram,
-  ViewContainer,
-  State,
-  Bounds,
-  groupD8,
-} from 'pixi.js';
+import { ExtensionType, extensions } from '../node_modules/pixi.js/lib/extensions/Extensions.mjs';
 
-// Remove the browser environment extension so that AccessibilitySystem,
-// EventSystem, and other DOM-dependent pipes never get loaded in a worker.
-extensions.remove(browserExt);
+// Texture sources / masks. Never import the barrel (pulls accessibility, events, text, …).
+import '../node_modules/pixi.js/lib/rendering/init.mjs';
+// Shader compile in workers (skips unsafe-eval check; also patches UBO sync).
+import '../node_modules/pixi.js/lib/unsafe-eval/init.mjs';
+
+import { Application } from '../node_modules/pixi.js/lib/app/Application.mjs';
+import { Container } from '../node_modules/pixi.js/lib/scene/container/Container.mjs';
+import { Sprite } from '../node_modules/pixi.js/lib/scene/sprite/Sprite.mjs';
+import { Texture } from '../node_modules/pixi.js/lib/rendering/renderers/shared/texture/Texture.mjs';
+import { Rectangle } from '../node_modules/pixi.js/lib/maths/shapes/Rectangle.mjs';
+import { TilingSprite } from '../node_modules/pixi.js/lib/scene/sprite-tiling/TilingSprite.mjs';
+import { TextureSource } from '../node_modules/pixi.js/lib/rendering/renderers/shared/texture/sources/TextureSource.mjs';
+import { ImageSource } from '../node_modules/pixi.js/lib/rendering/renderers/shared/texture/sources/ImageSource.mjs';
+import { Ticker } from '../node_modules/pixi.js/lib/ticker/Ticker.mjs';
+import { Matrix } from '../node_modules/pixi.js/lib/maths/matrix/Matrix.mjs';
+import { Geometry } from '../node_modules/pixi.js/lib/rendering/renderers/shared/geometry/Geometry.mjs';
+import { Mesh } from '../node_modules/pixi.js/lib/scene/mesh/shared/Mesh.mjs';
+import { Shader } from '../node_modules/pixi.js/lib/rendering/renderers/shared/shader/Shader.mjs';
+import { GlProgram } from '../node_modules/pixi.js/lib/rendering/renderers/gl/shader/GlProgram.mjs';
+import { RendererType } from '../node_modules/pixi.js/lib/rendering/renderers/types.mjs';
+import { RenderTexture } from '../node_modules/pixi.js/lib/rendering/renderers/shared/texture/RenderTexture.mjs';
+import { DOMAdapter } from '../node_modules/pixi.js/lib/environment/adapter.mjs';
+import { WebWorkerAdapter } from '../node_modules/pixi.js/lib/environment-webworker/WebWorkerAdapter.mjs';
+import { Buffer } from '../node_modules/pixi.js/lib/rendering/renderers/shared/buffer/Buffer.mjs';
+import { BufferUsage } from '../node_modules/pixi.js/lib/rendering/renderers/shared/buffer/const.mjs';
+import { UniformGroup } from '../node_modules/pixi.js/lib/rendering/renderers/shared/shader/UniformGroup.mjs';
+import { NOOP } from '../node_modules/pixi.js/lib/utils/misc/NOOP.mjs';
+import { BindGroup } from '../node_modules/pixi.js/lib/rendering/renderers/gpu/shader/BindGroup.mjs';
+import { GpuProgram } from '../node_modules/pixi.js/lib/rendering/renderers/gpu/shader/GpuProgram.mjs';
+import { ViewContainer } from '../node_modules/pixi.js/lib/scene/view/ViewContainer.mjs';
+import { State } from '../node_modules/pixi.js/lib/rendering/renderers/shared/state/State.mjs';
+import { Bounds } from '../node_modules/pixi.js/lib/scene/container/bounds/Bounds.mjs';
+import { groupD8 } from '../node_modules/pixi.js/lib/maths/matrix/groupD8.mjs';
 
 export {
   extensions,
@@ -69,13 +55,10 @@ export {
   Sprite,
   Texture,
   Rectangle,
-  Graphics,
   TilingSprite,
   TextureSource,
   ImageSource,
   Ticker,
-  ParticleContainer,
-  Particle,
   Matrix,
   Geometry,
   Mesh,

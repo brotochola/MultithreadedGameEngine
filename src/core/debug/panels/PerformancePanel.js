@@ -404,7 +404,7 @@ export class PerformancePanel {
     if (rendererView && this.elements.perfDecorations) {
       const aD = (rendererView[RENDERER_STATS.ACTIVE_DECORATIONS] || 0) | 0;
       const vD = (rendererView[RENDERER_STATS.VISIBLE_DECORATIONS] || 0) | 0;
-      const tD = (DecorationPool.maxDecorations || 0) | 0;
+      const tD = (DecorationPool.maxCount || 0) | 0;
       if (aD !== pv.activeD || tD !== pv.totalD || vD !== pv.visibleD) {
         pv.activeD = aD;
         pv.totalD = tD;

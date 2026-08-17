@@ -69,11 +69,6 @@ export class ParticleEmitter extends SharedAtomicPool {
   };
   static _stampScratch = Object.create(null);
 
-  // Alias for backwards compatibility
-  static get maxParticles() {
-    return this.maxCount;
-  }
-
   /**
    * Initialize the emitter with particle pool size
    * Called automatically by logic worker during init

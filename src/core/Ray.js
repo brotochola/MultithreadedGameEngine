@@ -471,9 +471,6 @@ export class Ray {
    *     predator.chase(preyIdx);
    *   }
    */
-  // Static reusable Set for zero-allocation linecast between entities (legacy callers)
-  static _excludeSet = new Set();
-
   /**
    * Entity↔entity linecast without stats wrap. Scalar excludeA/B (no Set).
    * @private

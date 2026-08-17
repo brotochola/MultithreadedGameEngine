@@ -404,7 +404,7 @@ export class InstancedSpriteBatch {
     }
 
     this.mesh.visible = true;
-    this.buffer.update();
+    this.buffer.update(out * INSTANCED_SPRITE_STRIDE);
     this.geometry.instanceCount = out;
     return out;
   }

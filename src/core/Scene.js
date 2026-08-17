@@ -206,7 +206,6 @@ class Scene {
 
     // Shared buffers
     this.buffers = {
-      gameObjectData: null,
       neighborData: null,
       activeEntitiesData: null, // Active entity list for spatial worker load balancing
       inputData: null,

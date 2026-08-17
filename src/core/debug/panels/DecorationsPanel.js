@@ -39,7 +39,7 @@ export class DecorationsPanel {
     const rendererView = stats.workerStatViews?.renderer;
 
     if (this.elements.decorationTotal) {
-      const total = (DecorationPool.maxDecorations || 0) | 0;
+      const total = (DecorationPool.maxCount || 0) | 0;
       if (total !== pv.decorationTotal) {
         pv.decorationTotal = total;
         this.elements.decorationTotal.textContent = 'Total: ' + formatNumber(total);

@@ -112,7 +112,6 @@ export interface SceneComponentDataBuffers {
 }
 
 export interface SceneBuffers {
-  gameObjectData: SharedArrayBuffer | null;
   neighborData: SharedArrayBuffer | null;
   activeEntitiesData: SharedArrayBuffer | null;
   inputData: SharedArrayBuffer | null;
@@ -2528,7 +2527,6 @@ export declare const DECAL_STAMPS_BLEND_MODE: Readonly<{ normal: 0; multiply: 1 
 
 export declare class ParticleEmitter extends SharedAtomicPool {
   static poolName: string;
-  static get maxParticles(): number;
   static _warnedPoolExhausted: boolean;
   static initialize(maxParticles: number): void;
   static emit(config: ParticleEmitConfig): number;
@@ -2555,7 +2553,6 @@ export declare class DecorationPool extends SharedAtomicPool {
   static _attachedDecorationIndices: Uint16Array | null;
   static _attachmentEntityCount: number;
   static _maxAttachedPerEntity: number;
-  static get maxDecorations(): number;
   static getActiveCount(): number;
   static copyActiveSnapshot(out: Uint16Array): number;
   static initialize(maxDecorations: number): void;

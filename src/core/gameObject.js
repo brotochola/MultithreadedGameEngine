@@ -137,13 +137,11 @@ export class GameObject {
   /**
    * Initialize GameObject static arrays and neighbor data buffers
    *
-   * @param {SharedArrayBuffer} buffer - Unused (kept for API compatibility)
    * @param {number} count - Total number of entities
    * @param {SharedArrayBuffer} [neighborBuffer] - Neighbor data buffer from spatial worker
    * @param {SharedArrayBuffer} [nextTickBuffer] - Tick decimation countdown buffer (1 byte per entity)
    */
   static initializeArrays(
-    buffer,
     count,
     neighborBuffer = null,
     nextTickBuffer = null
@@ -160,15 +158,6 @@ export class GameObject {
     if (nextTickBuffer) {
       this.nextTick = new Uint8Array(nextTickBuffer);
     }
-  }
-
-  /**
-   * Calculate buffer size needed for GameObject metadata
-   * @param {number} count - Number of entities
-   * @returns {number} Buffer size in bytes (0 - no dedicated buffer needed)
-   */
-  static getBufferSize(count) {
-    return 0;
   }
 
   // ===========================================================================

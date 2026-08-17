@@ -141,7 +141,7 @@ The ray checks `(1 << (entity.collisionLayer & 31)) & mask` per entity -- one bi
 
 - Zero allocations in hot path (results are pre-allocated static objects by default, or caller-owned `out` objects/arrays).
 - Layer mask filter is one bitwise AND per entity -- evaluated before any shape intersection math.
-- `_excludeSet` for `linecastBetweenEntities` is a static `Set` that gets `.clear()`-ed and reused.
+- `linecastBetweenEntities` uses scalar excludeA/B (no Set).
 - `castAll` reuses a pool of hit objects; only allocates new ones if the pool grows (one-time cost).
 - Correctness + throughput regression: `node tests/bench/ray-microbench.mjs` (20k brute-force comparisons + timed workloads).
 - Optimization hypotheses + headless L1/L2/L3 campaign: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md).

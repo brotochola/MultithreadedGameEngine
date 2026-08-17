@@ -136,9 +136,6 @@ function initializeCoreEntityAndComponentBuffers(scene) {
   buffers.gamepadData = new SharedArrayBuffer(Gamepad.BUFFER_SIZE);
   Gamepad.initialize(buffers.gamepadData);
 
-  const gameObjectBufferSize = GameObject.getBufferSize(totalEntityCount);
-  buffers.gameObjectData = new SharedArrayBuffer(gameObjectBufferSize);
-
   const maxNeighbors = config.spatial.maxNeighbors;
   const neighborBufferSize = totalEntityCount * (1 + maxNeighbors) * 2;
   buffers.neighborData = new SharedArrayBuffer(neighborBufferSize);
@@ -148,7 +145,6 @@ function initializeCoreEntityAndComponentBuffers(scene) {
   }
 
   GameObject.initializeArrays(
-    buffers.gameObjectData,
     totalEntityCount,
     buffers.neighborData,
     buffers.nextTickData || null

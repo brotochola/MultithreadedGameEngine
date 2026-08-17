@@ -55,11 +55,6 @@ export class DecorationPool extends SharedAtomicPool {
   static _attachmentEntityCount = 0;
   static _maxAttachedPerEntity = 0;
 
-  // Alias for backwards compatibility
-  static get maxDecorations() {
-    return this.maxCount;
-  }
-
   /**
    * Get count of active decorations from the compact list
    * @returns {number} Number of active decorations

@@ -123,7 +123,6 @@ export function collectSceneWorkerScriptUrls(registeredClasses, origin = '') {
 
 function buildSceneSharedBuffers(scene) {
   return {
-    gameObjectData: scene.buffers.gameObjectData,
     neighborData: scene.buffers.neighborData,
     activeEntitiesData: scene.buffers.activeEntitiesData,
     visibleLightsData: scene.buffers.visibleLightsData || null,

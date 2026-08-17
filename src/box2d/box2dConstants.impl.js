@@ -25,9 +25,6 @@
   /** @deprecated use Box2dBodyType */
   var BODY_TYPE = Box2dBodyType;
 
-  /** @deprecated use ShapeType */
-  var SHAPE_TYPE = ShapeType;
-
   var META_FLAG = Object.freeze({
     STATIC: 1,
     DISABLED: 2,
@@ -89,7 +86,6 @@
     ShapeType: ShapeType,
     Box2dBodyType: Box2dBodyType,
     BODY_TYPE: BODY_TYPE,
-    SHAPE_TYPE: SHAPE_TYPE,
     META_FLAG: META_FLAG,
     STATE_CHANNELS: STATE_CHANNELS,
     STATE_CHANNEL_COUNT: STATE_CHANNEL_COUNT,
@@ -104,7 +100,6 @@
   global.ShapeType = ShapeType;
   global.Box2dBodyType = Box2dBodyType;
   global.BODY_TYPE = BODY_TYPE;
-  global.SHAPE_TYPE = SHAPE_TYPE;
   global.META_FLAG = META_FLAG;
   global.STATE_CHANNELS = STATE_CHANNELS;
   global.STATE_CHANNEL_COUNT = STATE_CHANNEL_COUNT;

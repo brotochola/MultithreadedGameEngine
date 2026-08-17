@@ -378,15 +378,11 @@ export class AbstractWorker {
       await loadEntityScripts(data.scriptsToLoad);
     }
 
-    // Initialize GameObject arrays if buffer provided
-    if (data.buffers?.gameObjectData) {
-      GameObject.initializeArrays(
-        data.buffers.gameObjectData,
-        this.globalEntityCount,
-        data.buffers.neighborData, // Automatically initialize neighbor data
-        data.buffers.nextTickData // Tick decimation buffer (if staggeredUpdates enabled)
-      );
-    }
+    GameObject.initializeArrays(
+      this.globalEntityCount,
+      data.buffers?.neighborData,
+      data.buffers?.nextTickData
+    );
 
     // Initialize ParticleComponent arrays (separate particle pool system)
     // Particles are NOT entities - they have their own pool with maxParticles size
