@@ -92,8 +92,8 @@ export class PersonThatFollowsAFlowfield extends GameObject {
   onCollisionEnter(other) {
     if (!CarComponent.active || !CarComponent.active[other]) return;
 
-    const carVx = CarComponent.vx[other];
-    const carVy = CarComponent.vy[other];
+    const carVx = RigidBody.vx[other];
+    const carVy = RigidBody.vy[other];
     const myVx = RigidBody.vx[this.index];
     const myVy = RigidBody.vy[this.index];
     const dvx = carVx - myVx;
@@ -183,9 +183,9 @@ export class PersonThatFollowsAFlowfield extends GameObject {
       if (!CarComponent.active || !CarComponent.active[neighborIndex]) continue;
 
       const carX =
-        Transform.x[neighborIndex] + CarComponent.vx[neighborIndex] * lookAheadSec;
+        Transform.x[neighborIndex] + RigidBody.vx[neighborIndex] * lookAheadSec;
       const carY =
-        Transform.y[neighborIndex] + CarComponent.vy[neighborIndex] * lookAheadSec;
+        Transform.y[neighborIndex] + RigidBody.vy[neighborIndex] * lookAheadSec;
       const speed = RigidBody.speed[neighborIndex];
       const dx = myX - carX;
       const dy = myY - carY;

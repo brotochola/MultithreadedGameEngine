@@ -60,7 +60,7 @@ void main() {
 }
 `;
 
-/** Normal: PMA tex × tint × instance alpha (do not × tex.a again). Discard clear texels so depth works. */
+/** Normal + depth-write: discard clear atlas texels so they do not punch Z. */
 const FRAGMENT_SRC = `
 precision highp float;
 in vec2 vUV;
@@ -71,6 +71,20 @@ void main() {
   vec4 t = texture2D(uTexture, vUV);
   float a = t.a * vColor.a;
   if (a < 0.01) discard;
+  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
+}
+`;
+
+/** Soft particles (no Z write): PMA blend only — no discard (ParticleContainer-style fill). */
+const FRAGMENT_SRC_BLEND = `
+precision highp float;
+in vec2 vUV;
+in vec4 vColor;
+uniform sampler2D uTexture;
+
+void main() {
+  vec4 t = texture2D(uTexture, vUV);
+  float a = t.a * vColor.a;
   gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
 }
 `;
@@ -151,10 +165,20 @@ export class InstancedSpriteBatch {
    * @param {import('../lib/pixi_8.16_.min.js').TextureSource} opts.atlasSource
    * @param {boolean} [opts.depthTest=true]
    * @param {boolean} [opts.depthMask=true] - false → test Z (Y-sort) without writing (soft particles)
+   * @param {boolean} [opts.alphaDiscard=true] - false → blend-only fragment (no discard; soft particles)
    * @param {boolean} [opts.premultiplyAlpha=true] - true → normal PMA out; false → additive (glows)
    * @param {string} [opts.blendMode='normal'] - Pixi State blend mode
    */
-  constructor({ capacity, label, atlasSource, depthTest = true, depthMask = true, premultiplyAlpha = true, blendMode = 'normal' }) {
+  constructor({
+    capacity,
+    label,
+    atlasSource,
+    depthTest = true,
+    depthMask = true,
+    alphaDiscard = true,
+    premultiplyAlpha = true,
+    blendMode = 'normal',
+  }) {
     this.capacity = Math.max(1, capacity | 0);
     this.data = new Float32Array(this.capacity * INSTANCED_SPRITE_FLOATS);
     this.buffer = new Buffer({
@@ -184,9 +208,13 @@ export class InstancedSpriteBatch {
     });
     this.geometry.instanceCount = 0;
 
+    let fragment = FRAGMENT_SRC_ADDITIVE;
+    if (premultiplyAlpha) {
+      fragment = alphaDiscard !== false ? FRAGMENT_SRC : FRAGMENT_SRC_BLEND;
+    }
     const glProgram = GlProgram.from({
       vertex: VERTEX_SRC,
-      fragment: premultiplyAlpha ? FRAGMENT_SRC : FRAGMENT_SRC_ADDITIVE,
+      fragment,
       name: label || 'instanced-sprites',
     });
 

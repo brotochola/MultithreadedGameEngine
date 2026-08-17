@@ -718,13 +718,14 @@ class PixiRenderer extends AbstractWorker {
     });
     this.spriteMesh = this.entitiesBatch.mesh;
 
-    // Soft particles: same Y-sort depth as entities; depthMask false so alpha does not occlude
+    // Soft particles: Y-sort depth test, no Z write, blend-only frag (no discard)
     this.entitiesParticleBatch = new InstancedSpriteBatch({
       capacity: maxItems,
       label: 'entities-particles-instanced',
       atlasSource: this._resolveAtlasSource(),
       depthTest: useGpuYSort,
       depthMask: false,
+      alphaDiscard: false,
       premultiplyAlpha: true,
     });
     this.spriteParticleMesh = this.entitiesParticleBatch.mesh;

@@ -23,10 +23,5 @@ export class CarComponent extends Component {
         minSteerSpeed: Float32Array,
         minSteerFactor: Float32Array,
         maxSteerSpeed: Float32Array,
-        spriteScale: Float32Array,
-
-        vx: Float32Array,
-        vy: Float32Array,
-        angle: Float32Array, // heading radians, synced from Transform.rotation
     };
 }

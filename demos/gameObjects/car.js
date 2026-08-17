@@ -19,25 +19,33 @@ const {
 } = WEED;
 const { ShapeType } = enums;
 
-const TWO_PI = Math.PI * 2;
+const DEG2RAD = Math.PI / 180;
 
 // Reused by applyForces / friction (zero alloc)
-const _heading = { angle: 0, frontX: 0, frontY: 0, rightX: 0, rightY: 0 };
+const _heading = { frontX: 0, frontY: 0, rightX: 0, rightY: 0 };
 
-/** Cached numeric anim keys per spritesheet name — avoid rebuild/sort every tick. */
+/** Cached numeric anim keys + unit (c,s) per spritesheet name — avoid rebuild/sort every tick. */
 const _angleKeysBySheet = new Map();
 const _randCS = { c: 1, s: 0 };
 
 function getAngleKeys(spritesheet) {
-    let keys = _angleKeysBySheet.get(spritesheet);
-    if (keys) return keys;
+    let cached = _angleKeysBySheet.get(spritesheet);
+    if (cached) return cached;
     const animNames = SpriteSheetRegistry.getAnimationNames(spritesheet);
-    keys = animNames
-        .map(k => ({ num: parseFloat(k), key: k }))
+    const keys = animNames
+        .map(k => {
+            const num = parseFloat(k);
+            const rad = num * DEG2RAD;
+            return { num, key: k, c: Math.cos(rad), s: Math.sin(rad) };
+        })
         .filter(p => !isNaN(p.num))
         .sort((a, b) => a.num - b.num);
-    _angleKeysBySheet.set(spritesheet, keys);
-    return keys;
+    cached = {
+        keys,
+        halfStepCos: keys.length ? Math.cos(Math.PI / keys.length) : 1,
+    };
+    _angleKeysBySheet.set(spritesheet, cached);
+    return cached;
 }
 
 export class Car extends GameObject {
@@ -61,15 +69,16 @@ export class Car extends GameObject {
         this.carComponent.minSteerSpeed = spawnConfig.minSteerSpeed ?? CAR_DEFAULTS.minSteerSpeed;
         this.carComponent.minSteerFactor = spawnConfig.minSteerFactor ?? CAR_DEFAULTS.minSteerFactor;
         this.carComponent.maxSteerSpeed = spawnConfig.maxSteerSpeed ?? CAR_DEFAULTS.maxSteerSpeed;
-        this.carComponent.spriteScale = spawnConfig.scale ?? spawnConfig.spriteScale ?? CAR_DEFAULTS.spriteScale;
 
-        const scale = this.carComponent.spriteScale;
+        const scale = spawnConfig.scale ?? spawnConfig.spriteScale ?? CAR_DEFAULTS.spriteScale;
         this.setSpritesheet(sprite);
         this.setAnimation('0');
         this.setScale(scale, scale);
 
         const carLength = this.spriteRenderer.originalWidth * scale * 0.9;
         const carHeight = this.spriteRenderer.originalHeight * scale * 0.75;
+        const halfDiag = Math.hypot(carLength, carHeight) * 0.5;
+        this._halfDiag = halfDiag;
 
         this.collider.shapeType = ShapeType.Box;
         this.collider.width = carLength;
@@ -77,7 +86,7 @@ export class Car extends GameObject {
         this.collider.radius = 0;
         this.collider.isTrigger = 0;
         this.collider.friction = 0.3;
-        this.collider.visualRange = Math.hypot(carLength, carHeight) * 0.5 + 200;
+        this.collider.visualRange = halfDiag + 200;
 
         this.rigidBody.static = 0;
         // Box2D sets terminal speed with driveForce; yaw settle without per-frame torque damp
@@ -94,17 +103,14 @@ export class Car extends GameObject {
         this.rotation = heading;
 
         this.carComponent.active = 1;
-        this.carComponent.vx = 0;
-        this.carComponent.vy = 0;
-        this.carComponent.angle = heading;
+        this._lastAngleKey = null;
         this._updateSpriteFrame();
     }
 
     onDespawned() {
         this.carComponent.active = 0;
-        this.carComponent.vx = 0;
-        this.carComponent.vy = 0;
-        this.carComponent.angle = 0;
+        this._lastAngleKey = null;
+        this._halfDiag = 0;
     }
 
     /** Host applies torque = angularAccel * mass; map desired alpha → angularAccel via I/m. */
@@ -168,11 +174,8 @@ export class Car extends GameObject {
         const i = this.index;
         if (!Transform.active[i]) return;
 
-        this.carComponent.vx = RigidBody.vx[i];
-        this.carComponent.vy = RigidBody.vy[i];
-
         this._updateFriction();
-        this._emitDust();
+        // this._emitDust();
         this._updateSpriteFrame();
     }
 
@@ -183,27 +186,32 @@ export class Car extends GameObject {
         const spritesheet = SpriteSheetRegistry.getSpritesheetName(spritesheetId);
         if (!spritesheet) return;
 
-        const angleKeys = getAngleKeys(spritesheet);
-        if (angleKeys.length === 0) return;
+        const { keys, halfStepCos } = getAngleKeys(spritesheet);
+        if (keys.length === 0) return;
 
-        // atan2 only for discrete frame sector (cached keys; no rebuild/sort)
-        let angle = Math.atan2(
-            Transform.rotS ? Transform.rotS[i] : 0,
-            Transform.rotC ? Transform.rotC[i] : 1,
-        );
-        this.carComponent.angle = angle;
-        if (angle < 0) angle += TWO_PI;
-        const degreesNorm = (((angle * 180) / Math.PI) % 360 + 360) % 360;
-        const index = Math.round((degreesNorm / 360) * angleKeys.length) % angleKeys.length;
-        const key = angleKeys[index].key;
-        if (this._lastAnimKey !== key) {
-            this._lastAnimKey = key;
-            this.setAnimation(key);
+        const c = Transform.rotC ? Transform.rotC[i] : 1;
+        const s = Transform.rotS ? Transform.rotS[i] : 0;
+
+        const last = this._lastAngleKey;
+        if (last && c * last.c + s * last.s >= halfStepCos) return;
+
+        let best = keys[0];
+        let bestDot = c * best.c + s * best.s;
+        for (let k = 1; k < keys.length; k++) {
+            const d = c * keys[k].c + s * keys[k].s;
+            if (d > bestDot) {
+                bestDot = d;
+                best = keys[k];
+            }
+        }
+        if (last !== best) {
+            this._lastAngleKey = best;
+            this.setAnimation(best.key);
         }
     }
 
     _emitDust() {
-        if (this.speed < 10 && Math.random() > 0.35) return;
+        if (this.speed < 10 || Math.random() > 0.35) return;
 
         randomUnitCS(_randCS);
         ParticleEmitter.emit({
@@ -234,7 +242,7 @@ export class Car extends GameObject {
 
         const hitX = (this.x + Transform.x[otherEntityIndex]) / 2;
         const hitY = (this.y + Transform.y[otherEntityIndex]) / 2;
-        const halfDiag = Math.hypot(this.collider.width, this.collider.height) * 0.5;
+        const halfDiag = this._halfDiag;
         const speed = RigidBody.speed[this.index];
 
         const relSpeed =

@@ -9,7 +9,7 @@ import { dot2 } from '/src/core/utils.js';
 const { Keyboard, SpriteRenderer, RigidBody, Collider, CollisionListener, Camera, Transform } = WEED;
 
 const ZOOM_AT_MIN_SPEED = 1.0;
-const ZOOM_AT_MAX_SPEED = 0.25;
+const ZOOM_AT_MAX_SPEED = 0.5;
 const SPEED_FOR_MIN_ZOOM = 0;
 const SPEED_FOR_MAX_ZOOM = 1200; // px/s
 const LOOK_AHEAD_SEC = 0.25;
@@ -41,8 +41,8 @@ export class PlayerCar extends Car {
 
         const centerX = Transform.x[player];
         const centerY = Transform.y[player];
-        const vx = CarComponent.vx[player];
-        const vy = CarComponent.vy[player];
+        const vx = RigidBody.vx[player];
+        const vy = RigidBody.vy[player];
 
         Camera.follow(
             centerX + vx * LOOK_AHEAD_SEC,
@@ -51,7 +51,7 @@ export class PlayerCar extends Car {
             dtRatio
         );
 
-        const speed = Math.hypot(vx, vy);
+        const speed = RigidBody.speed[player];
         const speedT = Math.min(
             1,
             Math.max(0, (speed - SPEED_FOR_MIN_ZOOM) / (SPEED_FOR_MAX_ZOOM - SPEED_FOR_MIN_ZOOM))

@@ -42,6 +42,10 @@ export class CarScene extends WEED.Scene {
         seed: 123456,
         debugUpdateInterval: 100,
 
+        debug: {
+            maxDebugDrawEntries: 30192,
+            collectDetailedStats: false,
+        },
         // Spatial hash grid configuration
         spatial: {
             cellSize: 128,
@@ -72,7 +76,7 @@ export class CarScene extends WEED.Scene {
 
         // Physics configuration
         physics: {
-            subStepCount: 4,
+            subStepCount: 0,
             noLimitFPS: false,
             maxJoints: 0,
             boundaryElasticity: 0.3,
@@ -85,7 +89,9 @@ export class CarScene extends WEED.Scene {
         renderer: {
             noLimitFPS: false,
             ySorting: true,
-            cullingRatio: 0.5,
+            cullingRatio: 0.1,
+            startFadingDecorationsAtZoom: 0.5,
+            hideDecorationsAtZoom: 0.25,
             // fixedFps: 60,
         },
 

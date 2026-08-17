@@ -49,9 +49,10 @@ export class AICar extends Car {
         // cross ≈ sinθ for unit vectors; k=2 matches prior atan2 gain + clamp
         const turnInput = Math.max(-1, Math.min(1, cross * 2)) * this.constructor.aiTurnStrength;
 
+        const i = this.index;
         const forwardSpeed = dot2(
-            this.carComponent.vx,
-            this.carComponent.vy,
+            RigidBody.vx[i],
+            RigidBody.vy[i],
             fx,
             fy
         );

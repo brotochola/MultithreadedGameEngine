@@ -20,6 +20,18 @@ test('normal fragment scales PMA rgb by instance alpha without re-multiplying te
   assert.doesNotMatch(src, /gl_FragColor\s*=\s*vec4\(\s*c\.rgb\s*\*\s*c\.a/);
 });
 
+test('depth-write fragment discards clear texels; blend fragment does not', () => {
+  assert.match(src, /FRAGMENT_SRC_BLEND/);
+  assert.match(src, /if \(a < 0\.01\) discard;/);
+  // Blend path: same PMA out without a discard line in that shader body
+  assert.match(
+    src,
+    /FRAGMENT_SRC_BLEND = `[\s\S]*?float a = t\.a \* vColor\.a;\s*gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, a\);/
+  );
+  assert.match(src, /alphaDiscard = true/);
+  assert.match(src, /alphaDiscard !== false \? FRAGMENT_SRC : FRAGMENT_SRC_BLEND/);
+});
+
 test('additive fragment scales PMA rgb by instance alpha, alpha forced 0', () => {
   assert.match(src, /gl_FragColor = vec4\(t\.rgb \* vColor\.rgb \* vColor\.a, 0\.0\);/);
 });
@@ -43,9 +55,10 @@ const pixiSrc = readFileSync(
   'utf8'
 );
 
-test('particle batch tests Y-sort depth without writing Z; ENTITIES excludes type 1', () => {
+test('particle batch: no Z write, no alpha discard; ENTITIES excludes type 1', () => {
   assert.match(pixiSrc, /excludeType: \[1, 3\]/);
   assert.match(pixiSrc, /includeType: 1/);
   assert.match(pixiSrc, /depthMask: false/);
+  assert.match(pixiSrc, /alphaDiscard: false/);
   assert.match(pixiSrc, /entitiesParticleBatch/);
 });
