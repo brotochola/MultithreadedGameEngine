@@ -151,16 +151,41 @@ The `data` array stores raw GIDs with flags intact. `getTileId()` / `getTileIdAt
 
 ## Rendering (Pixi Worker)
 
-The pixi worker uses `buildCompositeTilemap()` to populate a `@pixi/tilemap` CompositeTilemap from SAB data:
+Pixi does **not** put the full map in one `CompositeTilemap`. The background is a parent `Container` of **chunk** meshes. Camera transform hits the parent; children stay in map-local pixels.
+
+On `setTilemapBackground`, the worker builds every chunk that currently intersects the view (`fillAll`). After that:
+
+1. **Show/hide** chunks that overlap the view (+ `chunkGrid` ring). No `clear()` of live meshes.
+2. **Keep** built meshes out to `cacheGrid` (hidden). Outside that, destroy.
+3. **Stream** missing keep-set chunks, at most `maxChunkBuildsPerFrame` per pixi tick, **before** applying the new camera snapshot (so a build hitch is not paired with camera motion).
+
+Override defaults with `config.renderer.tilemapCull` (merged over `TILEMAP_CULL_DEFAULTS` in [`ConfigDefaults.js`](../src/core/ConfigDefaults.js)):
 
 ```javascript
-const tileMapData = TileMap.get(tilemapId);
-tileMapData.buildCompositeTilemap(compositeTilemap, { layers: ['grass', 'walls'] });
+renderer: {
+  tilemapCull: {
+    chunkTiles: 64,              // square chunk in tiles
+    chunkGrid: 3,                // show view + 1 ring
+    cacheGrid: 5,                // keep ±2 rings (hidden)
+    safetyMarginTiles: 0,
+    maxChunkBuildsPerFrame: 1,
+  },
+},
 ```
 
-This is called once during `createTilemapBackground()`, not per frame. The method handles flip flags and converts GIDs to tileset UV coordinates internally.
+| Knob | What it changes | If you raise it | If you lower it |
+| ---- | ---------------- | --------------- | --------------- |
+| `chunkTiles` | Size of each mesh (tiles). `0` = first viewport, then freeze. | Fewer objects, heavier each build | Cheaper builds, more crossings |
+| `chunkGrid` | Odd. Visible neighborhood around the view. `1` = view overlap only. | Fewer holes at the edge, more GPU | Holes if the camera outruns the stream |
+| `cacheGrid` | Odd. Keep built meshes (must be ≥ `chunkGrid`). | Less rebuild when turning; more VRAM | Destroy/rebuild when you return |
+| `safetyMarginTiles` | Extra tiles on the view rect before overlap. | Safer with `chunkGrid: 1` + zoom jitter | `0` if a ring already covers bleed |
+| `maxChunkBuildsPerFrame` | New meshes per frame after warmup. | Cache fills fast; those frames cost CPU/GPU | Smoother frames; empty edges if too slow |
 
-Tileset PNG images are transferred to the pixi worker as `ImageBitmap` objects (separate from SAB tile data). The pixi worker creates PIXI Textures from them.
+Even grid values bump to the next odd (`chunkRing`: ring = (grid−1)/2). A huge `cacheGrid` (e.g. 128) is “keep almost the whole map” on typical Tiled sizes.
+
+`buildCompositeTilemap(composite, { layers, tileRect })` still fills one mesh; `tileRect` is max-exclusive. The worker calls it per chunk, not for the full map.
+
+Tileset PNGs go to the pixi worker as `ImageBitmap`s (not SAB). `@pixi/tilemap` owns UVs.
 
 ---
 

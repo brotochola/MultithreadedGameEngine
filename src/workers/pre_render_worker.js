@@ -148,13 +148,6 @@ class PreRenderWorker extends AbstractWorker {
         this.backpressure = true;
 
         // Physics pose publish latch (mirror renderQueueSync)
-        this.poseSync = null;
-        this.poseBuffers = [null, null];
-        this.poseCapacity = 0;
-        this._poseX = null;
-        this._poseY = null;
-        this._poseRotC = null;
-        this._poseRotS = null;
         this._rbActive = null;
 
         // Texture metadata
@@ -327,25 +320,6 @@ class PreRenderWorker extends AbstractWorker {
         this._decorationZoomAlpha = 1;
 
         console.log(`[PRE_RENDER WORKER] Entities: ${this.globalEntityCount}, Particles: ${this.maxParticles}, Decorations: ${this.maxDecorations}`);
-
-        // ========================================
-        // PHYSICS POSE PUBLISH — latch post-step snapshots
-        // ========================================
-        if (data.posePublish?.sync && data.posePublish.dataA && data.posePublish.dataB) {
-            const n = data.posePublish.capacity | 0;
-            this.poseCapacity = n;
-            this.poseSync = new Int32Array(data.posePublish.sync);
-            const sabs = [data.posePublish.dataA, data.posePublish.dataB];
-            for (let i = 0; i < 2; i++) {
-                const sab = sabs[i];
-                this.poseBuffers[i] = {
-                    x: new Float32Array(sab, 0, n),
-                    y: new Float32Array(sab, n * 4, n),
-                    rotC: new Float32Array(sab, n * 8, n),
-                    rotS: new Float32Array(sab, n * 12, n),
-                };
-            }
-        }
 
         // ========================================
         // RENDER QUEUE - Initialize (DOUBLE BUFFERED)
@@ -1411,20 +1385,8 @@ class PreRenderWorker extends AbstractWorker {
      * Latch latest published physics pose buffer. Consume like pixi (store consumedFrame).
      */
     _latchPose() {
-        this._poseX = null;
-        this._poseY = null;
-        this._poseRotC = null;
-        this._poseRotS = null;
+        super._latchPose(true);
         this._rbActive = RigidBody.active;
-        if (!this.poseSync || !this.poseBuffers[0]) return;
-        const ready = Atomics.load(this.poseSync, 0);
-        if (!(ready > 0)) return;
-        const buf = this.poseBuffers[(ready - 1) % 2];
-        this._poseX = buf.x;
-        this._poseY = buf.y;
-        this._poseRotC = buf.rotC;
-        this._poseRotS = buf.rotS;
-        Atomics.store(this.poseSync, 1, ready);
     }
 
     /**

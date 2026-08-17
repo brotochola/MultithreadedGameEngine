@@ -612,7 +612,9 @@ TileMap.myTilemap.heightPx   // mapHeight * tileHeight
 
 Tile GIDs include Tiled flip flags in the top 3 bits. Strip with `gid & 0x1FFFFFFF`. GID `0` = empty.
 
-See `docs/TILEMAP.md` for full details on memory layout, lifecycle, and rendering.
+Pixi streams the background as viewport **chunks** (`config.renderer.tilemapCull` / `TILEMAP_CULL_DEFAULTS`): show a ring around the view, keep a larger ring in memory, build missing meshes a few per frame. Full knob table: `docs/TILEMAP.md` (Rendering).
+
+See `docs/TILEMAP.md` for memory layout, lifecycle, and queries.
 
 ---
 

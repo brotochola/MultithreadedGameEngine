@@ -121,6 +121,15 @@ export class AbstractWorker {
     this.frameRateIndex = -1; // Index into frameRateData array (different from workerIndex used by logic workers!)
     this.frameRateStride = 1; // Float stride between worker FPS slots in frameRateData
 
+    // Published physics pose (double-buffer SAB). Latch via _latchPose().
+    this.poseSync = null;
+    this.poseBuffers = [null, null];
+    this.poseCapacity = 0;
+    this._poseX = null;
+    this._poseY = null;
+    this._poseRotC = null;
+    this._poseRotS = null;
+
     // Registered entity classes information (set during initialization)
     this.registeredClasses = [];
 
@@ -347,6 +356,8 @@ export class AbstractWorker {
     Ray.collectDetailedStats = this.collectDetailedStats;
     Ray.assertRotCSUnit = !!(this.config.debug?.assertRotCSUnit);
     setAssertRotCSUnit(!!this.config.debug?.assertRotCSUnit);
+
+    this._bindPosePublish(data.posePublish);
 
     // Check nested config for fixedFps / noLimitFPS (class name → config key)
     const workerType = this.constructor.name.replace('Worker', '').toLowerCase();
@@ -895,6 +906,51 @@ export class AbstractWorker {
         ComponentClass.componentId = null;
       }
     }
+  }
+
+  /**
+   * Bind published physics pose double-buffer (all workers; same SAB).
+   * @param {{ sync: SharedArrayBuffer, dataA: SharedArrayBuffer, dataB: SharedArrayBuffer, capacity: number }|null|undefined} pose
+   */
+  _bindPosePublish(pose) {
+    this.poseSync = null;
+    this.poseBuffers = [null, null];
+    this.poseCapacity = 0;
+    if (!pose?.sync || !pose.dataA || !pose.dataB) return;
+    const n = pose.capacity | 0;
+    if (!(n > 0)) return;
+    this.poseCapacity = n;
+    this.poseSync = new Int32Array(pose.sync);
+    const sabs = [pose.dataA, pose.dataB];
+    for (let i = 0; i < 2; i++) {
+      const sab = sabs[i];
+      this.poseBuffers[i] = {
+        x: new Float32Array(sab, 0, n),
+        y: new Float32Array(sab, n * 4, n),
+        rotC: new Float32Array(sab, n * 8, n),
+        rotS: new Float32Array(sab, n * 12, n),
+      };
+    }
+  }
+
+  /**
+   * Pin latest published pose views on this._poseX/Y/rotC/rotS.
+   * @param {boolean} [consume=false] - If true, store sync[1] (pre_render only).
+   */
+  _latchPose(consume = false) {
+    this._poseX = null;
+    this._poseY = null;
+    this._poseRotC = null;
+    this._poseRotS = null;
+    if (!this.poseSync || !this.poseBuffers[0]) return;
+    const ready = Atomics.load(this.poseSync, 0);
+    if (!(ready > 0)) return;
+    const buf = this.poseBuffers[(ready - 1) % 2];
+    this._poseX = buf.x;
+    this._poseY = buf.y;
+    this._poseRotC = buf.rotC;
+    this._poseRotS = buf.rotS;
+    if (consume) Atomics.store(this.poseSync, 1, ready);
   }
 
   initSeededRandom(seed) {

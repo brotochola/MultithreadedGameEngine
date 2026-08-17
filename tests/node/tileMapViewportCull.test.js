@@ -232,3 +232,17 @@ test('listEvictChunkKeys drops keys outside the cache keep set', () => {
     assert.ok(keepKeys.includes(c.key));
   }
 });
+
+test('cache ring keep set is a superset of visible keys', () => {
+  const view = {
+    viewMinX: 30, viewMinY: 30, viewMaxX: 90, viewMaxY: 90,
+    chunkW: 20, chunkH: 20, mapW: 200, mapH: 200,
+  };
+  const visible = listVisibleChunks({ ...view, ring: chunkRing(3) });
+  const keep = listVisibleChunks({ ...view, ring: chunkRing(5) });
+  const keepKeys = new Set(keysOf(keep));
+  assert.ok(keep.length >= visible.length);
+  for (const c of visible) {
+    assert.ok(keepKeys.has(c.key), `keep missing visible ${c.key}`);
+  }
+});

@@ -32,7 +32,8 @@ export function normalizeChunkGrid(chunkGrid) {
 }
 
 /**
- * Rings around the overlap AABB. chunkGrid 3 → 1, cacheGrid 5 → 2.
+ * Rings around the overlap AABB. Odd grid G → ring (G-1)/2.
+ * chunkGrid 1 → 0, 3 → 1; cacheGrid 5 → 2. Even values bump to next odd.
  * @param {number} grid
  * @returns {number}
  */

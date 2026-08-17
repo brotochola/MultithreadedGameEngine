@@ -2,6 +2,9 @@
 // Provides consistent camera state via SharedArrayBuffer
 // Pattern follows Mouse and Keyboard static classes
 
+import { Transform } from '../components/Transform.js';
+import { RigidBody } from '../components/RigidBody.js';
+
 /**
  * Static Camera class for managing viewport state
  * Camera data is stored in a SharedArrayBuffer Float32Array[6]:
@@ -44,6 +47,12 @@ export class Camera {
 
   // Smoothing factor for camera follow (0-1, lower = smoother)
   static _smoothing = 0.1;
+
+  /** Published physics pose (logic worker latch). Null until a pose frame exists. */
+  static _poseX = null;
+  static _poseY = null;
+  static _poseRotC = null;
+  static _poseRotS = null;
 
   // ============================================
   // INITIALIZATION
@@ -368,6 +377,46 @@ export class Camera {
     this._data[1] = Math.max(0, Math.min(newX, maxX));
     this._data[2] = Math.max(0, Math.min(newY, maxY));
     this._data[0] = newZoom;
+  }
+
+  /**
+   * Bind latched pose SoA from logic_worker (read-only). Pass nulls to clear.
+   * @param {Float32Array|null} x
+   * @param {Float32Array|null} y
+   * @param {Float32Array|null} rotC
+   * @param {Float32Array|null} rotS
+   */
+  static bindDisplayPose(x, y, rotC, rotS) {
+    this._poseX = x || null;
+    this._poseY = y || null;
+    this._poseRotC = rotC || null;
+    this._poseRotS = rotS || null;
+  }
+
+  /**
+   * Follow an entity using published pose xy when available, plus velocity look-ahead.
+   * @param {number} index - Entity index
+   * @param {number} [lookAheadSec=0]
+   * @param {number} [smoothing]
+   * @param {number} [dtRatio]
+   */
+  static followEntity(index, lookAheadSec, smoothing, dtRatio) {
+    if (index == null) return;
+    const i = index | 0;
+    const poseX = this._poseX;
+    let x;
+    let y;
+    if (poseX && RigidBody.active && RigidBody.active[i]) {
+      x = poseX[i];
+      y = this._poseY[i];
+    } else {
+      x = Transform.x[i];
+      y = Transform.y[i];
+    }
+    const look = lookAheadSec || 0;
+    const vx = RigidBody.vx ? RigidBody.vx[i] : 0;
+    const vy = RigidBody.vy ? RigidBody.vy[i] : 0;
+    this.follow(x + vx * look, y + vy * look, smoothing, dtRatio);
   }
 
   /**

@@ -184,6 +184,8 @@ class PixiRenderer extends AbstractWorker {
     this._tilemapBuildOptions = null; // layers filter etc. for chunk builds
     this._tilemapTilesetTexture = null;
     this._tilemapChunks = new Map(); // key "cx,cy" → { mesh, cx, cy }
+    this._tilemapBuildQueue = [];
+    this._tilemapQueuedKeys = new Set();
     this._tilemapCull = {
       frozenW: -1,
       frozenH: -1,
@@ -771,6 +773,10 @@ class PixiRenderer extends AbstractWorker {
    * Update method called each frame (implementation of AbstractWorker.update)
    */
   update(deltaTime, dtRatio, resuming) {
+    // Prefetch tilemap chunks from last frame's keep-set BEFORE consuming camera
+    // so a build hitch is not paired with applying a new camera snapshot.
+    this._drainTilemapChunkBuilds();
+
     // ========================================
     // DOUBLE BUFFER SYNC: Select read buffer
     // ========================================
@@ -2691,6 +2697,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     const cull = this._tilemapCull;
     cull.frozenW = -1;
     cull.frozenH = -1;
+    this._tilemapBuildQueue.length = 0;
+    this._tilemapQueuedKeys.clear();
   }
 
   _destroyTilemapChunks() {
@@ -2699,6 +2707,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       entry.mesh.destroy();
     }
     this._tilemapChunks.clear();
+    this._tilemapBuildQueue.length = 0;
+    this._tilemapQueuedKeys.clear();
   }
 
   _buildTilemapChunk(tileMapData, chunk) {
@@ -2712,6 +2722,35 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     mesh.renderable = true;
     this.currentTilemap.addChild(mesh);
     this._tilemapChunks.set(chunk.key, { mesh, cx: chunk.cx, cy: chunk.cy });
+  }
+
+  _enqueueKeepChunks(keep) {
+    this._tilemapBuildQueue.length = 0;
+    this._tilemapQueuedKeys.clear();
+    for (let i = 0; i < keep.length; i++) {
+      const chunk = keep[i];
+      if (this._tilemapChunks.has(chunk.key)) continue;
+      this._tilemapQueuedKeys.add(chunk.key);
+      this._tilemapBuildQueue.push(chunk);
+    }
+  }
+
+  _drainTilemapChunkBuilds(maxCount) {
+    if (!this.currentTilemap || !this._tilemapId) return;
+    const tileMapData = TileMap.get(this._tilemapId);
+    if (!tileMapData) return;
+    const budget =
+      maxCount != null
+        ? maxCount
+        : (this._tilemapCull.maxChunkBuildsPerFrame | 0) || 1;
+    let built = 0;
+    while (built < budget && this._tilemapBuildQueue.length) {
+      const chunk = this._tilemapBuildQueue.shift();
+      this._tilemapQueuedKeys.delete(chunk.key);
+      if (this._tilemapChunks.has(chunk.key)) continue;
+      this._buildTilemapChunk(tileMapData, chunk);
+      built++;
+    }
   }
 
   /**
@@ -2771,8 +2810,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
   }
 
   /**
-   * Show/hide prebuilt chunk meshes. Build at most one missing visible chunk per
-   * frame (or all of them when fillAll, used at create). Never clear() a live mesh.
+   * Show/hide prebuilt chunk meshes and enqueue keep-set builds.
+   * Does not build on the camera/present path except fillAll (create/warmup).
    */
   updateTilemapViewportCull(fillAll = false) {
     if (!this.currentTilemap || !this._tilemapId) return;
@@ -2848,14 +2887,15 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       entry.mesh.renderable = on;
     }
 
-    const budget = fillAll ? visible.length : (cull.maxChunkBuildsPerFrame | 0) || 1;
-    let built = 0;
-    for (let i = 0; i < visible.length && built < budget; i++) {
-      const chunk = visible[i];
-      if (this._tilemapChunks.has(chunk.key)) continue;
-      this._buildTilemapChunk(tileMapData, chunk);
-      built++;
+    if (fillAll) {
+      for (let i = 0; i < visible.length; i++) {
+        const chunk = visible[i];
+        if (this._tilemapChunks.has(chunk.key)) continue;
+        this._buildTilemapChunk(tileMapData, chunk);
+      }
     }
+
+    this._enqueueKeepChunks(keep);
   }
 
   /**

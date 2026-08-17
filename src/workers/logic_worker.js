@@ -11,6 +11,7 @@ import { GameObject } from '../core/gameObject.js';
 import { Mouse } from '../core/Mouse.js';
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
+import { Camera } from '../core/Camera.js';
 
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
@@ -472,8 +473,15 @@ class LogicWorker extends AbstractWorker {
     return sent;
   }
 
+  /** Read-only pose latch for Camera.followEntity. Pre_render owns sync[1]. */
+  _latchDisplayPose() {
+    this._latchPose(false);
+    Camera.bindDisplayPose(this._poseX, this._poseY, this._poseRotC, this._poseRotS);
+  }
+
   update(deltaTime, dtRatio, resuming) {
     this.frameStartTime = performance.now();
+    this._latchDisplayPose();
 
     // Reset stats for this frame
     this.entitiesProcessedThisFrame = 0;

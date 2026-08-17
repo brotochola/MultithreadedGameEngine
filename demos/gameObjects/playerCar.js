@@ -12,8 +12,8 @@ const ZOOM_AT_MIN_SPEED = 1.0;
 const ZOOM_AT_MAX_SPEED = 0.5;
 const SPEED_FOR_MIN_ZOOM = 0;
 const SPEED_FOR_MAX_ZOOM = 1200; // px/s
-const LOOK_AHEAD_SEC = 0.25;
-const CAMERA_FOLLOW_SMOOTH = 0.05;
+const LOOK_AHEAD_SEC = 0.33;
+const CAMERA_FOLLOW_SMOOTH = 0.1;
 
 export class PlayerCar extends Car {
     static scriptUrl = import.meta.url;
@@ -40,17 +40,7 @@ export class PlayerCar extends Car {
         if (player === null) return;
         if (!Transform.active[player]) return;
 
-        const centerX = Transform.x[player];
-        const centerY = Transform.y[player];
-        const vx = RigidBody.vx[player];
-        const vy = RigidBody.vy[player];
-
-        Camera.follow(
-            centerX + vx * LOOK_AHEAD_SEC,
-            centerY + vy * LOOK_AHEAD_SEC,
-            CAMERA_FOLLOW_SMOOTH,
-            dtRatio
-        );
+        Camera.followEntity(player, LOOK_AHEAD_SEC, CAMERA_FOLLOW_SMOOTH, dtRatio);
 
         const speed = RigidBody.speed[player];
         const speedT = Math.min(
