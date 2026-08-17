@@ -1,13 +1,5 @@
 -use the who moved function of box2d for networking
 
-- ~~shader de lightOccluders q use el sprite para mask.~~ (maskMode=sprite)
-- ~~lightoccluder rectangluar~~ (Collider shape: circle/box/poly)
-
-- se mueve mas rapido el shader q el sprite cuando arrastro!
-
-- si no estamos en modo debug, no guardar metricas.
-
-- ajustar lightOccluders y q se vea bien!
 - static props en components?
 
 ---
