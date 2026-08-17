@@ -173,6 +173,15 @@ class PixiRenderer extends AbstractWorker {
     this.tilemaps = {}; // Store PIXI tileset textures by tilemap name (tile data comes from TileMap SAB)
     this.currentTilemap = null; // Currently active tilemap background
     this.tilemapScale = { x: 1, y: 1 }; // Base scale for tilemap (renders at scan * zoom)
+    this._tilemapId = null;
+    this._tilemapBuildOptions = null; // layers filter etc. for viewport rebuilds
+    this._tilemapCull = {
+      minX: -1,
+      minY: -1,
+      maxX: -1,
+      maxY: -1,
+      margin: 4,
+    };
 
     // Per-frame subtimers (ms) — written to RENDERER_STATS in reportFPS
     this.lightsTimeThisFrame = 0;
@@ -597,6 +606,7 @@ class PixiRenderer extends AbstractWorker {
       this.currentTilemap.scale.set(zoom * this.tilemapScale.x, zoom * this.tilemapScale.y);
       this.currentTilemap.x = -cameraX * zoom;
       this.currentTilemap.y = -cameraY * zoom;
+      this.updateTilemapViewportCull();
     }
 
     // Apply camera state to decal tile container
@@ -2560,6 +2570,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       this.pixiApp.stage.removeChild(this.currentTilemap);
       this.currentTilemap.destroy();
       this.currentTilemap = null;
+      this._tilemapId = null;
+      this._tilemapBuildOptions = null;
+      this._tilemapCull.minX = -1;
+      this._tilemapCull.minY = -1;
+      this._tilemapCull.maxX = -1;
+      this._tilemapCull.maxY = -1;
     }
 
     // Create new background based on type
@@ -2662,8 +2678,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
   }
 
   /**
-   * Create a tilemap background using @pixi/tilemap (Tiled editor format)
-   * Reads tile data from TileMap static class (SAB-backed), tileset texture from this.tilemaps.
+   * Create a tilemap background using @pixi/tilemap (Tiled editor format).
+   * Geometry is filled via updateTilemapViewportCull (viewport + margin), not the full map.
    */
   createTilemapBackground(tilemapId, options = {}) {
     console.log(`PIXI WORKER: createTilemapBackground called with "${tilemapId}"`);
@@ -2681,6 +2697,12 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
 
     this.currentTilemap = new CompositeTilemap([texEntry.tilesetTexture]);
+    this._tilemapId = tilemapId;
+    this._tilemapBuildOptions = options || {};
+    this._tilemapCull.minX = -1;
+    this._tilemapCull.minY = -1;
+    this._tilemapCull.maxX = -1;
+    this._tilemapCull.maxY = -1;
 
     // Parse scale option
     if (options.scale !== undefined) {
@@ -2697,9 +2719,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
 
     console.log(
-      `PIXI WORKER: Building tilemap "${tilemapId}" (Base scale: ${this.tilemapScale.x}x${this.tilemapScale.y})`
+      `PIXI WORKER: Tilemap "${tilemapId}" ready for viewport cull (scale: ${this.tilemapScale.x}x${this.tilemapScale.y})`
     );
-    tileMapData.buildCompositeTilemap(this.currentTilemap, options);
 
     this._registerLayerDisplayObject('BACKGROUND', this.currentTilemap);
     this.pixiApp.stage.addChild(this.currentTilemap);
@@ -2709,7 +2730,65 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       this.cameraData ? this.cameraData[0] * this.tilemapScale.y : this.tilemapScale.y
     );
 
+    this.updateTilemapViewportCull();
     console.log(`PIXI WORKER: Tilemap background "${tilemapId}" added to stage`);
+  }
+
+  /**
+   * Rebuild CompositeTilemap for the camera viewport (+ margin). No-op if tile rect unchanged.
+   */
+  updateTilemapViewportCull() {
+    if (!this.currentTilemap || !this._tilemapId) return;
+    if (!(this.canvasWidth > 0) || !(this.canvasHeight > 0)) return;
+
+    const tileMapData = TileMap.get(this._tilemapId);
+    if (!tileMapData) return;
+
+    const zoom = this._renderZoom > 0 ? this._renderZoom : 1;
+    const sx = this.tilemapScale.x || 1;
+    const sy = this.tilemapScale.y || 1;
+    const tw = tileMapData.tileWidth || 1;
+    const th = tileMapData.tileHeight || 1;
+    const margin = this._tilemapCull.margin | 0;
+
+    // Display: local * (zoom*scale) - camera*zoom → local = camera/scale
+    const localX0 = this._renderCameraX / sx;
+    const localY0 = this._renderCameraY / sy;
+    const viewW = this.canvasWidth / (zoom * sx);
+    const viewH = this.canvasHeight / (zoom * sy);
+
+    let minX = ((localX0 / tw) | 0) - margin;
+    let minY = ((localY0 / th) | 0) - margin;
+    let maxX = ((((localX0 + viewW) / tw) | 0) + 1) + margin;
+    let maxY = ((((localY0 + viewH) / th) | 0) + 1) + margin;
+
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX > tileMapData.mapWidth) maxX = tileMapData.mapWidth;
+    if (maxY > tileMapData.mapHeight) maxY = tileMapData.mapHeight;
+    if (minX >= maxX || minY >= maxY) return;
+
+    const cull = this._tilemapCull;
+    if (
+      cull.minX === minX &&
+      cull.minY === minY &&
+      cull.maxX === maxX &&
+      cull.maxY === maxY
+    ) {
+      return;
+    }
+
+    cull.minX = minX;
+    cull.minY = minY;
+    cull.maxX = maxX;
+    cull.maxY = maxY;
+
+    this.currentTilemap.clear();
+    const opts = this._tilemapBuildOptions || {};
+    tileMapData.buildCompositeTilemap(this.currentTilemap, {
+      layers: opts.layers,
+      tileRect: { minX, minY, maxX, maxY },
+    });
   }
 
   /**

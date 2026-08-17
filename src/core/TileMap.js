@@ -250,11 +250,12 @@ export class TileMap {
 
     /**
      * Populate a @pixi/tilemap CompositeTilemap from this TileMap's SAB data.
-     * Called once during tilemap background setup in the pixi worker.
      * Handles tile flip flags and converts GIDs to tileset UV coordinates.
      * @param {*} compositeTilemap - A @pixi/tilemap CompositeTilemap instance
      * @param {Object} [options]
      * @param {string[]} [options.layers] - Layer names to render (null = all visible)
+     * @param {{ minX: number, minY: number, maxX: number, maxY: number }} [options.tileRect]
+     *   Tile range to emit (max exclusive). Omit for the full map.
      */
     buildCompositeTilemap(compositeTilemap, options) {
         const { tileWidth, tileHeight, mapWidth, mapHeight, tilesets } = this;
@@ -263,6 +264,19 @@ export class TileMap {
         const firstGid = tileset.firstgid;
         const layers = this._layers;
         const layersFilter = options && options.layers;
+        const rect = options && options.tileRect;
+
+        let x0 = 0;
+        let y0 = 0;
+        let x1 = mapWidth;
+        let y1 = mapHeight;
+        if (rect) {
+            x0 = Math.max(0, rect.minX | 0);
+            y0 = Math.max(0, rect.minY | 0);
+            x1 = Math.min(mapWidth, rect.maxX | 0);
+            y1 = Math.min(mapHeight, rect.maxY | 0);
+            if (x0 >= x1 || y0 >= y1) return;
+        }
 
         for (let li = 0; li < layers.length; li++) {
             const layer = layers[li];
@@ -272,9 +286,10 @@ export class TileMap {
             const layerData = layer.data;
             const layerOpacity = layer.opacity;
 
-            for (let y = 0; y < mapHeight; y++) {
-                for (let x = 0; x < mapWidth; x++) {
-                    let gid = layerData[y * mapWidth + x];
+            for (let y = y0; y < y1; y++) {
+                const row = y * mapWidth;
+                for (let x = x0; x < x1; x++) {
+                    let gid = layerData[row + x];
                     if (gid === 0) continue;
 
                     const fH = (gid & FLIPPED_H) !== 0;
