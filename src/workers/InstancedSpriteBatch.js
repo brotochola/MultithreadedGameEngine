@@ -226,13 +226,13 @@ export class InstancedSpriteBatch {
    * @param {number} [opts.cameraX=0]
    * @param {number} [opts.cameraY=0]
    * @param {number} [opts.resolution=1] - RT scale (shadows/custom shader layers)
-   * @param {'index'|'worldY'|'sortKey'} [opts.depthMode='index']
+   * @param {'index'|'sortKey'} [opts.depthMode='index']
    * @param {number} [opts.worldHeight=1]
    * @param {Float32Array|null} [opts.sortKey] - composite collector keys (depthMode sortKey)
    * @param {Float32Array|null} [opts.texLut]
    * @param {number} [opts.texLutCount=0]
    * @param {Array|null} [opts.textures] - flatTextures fallback when LUT miss / absent
-   * @param {Uint8Array|null} [opts.type] - render queue type (filter + worldY glow bias)
+   * @param {Uint8Array|null} [opts.type] - render queue type (filter)
    * @param {number} [opts.includeType] - only pack this type (e.g. 3 = light glow)
    * @param {number} [opts.excludeType] - skip this type (e.g. 3 when packing ENTITIES)
    */
@@ -277,6 +277,8 @@ export class InstancedSpriteBatch {
 
     const screenScale = zoom * resolution;
     const hasLut = texLut && texLutCount > 0;
+    const useScreen = space === 'screen';
+    const useSortKey = depthMode === 'sortKey' && sortKeyArr;
     // Without type[] cannot filter: includeType → empty; excludeType → draw all
     if (includeType !== undefined && !typeArr) {
       this.geometry.instanceCount = 0;
@@ -348,7 +350,7 @@ export class InstancedSpriteBatch {
       let y = worldY;
       let sx = rqScaleX[i];
       let sy = rqScaleY[i];
-      if (space === 'screen') {
+      if (useScreen) {
         x = (x - cameraX) * screenScale;
         y = (y - cameraY) * screenScale;
         sx *= screenScale;
@@ -356,14 +358,8 @@ export class InstancedSpriteBatch {
       }
 
       let depth;
-      if (depthMode === 'sortKey' && sortKeyArr) {
+      if (useSortKey) {
         depth = 1.0 - sortKeyArr[i] / sortKeyMax;
-        depth -= (out + 1) * 1e-7;
-      } else if (depthMode === 'worldY') {
-        let sortKey = worldY * Y_SORT_K;
-        if (typeArr && typeArr[i] === 3) sortKey += GLOW_BIAS;
-        else if (typeArr && typeArr[i] === 5) sortKey -= 1;
-        depth = 1.0 - sortKey / sortKeyMax;
         depth -= (out + 1) * 1e-7;
       } else {
         depth = 1.0 - (out + 1) / depthDenom;
