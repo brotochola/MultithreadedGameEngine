@@ -15,7 +15,7 @@ const {
     SpriteSheetRegistry,
     Transform,
     ParticleEmitter,
-    enums,
+    enums, rng
 } = WEED;
 const { ShapeType } = enums;
 
@@ -203,38 +203,22 @@ export class Car extends GameObject {
     }
 
     _emitDust() {
-        const i = this.index;
-        const speed = RigidBody.speed[i];
-        if (speed < 90 || Math.random() > 0.35) return;
-
-        const c = Transform.rotC ? Transform.rotC[i] : 1;
-        const s = Transform.rotS ? Transform.rotS[i] : 0;
-        const backOff = this.collider.width * 0.35;
-        const backX = Transform.x[i] - c * backOff;
-        const backY = Transform.y[i] - s * backOff;
-
-        // Rear cone ±20°: rotate (-c,-s) by random spread (no atan2→cos/sin of body angle)
-        const spread = (Math.random() * 40 - 20) * (Math.PI / 180);
-        const sc = Math.cos(spread);
-        const ss = Math.sin(spread);
-        const dirX = -c * sc + s * ss;
-        const dirY = -c * ss - s * sc;
-        const spd = 0.2 + Math.random() * 1.0;
+        if (this.speed < 10 && Math.random() > 0.35) return;
 
         randomUnitCS(_randCS);
         ParticleEmitter.emit({
-            count: Math.floor(Math.random() * 2) + 1,
-            x: backX + (Math.random() - 0.5) * 8,
-            y: backY + (Math.random() - 0.5) * 8,
-            z: -5 - Math.random() * 10,
-            vx: dirX * spd,
-            vy: dirY * spd,
-            vz: -Math.random() * 0.5,
+            count: Math.floor(rng() * 2) + 1,
+            x: this.x,
+            y: this.y,
+            z: -5 - rng() * 10,
+            vx: 0,
+            vy: 0,
+            vz: -rng() * 0.5,
             gravity: 0,
             rotC: _randCS.c,
             rotS: _randCS.s,
-            flipX: Math.random() > 0.5,
-            flipY: Math.random() > 0.5,
+            flipX: rng() > 0.5,
+            flipY: rng() > 0.5,
             lifespan: { min: 300, max: 1800 },
             scale: { min: 0.4, max: 1.5 },
             texture: 'smoke',
@@ -263,11 +247,11 @@ export class Car extends GameObject {
                 count: numSparks,
                 x: hitX,
                 y: hitY,
-                z: -Math.random() * halfDiag * 0.25,
+                z: -rng() * halfDiag * 0.25,
                 angleXY: { min: 0, max: 360 },
                 speed: { min: halfDiag * 0.08, max: halfDiag * 0.18 },
                 rotation: { min: 0, max: 360 },
-                vz: -Math.random() * 4 - 2,
+                vz: -rng() * 4 - 2,
                 gravity: 0.6,
                 lifespan: { min: 200, max: 1200 },
                 scale: { min: 0.3, max: 0.66 },
@@ -281,15 +265,15 @@ export class Car extends GameObject {
             ParticleEmitter.emit({
                 count: numSparks,
                 x: hitX,
-                y: hitY + Math.random() * 8,
-                z: -5 - Math.random() * 10,
+                y: hitY + rng() * 8,
+                z: -5 - rng() * 10,
                 angleXY: 0,
                 speed: { min: 0.2, max: 1.2 },
-                vz: -Math.random() * 1.5,
+                vz: -rng() * 1.5,
                 gravity: 0,
                 rotation: { min: 0, max: 360 },
-                flipX: Math.random() > 0.5,
-                flipY: Math.random() > 0.5,
+                flipX: rng() > 0.5,
+                flipY: rng() > 0.5,
                 lifespan: { min: 300, max: 1800 },
                 scale: { min: 0.4, max: 1.5 },
                 texture: 'smoke',

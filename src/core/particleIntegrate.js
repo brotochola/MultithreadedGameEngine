@@ -14,7 +14,9 @@ const _heightedScratch = new Uint16Array(65536);
 /**
  * Advance physics for the currently active particle list: lifetime, gravity, ground
  * contact, floor fade/despawn. Despawns particles back to ParticleEmitter's free list
- * in place (component.active[i] = 0 + ParticleEmitter.returnToPool(i)).
+ * in place (component.active[i] = 0 + ParticleEmitter.returnToPool(i)), except
+ * stayOnTheFloor stamps: those indices stay allocated until the caller reads SoA
+ * and returnToPool's them (else logic can reuse the slot mid-stamp).
  *
  * @param {Object} p
  * @param {Uint16Array} p.activeIndices - Local index buffer (built by buildActiveListBuffers /
@@ -124,11 +126,13 @@ export function updateParticlePhysicsBuffers({
     }
 
     if (stayOnTheFloor[i]) {
+      active[i] = 0;
       if (decalsEnabled && particlesToStamp) {
         particlesToStamp[stampedCount++] = i;
+        // Hold slot until caller stamps SoA — logic must not acquire this index yet.
+      } else {
+        ParticleEmitter.returnToPool(i);
       }
-      active[i] = 0;
-      ParticleEmitter.returnToPool(i);
       continue;
     }
 

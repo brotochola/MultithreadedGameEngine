@@ -901,7 +901,12 @@ class PreRenderWorker extends AbstractWorker {
                 viewMode &&
                 viewMode[i] === CAMERA_TYPES.ZENITHAL &&
                 !(flat && flat[i]);
-            const sortKey = isZenithal ? -z[i] : y[i] * Y_SORT_K;
+            const isFlat = !!(flat && flat[i]);
+            const sortKey = isZenithal
+                ? -z[i]
+                : isFlat
+                    ? y[i] * Y_SORT_K
+                    : (y[i] + z[i]) * Y_SORT_K;
             this.collectRenderable(1, i, sortKey);
             this.visibleParticlesCount++;
         }

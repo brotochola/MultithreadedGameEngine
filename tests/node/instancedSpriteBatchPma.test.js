@@ -31,3 +31,21 @@ test('vertex shader uses aInstRotCS without cos/sin of angle', () => {
   assert.match(src, /INSTANCED_SPRITE_FLOATS = 23/);
   assert.match(src, /this\.buffer\.update\(out \* INSTANCED_SPRITE_STRIDE\)/);
 });
+
+test('ctor sets State.depthMask; upload excludeType accepts a list', () => {
+  assert.match(src, /depthMask = true/);
+  assert.match(src, /state\.depthMask = depthMask !== false/);
+  assert.match(src, /typeof excludeRaw === 'number' \? \[excludeRaw\] : excludeRaw/);
+});
+
+const pixiSrc = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/workers/pixi_worker.js'),
+  'utf8'
+);
+
+test('particle batch tests Y-sort depth without writing Z; ENTITIES excludes type 1', () => {
+  assert.match(pixiSrc, /excludeType: \[1, 3\]/);
+  assert.match(pixiSrc, /includeType: 1/);
+  assert.match(pixiSrc, /depthMask: false/);
+  assert.match(pixiSrc, /entitiesParticleBatch/);
+});

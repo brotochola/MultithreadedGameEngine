@@ -1092,7 +1092,8 @@ class ParticleWorker extends AbstractWorker {
   // ========================================
 
   stampCollectedParticles() {
-    if (this.particlesToStampCount === 0 || !this.decalsEnabled) return;
+    const n = this.particlesToStampCount;
+    if (n === 0) return;
 
     const particleX = ParticleComponent.x;
     const particleY = ParticleComponent.y;
@@ -1102,23 +1103,27 @@ class ParticleWorker extends AbstractWorker {
     const particleTextureId = ParticleComponent.textureId;
     const particleAlpha = ParticleComponent.alpha;
     const particleBlendMode = ParticleComponent.blendMode;
+    const decalsEnabled = this.decalsEnabled;
 
-    for (let i = 0; i < this.particlesToStampCount; i++) {
+    for (let i = 0; i < n; i++) {
       const particleIndex = this.particlesToStamp[i];
 
-      this.stampParticleToTile(
-        particleX[particleIndex],
-        particleY[particleIndex],
-        particleTint[particleIndex],
-        particleScaleX[particleIndex],
-        particleScaleY[particleIndex],
-        particleTextureId[particleIndex],
-        particleAlpha[particleIndex],
-        particleBlendMode[particleIndex]
-      );
+      if (decalsEnabled) {
+        this.stampParticleToTile(
+          particleX[particleIndex],
+          particleY[particleIndex],
+          particleTint[particleIndex],
+          particleScaleX[particleIndex],
+          particleScaleY[particleIndex],
+          particleTextureId[particleIndex],
+          particleAlpha[particleIndex],
+          particleBlendMode[particleIndex]
+        );
+      }
+      ParticleEmitter.returnToPool(particleIndex);
     }
 
-    this.particlesStampedThisFrame = this.particlesToStampCount;
+    this.particlesStampedThisFrame = decalsEnabled ? n : 0;
   }
 
   stampParticleToTile(worldX, worldY, tint, scaleX, scaleY, textureId, alpha, blendMode) {

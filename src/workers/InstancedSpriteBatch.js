@@ -150,10 +150,11 @@ export class InstancedSpriteBatch {
    * @param {string} opts.label
    * @param {import('../lib/pixi_8.16_.min.js').TextureSource} opts.atlasSource
    * @param {boolean} [opts.depthTest=true]
+   * @param {boolean} [opts.depthMask=true] - false → test Z (Y-sort) without writing (soft particles)
    * @param {boolean} [opts.premultiplyAlpha=true] - true → normal PMA out; false → additive (glows)
    * @param {string} [opts.blendMode='normal'] - Pixi State blend mode
    */
-  constructor({ capacity, label, atlasSource, depthTest = true, premultiplyAlpha = true, blendMode = 'normal' }) {
+  constructor({ capacity, label, atlasSource, depthTest = true, depthMask = true, premultiplyAlpha = true, blendMode = 'normal' }) {
     this.capacity = Math.max(1, capacity | 0);
     this.data = new Float32Array(this.capacity * INSTANCED_SPRITE_FLOATS);
     this.buffer = new Buffer({
@@ -200,6 +201,7 @@ export class InstancedSpriteBatch {
     state.blend = true;
     state.blendMode = blendMode || 'normal';
     state.depthTest = !!depthTest;
+    state.depthMask = depthMask !== false;
     state.culling = false;
 
     this.mesh = new Mesh({
@@ -234,7 +236,7 @@ export class InstancedSpriteBatch {
    * @param {Array|null} [opts.textures] - flatTextures fallback when LUT miss / absent
    * @param {Uint8Array|null} [opts.type] - render queue type (filter)
    * @param {number} [opts.includeType] - only pack this type (e.g. 3 = light glow)
-   * @param {number} [opts.excludeType] - skip this type (e.g. 3 when packing ENTITIES)
+   * @param {number|number[]} [opts.excludeType] - skip this type / these types
    */
   upload(q, opts = {}) {
     const count = q.count | 0;
@@ -258,8 +260,10 @@ export class InstancedSpriteBatch {
     const typeArr = opts.type || null;
     const sortKeyArr = opts.sortKey || null;
     const includeType = opts.includeType;
-    const excludeType = opts.excludeType;
-    const filterTypes = typeArr && (includeType !== undefined || excludeType !== undefined);
+    const excludeRaw = opts.excludeType;
+    const excludeList =
+      excludeRaw == null ? null : typeof excludeRaw === 'number' ? [excludeRaw] : excludeRaw;
+    const filterTypes = typeArr && (includeType !== undefined || excludeList);
     const depthDenom = (opts.depthDenom || this.capacity) + 1;
     const sortKeyMax = worldHeight * Y_SORT_K + GLOW_BIAS + 1;
 
@@ -292,7 +296,16 @@ export class InstancedSpriteBatch {
       if (filterTypes) {
         const t = typeArr[i];
         if (includeType !== undefined && t !== includeType) continue;
-        if (excludeType !== undefined && t === excludeType) continue;
+        if (excludeList) {
+          let skip = false;
+          for (let e = 0; e < excludeList.length; e++) {
+            if (t === excludeList[e]) {
+              skip = true;
+              break;
+            }
+          }
+          if (skip) continue;
+        }
       }
       if (out >= this.capacity) break;
 

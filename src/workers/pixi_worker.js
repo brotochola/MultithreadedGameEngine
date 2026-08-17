@@ -153,10 +153,13 @@ class PixiRenderer extends AbstractWorker {
     this.entitiesBatch = null;
     /** @type {InstancedSpriteBatch|null} light-glow (type=3) ADD batch */
     this.entitiesGlowBatch = null;
+    /** @type {InstancedSpriteBatch|null} particles (type=1) Y-sort test, no Z write */
+    this.entitiesParticleBatch = null;
     /** @type {InstancedSpriteBatch|null} */
     this.shadowBatch = null;
     this.spriteMesh = null; // entitiesBatch.mesh alias for layer refs
     this.spriteGlowMesh = null; // entitiesGlowBatch.mesh
+    this.spriteParticleMesh = null; // entitiesParticleBatch.mesh
     this._texLut = null;
     this._texLutCount = 0;
     this.backgroundSprite = null;
@@ -527,6 +530,7 @@ class PixiRenderer extends AbstractWorker {
 
         const instancedBatchCount =
           (this.entitiesBatch ? 1 : 0) +
+          (this.entitiesParticleBatch ? 1 : 0) +
           (this.entitiesGlowBatch ? 1 : 0) +
           (this.shadowBatch ? 1 : 0) +
           this._customLayerList.length;
@@ -558,11 +562,18 @@ class PixiRenderer extends AbstractWorker {
     const cameraX = this._renderCameraX;
     const cameraY = this._renderCameraY;
 
-    // Apply camera to ENTITIES instanced mesh + glow ADD mesh
+    // Apply camera to ENTITIES instanced mesh + particle (Y-sort, no Z write) + glow ADD
     if (this.spriteMesh) {
       this.spriteMesh.scale.set(zoom);
       this.spriteMesh.x = -cameraX * zoom;
       this.spriteMesh.y = -cameraY * zoom;
+    }
+    if (this.spriteParticleMesh) {
+      this.spriteParticleMesh.scale.set(zoom);
+      this.spriteParticleMesh.x = -cameraX * zoom;
+      this.spriteParticleMesh.y = -cameraY * zoom;
+      // After ENTITIES so the depth buffer already has Y-sorted opaque sprites
+      this.spriteParticleMesh.zIndex = (this.spriteMesh?.zIndex ?? 0) + 0.0005;
     }
     if (this.spriteGlowMesh) {
       this.spriteGlowMesh.scale.set(zoom);
@@ -612,7 +623,8 @@ class PixiRenderer extends AbstractWorker {
   // RENDER QUEUE UPDATE (Optimized Path)
   // ========================================
   /**
-   * Upload main render queue SoA into ENTITIES (normal) + glow (add) instanced Meshes.
+   * Upload main render queue SoA into ENTITIES + particles (no Z write) + glow (add) meshes.
+   * Type 1 = particles — own batch tests Y-sort depth, does not punch Z.
    * Type 3 = light glow (_lightGradient) — separate ADD batch avoids gray halos.
    */
   updateSpritesFromRenderQueue() {
@@ -648,8 +660,15 @@ class PixiRenderer extends AbstractWorker {
 
     this.visibleEntityCount = this.entitiesBatch.upload(q, {
       ...baseOpts,
-      excludeType: 3,
+      excludeType: [1, 3],
     });
+
+    this.visibleParticleCount = this.entitiesParticleBatch
+      ? this.entitiesParticleBatch.upload(q, {
+        ...baseOpts,
+        includeType: 1,
+      })
+      : 0;
 
     if (this.entitiesGlowBatch) {
       this.entitiesGlowBatch.upload(q, {
@@ -677,6 +696,7 @@ class PixiRenderer extends AbstractWorker {
     this._texLutCount = this.flatTextures?.length || 0;
     const src = this._resolveAtlasSource();
     if (this.entitiesBatch) this.entitiesBatch.setAtlasSource(src);
+    if (this.entitiesParticleBatch) this.entitiesParticleBatch.setAtlasSource(src);
     if (this.entitiesGlowBatch) this.entitiesGlowBatch.setAtlasSource(src);
     if (this.shadowBatch) this.shadowBatch.setAtlasSource(src);
     for (let i = 0; i < this._customLayerList.length; i++) {
@@ -698,6 +718,17 @@ class PixiRenderer extends AbstractWorker {
     });
     this.spriteMesh = this.entitiesBatch.mesh;
 
+    // Soft particles: same Y-sort depth as entities; depthMask false so alpha does not occlude
+    this.entitiesParticleBatch = new InstancedSpriteBatch({
+      capacity: maxItems,
+      label: 'entities-particles-instanced',
+      atlasSource: this._resolveAtlasSource(),
+      depthTest: useGpuYSort,
+      depthMask: false,
+      premultiplyAlpha: true,
+    });
+    this.spriteParticleMesh = this.entitiesParticleBatch.mesh;
+
     // Soft light glows (type=3) on ADD batch — normal+PMA made gray doughnuts around TallLights
     this.entitiesGlowBatch = new InstancedSpriteBatch({
       capacity: maxItems,
@@ -711,7 +742,7 @@ class PixiRenderer extends AbstractWorker {
 
     // Atlas may have loaded before batch existed — bind LUT/source now
     if (this.flatTextures?.length) this.rebuildInstancedTextureLut();
-    console.log(`PIXI WORKER: ENTITIES instanced batch ready (capacity ${maxItems}, glow ADD split)`);
+    console.log(`PIXI WORKER: ENTITIES instanced batch ready (capacity ${maxItems}, particles no-Z-write, glow ADD split)`);
   }
 
   /**
@@ -2919,12 +2950,16 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       this.createEntitiesInstancedBatch(this.renderQueueMaxItems);
       this._registerLayerDisplayObject('ENTITIES', this.spriteMesh);
       this.pixiApp.stage.addChild(this.spriteMesh);
+      if (this.spriteParticleMesh) {
+        this.spriteParticleMesh.zIndex = (this.spriteMesh.zIndex || 0) + 0.0005;
+        this.pixiApp.stage.addChild(this.spriteParticleMesh);
+      }
       if (this.spriteGlowMesh) {
         // Temporary; updateCameraTransform sets z above LIGHTING once that exists
         this.spriteGlowMesh.zIndex = (this.spriteMesh.zIndex || 0) + 0.001;
         this.pixiApp.stage.addChild(this.spriteGlowMesh);
       }
-      console.log('PIXI WORKER: ENTITIES layer using instanced sprite mesh (+ glow ADD)');
+      console.log('PIXI WORKER: ENTITIES layer using instanced sprite mesh (+ particles no-Z-write, glow ADD)');
     }
 
     // ========================================

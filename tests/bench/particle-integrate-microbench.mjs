@@ -152,6 +152,9 @@ function check(cond, msg) {
       components,
     });
     totalStamped += stampedCount;
+    for (let s = 0; s < stampedCount; s++) {
+      ParticleEmitter.returnToPool(stampScratch[s]);
+    }
   }
 
   for (const i of catA) {
