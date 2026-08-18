@@ -294,7 +294,7 @@ export const TILEMAP_CULL_DEFAULTS = Object.freeze({
    * Turning around reuses them. Bigger = more VRAM / more CompositeTilemaps.
    * Very large (e.g. 128) ≈ keep the whole map for typical Tiled sizes.
    */
-  cacheGrid: 128,
+  cacheGrid: 32,
   /**
    * Extra tiles added to the view rect before chunk overlap (not a chunk ring).
    * Use for subpixel / zoom jitter when chunkGrid is 1. 0 if a ring already covers bleed.
