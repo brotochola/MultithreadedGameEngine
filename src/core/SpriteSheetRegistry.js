@@ -8,6 +8,7 @@ import {
   createBulletTrailCanvas,
   LIGHT_GRADIENT_TEXTURE_RADIUS,
 } from './utils.js';
+import { ASSETS_DEFAULTS } from './ConfigDefaults.js';
 
 /**
  * MaxRectsPacker - Rectangle packing algorithm for texture atlas generation
@@ -758,12 +759,12 @@ class SpriteSheetRegistry {
   ) {
     // Merge with defaults
     const {
-      maxAtlasWidth = 4096,
-      maxAtlasHeight = 4096,
-      atlasPadding = 2,
-      trimImages = true,
-      trimAlphaThreshold = 0,
-      heuristic = 'best-short-side',
+      maxAtlasWidth = ASSETS_DEFAULTS.maxAtlasWidth,
+      maxAtlasHeight = ASSETS_DEFAULTS.maxAtlasHeight,
+      atlasPadding = ASSETS_DEFAULTS.atlasPadding,
+      trimImages = ASSETS_DEFAULTS.trimImages,
+      trimAlphaThreshold = ASSETS_DEFAULTS.trimAlphaThreshold,
+      heuristic = ASSETS_DEFAULTS.heuristic,
     } = options;
 
     console.log('🎨 Creating BigAtlas from assets...');

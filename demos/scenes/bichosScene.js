@@ -40,7 +40,6 @@ export class BichosScene extends WEED.Scene {
     worldWidth: 10000,
     worldHeight: 5000,
     seed: 123456,
-    debugUpdateInterval: 100,
 
     // Spatial hash grid configuration
     spatial: {

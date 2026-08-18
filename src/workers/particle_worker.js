@@ -35,7 +35,7 @@ import {
   buildActiveAndVisibleListBuffers,
 } from '../core/particleIntegrate.js';
 import { PARTICLE_STATS, createStatsWriter } from './workers-utils.js';
-import { NAVIGATION_DEFAULTS } from '../core/ConfigDefaults.js';
+import { NAVIGATION_DEFAULTS, RENDERER_DEFAULTS, DECORATION_DEFAULTS } from '../core/ConfigDefaults.js';
 import {
   getColliderBounds,
   getCellRange,
@@ -333,7 +333,7 @@ class ParticleWorker extends AbstractWorker {
 
     // Decoration sway
     this.maxDecorations = 0;
-    this.swayDecimation = 1; // Calculate sway every N frames (1 = every frame)
+    this.swayDecimation = DECORATION_DEFAULTS.swayDecimation;
     this._swayFrameCounter = 0;
     this._activeDecorationSnapshot = null;
     this._activeDecorationSnapshotCount = 0;
@@ -371,7 +371,7 @@ class ParticleWorker extends AbstractWorker {
     // Screen visibility (camera bounds)
     this.canvasWidth = 0;
     this.canvasHeight = 0;
-    this.cullingRatio = 0.5;
+    this.cullingRatio = RENDERER_DEFAULTS.cullingRatio;
     this._cameraBounds = {
       zoom: 0,
       cameraOffsetX: 0,
@@ -504,12 +504,12 @@ class ParticleWorker extends AbstractWorker {
     }
 
     // Sway decimation config
-    this.swayDecimation = data.config?.decoration?.swayDecimation || 1;
+    this.swayDecimation = data.config?.decoration?.swayDecimation ?? DECORATION_DEFAULTS.swayDecimation;
 
     // Screen visibility config
     this.canvasWidth = this.config.canvasWidth || 800;
     this.canvasHeight = this.config.canvasHeight || 600;
-    this.cullingRatio = this.config.renderer?.cullingRatio ?? 0.5;
+    this.cullingRatio = this.config.renderer?.cullingRatio ?? RENDERER_DEFAULTS.cullingRatio;
 
     // console.log('[PARTICLE WORKER] ✅ Initialize() completed!');
   }

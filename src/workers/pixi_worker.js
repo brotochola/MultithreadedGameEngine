@@ -29,6 +29,7 @@ import {
   DEFAULT_LAYERS,
   RENDERER_DEFAULTS,
   TILEMAP_CULL_DEFAULTS,
+  LIGHTING_DEFAULTS,
   ShapeType,
   MAX_POLYGON_VERTICES,
 } from '../core/ConfigDefaults.js';
@@ -371,7 +372,7 @@ class PixiRenderer extends AbstractWorker {
     // RenderTexture-based shadow compositing
     this.shadowRT = null; // RenderTexture for shadow compositing
     this.shadowDisplaySprite = null; // Sprite to display shadowRT with multiply blend
-    this.shadowResolution = 1.0; // Resolution multiplier for shadow RT
+    this.shadowResolution = LIGHTING_DEFAULTS.shadowResolution;
 
     // Reusable camera render-state
     this._renderCameraX = 0;
@@ -2054,7 +2055,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
    * - shadowDisplaySprite (multiply) darkens the scene where RT is dark
    */
   createShadowSpriteSystem() {
-    this.shadowResolution = this.config.lighting?.shadowResolution || 1.0;
+    this.shadowResolution = this.config.lighting?.shadowResolution ?? LIGHTING_DEFAULTS.shadowResolution;
 
     this.shadowRT = PIXI.RenderTexture.create({
       width: this.canvasWidth * this.shadowResolution,

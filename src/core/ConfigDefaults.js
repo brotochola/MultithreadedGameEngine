@@ -129,6 +129,8 @@ export const ASSETS_DEFAULTS = Object.freeze({
   trimAlphaThreshold: 0,
   /** Padding between packed sprites (prevents texture bleeding) */
   atlasPadding: 2,
+  /** Bin-pack heuristic: best-short-side | best-long-side | best-area */
+  heuristic: 'best-short-side',
 });
 
 // ============================================================================
@@ -139,6 +141,22 @@ export const SCENE_DEFAULTS = Object.freeze({
   gravity: Object.freeze({ x: 0, y: 0 }),
   worldWidth: 1000,
   worldHeight: 1000,
+  seed: 1,
+});
+
+// ============================================================================
+// ENGINE DEFAULTS (GameEngine constructor)
+// ============================================================================
+
+export const ENGINE_DEFAULTS = Object.freeze({
+  autoResize: false,
+  preventContextMenu: true,
+  preventDefaultKeys: true,
+  injectStyles: true,
+  transitionCooldown: 100,
+  /** Enable DebugUI overlay. Distinct from Scene.config.debug (DEBUG_DEFAULTS object). */
+  debug: false,
+  resizeDebounceMs: 150,
 });
 
 // ============================================================================
@@ -227,6 +245,8 @@ export const DECORATION_DEFAULTS = Object.freeze({
   maxDecorations: 0,
   /** Max decorations attached per GameObject (Uint8 count, hard max 255) */
   maxAttachedDecorationsPerEntity: 32,
+  /** Recalc decoration sway every N frames (1 = every frame). */
+  swayDecimation: 1,
 });
 
 /** Composite Y-sort: `worldY * DECORATION_Y_SORT_SCALE + innerZ` (entities, decorations, bullets, particles on ENTITIES layer). */
@@ -433,4 +453,8 @@ export const DEBUG_DEFAULTS = Object.freeze({
   collectDetailedStats: false,
   /** Warn when cmd-ring / Ray get non-unit (rotC,rotS) or dir. Off in prod. */
   assertRotCSUnit: false,
+  /** DebugUI poll ms. GameEngine constructor override: debugUpdateInterval. */
+  updateInterval: 100,
+  /** DebugUI accordion section id, or null. Override: debugDefaultOpen. */
+  defaultOpen: null,
 });

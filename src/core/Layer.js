@@ -574,7 +574,7 @@ export class Layer {
                 resolution: this._resolution[i],
                 alpha: this._alpha[i],
                 hasRenderQueue: this._hasRenderQueue[i] === 1,
-                maxItems: isBuiltIn ? 0 : (config.maxItems || 5000),
+                maxItems: isBuiltIn ? 0 : (config.maxItems || LAYER_DEFAULTS.maxItemsPerLayer),
                 uniformMap: this._uniformMaps[layer.id] || null,
                 shaderFragment: config.shader?.fragment || null,
                 shaderName: null,

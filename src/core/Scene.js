@@ -129,16 +129,17 @@ class Scene {
     this.audioUrls = this.constructor.audios || [];
     this.loadedAudioNames = [];
 
-    this.seed = this.config.seed || 1
-    this.rng = seededRandom(this.seed);
-    // Make seeded random available globally for entity code
-    globalThis.rng = this.rng;
     this.state = {
       pause: false,
     };
 
     // Apply all default config values
     this._applyConfigDefaults();
+
+    this.seed = this.config.seed;
+    this.rng = seededRandom(this.seed);
+    // Make seeded random available globally for entity code
+    globalThis.rng = this.rng;
 
     // State
     this.keyboard = {};
@@ -611,6 +612,13 @@ class Scene {
       ...AUDIO_DEFAULTS,
       ...(this.config.audio || {}),
     };
+
+    // Assets defaults (BigAtlas packing)
+    this.config.assets = {
+      ...ASSETS_DEFAULTS,
+      ...(this.config.assets || {}),
+    };
+
     // Logic defaults from centralized config
     this.config.logic = {
       ...LOGIC_DEFAULTS,
@@ -629,10 +637,19 @@ class Scene {
       ...(this.config.preRender || {}),
     };
 
-    // Lighting defaults from centralized config
+    // Lighting defaults from centralized config (sun / dayCycle nested, not shallow-replaced)
+    const userSun = userLightingConfig.sun || {};
     this.config.lighting = {
       ...LIGHTING_DEFAULTS,
       ...(this.config.lighting || {}),
+    };
+    this.config.lighting.sun = {
+      ...SUN_DEFAULTS,
+      ...userSun,
+      dayCycle: {
+        ...SUN_DEFAULTS.dayCycle,
+        ...(userSun.dayCycle || {}),
+      },
     };
     // Compute maxShadowSprites unless the scene explicitly provides a global cap.
     if (userLightingConfig.maxShadowSprites == null) {
@@ -1330,15 +1347,7 @@ class Scene {
     const adobeAnimateAnimations = imageUrls?.AdobeAnimateAnimations || {};
     const preparedAdobeAssets = await this.prepareAdobeAnimateAssets(adobeAnimateAnimations);
     const bakedBigAtlas = imageUrls?.bigAtlas;
-    const assetsConfig = this.config.assets || {};
-    const atlasOptions = {
-      maxAtlasWidth: assetsConfig.maxAtlasWidth ?? ASSETS_DEFAULTS.maxAtlasWidth,
-      maxAtlasHeight: assetsConfig.maxAtlasHeight ?? ASSETS_DEFAULTS.maxAtlasHeight,
-      atlasPadding: assetsConfig.atlasPadding ?? ASSETS_DEFAULTS.atlasPadding,
-      trimImages: assetsConfig.trimImages ?? ASSETS_DEFAULTS.trimImages,
-      trimAlphaThreshold: assetsConfig.trimAlphaThreshold ?? ASSETS_DEFAULTS.trimAlphaThreshold,
-      heuristic: 'best-short-side',
-    };
+    const atlasOptions = this.config.assets;
 
     const atlasPromise = (async () => {
       try {

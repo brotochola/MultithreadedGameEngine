@@ -16,6 +16,8 @@
 //     +6 cursor  (Float32) fractional sample position (worklet writes)
 //     +7 reserved
 
+import { AUDIO_DEFAULTS } from './ConfigDefaults.js';
+
 export class SoundManager {
   static _enabled = true;
   static _nameToId = new Map();
@@ -175,7 +177,7 @@ export class SoundManager {
     this._sab = config.sab;
     this._i32 = new Int32Array(config.sab);
     this._f32 = new Float32Array(config.sab);
-    this._maxSlots = config.maxSlots || this._i32[0] || 64;
+    this._maxSlots = config.maxSlots || this._i32[0] || AUDIO_DEFAULTS.maxSlots;
   }
 
   /**

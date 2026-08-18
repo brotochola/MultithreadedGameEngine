@@ -40,7 +40,6 @@ export class CarScene extends WEED.Scene {
         worldWidth: 49968,
         worldHeight: 9984,
         seed: 123456,
-        debugUpdateInterval: 100,
 
         debug: {
             maxDebugDrawEntries: 30192,

@@ -64,7 +64,6 @@ export class PredatorScene extends WEED.Scene {
     worldWidth: 10000,
     worldHeight: 5000,
     seed: 123456,
-    debugUpdateInterval: 100,
 
     debug: {
       maxDebugDrawEntries: 30192,

@@ -19,6 +19,7 @@
   var MAX_POLYGON_VERTICES = 8;
   var MAX_BODIES_HINT = 65535;
 
+  // ponytail: classic IIFE cannot import ConfigDefaults.js — keep in sync with PHYSICS_DEFAULTS (upgrade: shared JSON/module).
   var PHYSICS_DEFAULTS = {
     subStepCount: 4,
     contactHertz: 30,

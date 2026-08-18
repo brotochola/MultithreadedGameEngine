@@ -9,6 +9,7 @@ import { StatsCollector } from './stats/StatsCollector.js';
 import { DebugCanvas } from './rendering/DebugCanvas.js';
 import { ToolManager } from './tools/ToolManager.js';
 import { DebugDraw } from './DebugDraw.js';
+import { DEBUG_DEFAULTS } from '../ConfigDefaults.js';
 
 // Panels
 import { ScenePanel } from './panels/ScenePanel.js';
@@ -31,12 +32,12 @@ export class DebugUI {
     this.debugFlags = null;
     this.gameEngine = null;
 
-    this.updateInterval = options.updateInterval || 100;
+    this.updateInterval = options.updateInterval ?? DEBUG_DEFAULTS.updateInterval;
     this._rafId = null;
     this._lastTickTime = 0;
 
     // Section accordion state
-    this.openSection = options.defaultOpen || null;
+    this.openSection = options.defaultOpen ?? DEBUG_DEFAULTS.defaultOpen;
     this.sections = {};
 
     // Registered scenes for the scene-switcher panel

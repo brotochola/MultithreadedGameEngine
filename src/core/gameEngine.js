@@ -5,6 +5,7 @@ import { DebugUI } from './debug/DebugUI.js';
 import { Mouse } from './Mouse.js';
 import { SoundManager } from './SoundManager.js';
 import { printLogo } from './utils.js';
+import { DEBUG_DEFAULTS, ENGINE_DEFAULTS } from './ConfigDefaults.js';
 
 const PREVENT_DEFAULT_KEYS = new Set([
   'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab',
@@ -17,10 +18,10 @@ class GameEngine {
   };
 
   constructor(config = {}) {
-    this.autoResize = config.autoResize || false;
-    this.preventContextMenu = config.preventContextMenu !== false;
-    this.preventDefaultKeys = config.preventDefaultKeys !== false;
-    this.injectStyles = config.injectStyles !== false;
+    this.autoResize = config.autoResize ?? ENGINE_DEFAULTS.autoResize;
+    this.preventContextMenu = config.preventContextMenu ?? ENGINE_DEFAULTS.preventContextMenu;
+    this.preventDefaultKeys = config.preventDefaultKeys ?? ENGINE_DEFAULTS.preventDefaultKeys;
+    this.injectStyles = config.injectStyles ?? ENGINE_DEFAULTS.injectStyles;
 
     if (this.autoResize) {
       this.canvasWidth = window.innerWidth;
@@ -35,16 +36,16 @@ class GameEngine {
 
     // State management
     this.state = GameEngine.states.READY;
-    this.transitionCooldown = config.transitionCooldown || 100; // ms
+    this.transitionCooldown = config.transitionCooldown ?? ENGINE_DEFAULTS.transitionCooldown;
 
-    // Debug UI (created if debug: true)
-    this.debugEnabled = config.debug || false;
+    // Debug UI (created if debug: true). Distinct from Scene.config.debug object.
+    this.debugEnabled = config.debug ?? ENGINE_DEFAULTS.debug;
     this.debugUI = null;
 
     if (this.debugEnabled) {
       this.debugUI = new DebugUI({
-        updateInterval: config.debugUpdateInterval || 100,
-        defaultOpen: config.debugDefaultOpen || null,
+        updateInterval: config.debugUpdateInterval ?? DEBUG_DEFAULTS.updateInterval,
+        defaultOpen: config.debugDefaultOpen ?? DEBUG_DEFAULTS.defaultOpen,
       });
     }
 
@@ -65,7 +66,7 @@ class GameEngine {
         clearTimeout(this._resizeDebounceTimer);
         this._resizeDebounceTimer = setTimeout(() => {
           this.resize(window.innerWidth, window.innerHeight);
-        }, 150);
+        }, ENGINE_DEFAULTS.resizeDebounceMs);
       };
       window.addEventListener('resize', this._onWindowResize);
     }
