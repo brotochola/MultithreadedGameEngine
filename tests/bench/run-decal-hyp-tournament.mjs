@@ -33,7 +33,7 @@ const outDir = path.join(repoRoot, 'tests/results/decal-hyps/tournament');
 
 const SCENES_ALL = [
   { key: 'decalStress', scene: '/tests/bench/stressScenes/DecalStampStressScene.js', exportName: 'DecalStampStressScene' },
-  { key: 'zenithal', scene: '/demos/scenes/zenithalParticleTestScene.js', exportName: 'ZenithalParticleTestScene' },
+  { key: 'zenithal', scene: '/demos/zenithalParticleTestScene/zenithalParticleTestScene.js', exportName: 'ZenithalParticleTestScene' },
 ];
 
 const WORKER_PREFER_IDS = ['particle'];

@@ -25,15 +25,15 @@ const INTERVALS = [1, 6];
 const SCENES = [
   {
     key: 'balls',
-    scene: '/demos/scenes/BallsScene.js',
+    scene: '/demos/ballsScene/ballsScene.js',
     exportName: 'BallsScene',
-    file: path.join(repoRoot, 'demos/scenes/BallsScene.js'),
+    file: path.join(repoRoot, 'demos/ballsScene/ballsScene.js'),
   },
   {
     key: 'predator',
-    scene: '/demos/scenes/PredatorScene.js',
+    scene: '/demos/predatorScene/predatorScene.js',
     exportName: 'PredatorScene',
-    file: path.join(repoRoot, 'demos/scenes/PredatorScene.js'),
+    file: path.join(repoRoot, 'demos/predatorScene/predatorScene.js'),
   },
 ];
 

@@ -39,7 +39,7 @@ const defaultOutputPath = path.join(repoRoot, 'tests', 'results', 'integrated-wo
 /** Match typical `demos/index.html` window size (autoResize), not scene world dimensions. */
 const DEFAULT_DEMO_CANVAS_WIDTH = 1920;
 const DEFAULT_DEMO_CANVAS_HEIGHT = 1080;
-const DEFAULT_SCENE_MODULE = '/demos/scenes/BallsScene.js';
+const DEFAULT_SCENE_MODULE = '/demos/ballsScene/ballsScene.js';
 const DEFAULT_SCENE_EXPORT = 'BallsScene';
 
 /**

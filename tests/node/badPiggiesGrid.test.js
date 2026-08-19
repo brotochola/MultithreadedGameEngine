@@ -15,7 +15,7 @@ import {
   planJoints,
   heightsToSegments,
   worldToCell,
-} from '../../demos/scenes/badPiggiesGrid.js';
+} from '../../demos/badPiggiesScene/utils/badPiggiesGrid.js';
 
 test('rocket collides with ground only, not boxes or wheels', () => {
   assert.equal(LAYER_ROCKET, 3);

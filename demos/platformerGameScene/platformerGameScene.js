@@ -1,6 +1,6 @@
 import WEED from '/src/index.js';
-import { BluePlatformerPlayer } from '/demos/gameObjects/bluePlatformerPlayer.js';
-import { Platform } from '/demos/gameObjects/platform.js';
+import { BluePlatformerPlayer } from './gameObjects/bluePlatformerPlayer.js';
+import { Platform } from './gameObjects/platform.js';
 
 const { Scene, Camera, Transform } = WEED;
 

@@ -2,7 +2,7 @@
 // verify teardown leaves no broken state behind (Layer/NavGrid/Sound statics),
 // no page errors occur, and the JS heap does not grow monotonically.
 //
-// Usage: node tests/bench/scene-cycle-smoke.mjs [--cycles 4] [--scene /demos/scenes/BallsScene.js] [--scene-export BallsScene] [--headed]
+// Usage: node tests/bench/scene-cycle-smoke.mjs [--cycles 4] [--scene /demos/ballsScene/ballsScene.js] [--scene-export BallsScene] [--headed]
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +33,7 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cycles = Math.max(2, Number(args.cycles) || 4);
-  const sceneModule = args.scene || '/demos/scenes/BallsScene.js';
+  const sceneModule = args.scene || '/demos/ballsScene/ballsScene.js';
   const sceneExport = args['scene-export'] || 'BallsScene';
   const headed = Boolean(args.headed);
 

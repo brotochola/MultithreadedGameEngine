@@ -36,7 +36,7 @@ const outDir = path.join(repoRoot, 'tests/results/particle-hyps/tournament');
 const SCENES_ALL = [
   { key: 'particleEmit', scene: '/tests/bench/stressScenes/ParticleEmitStressScene.js', exportName: 'ParticleEmitStressScene' },
   { key: 'particleIntegrate', scene: '/tests/bench/stressScenes/ParticleIntegrateStressScene.js', exportName: 'ParticleIntegrateStressScene' },
-  { key: 'zenithal', scene: '/demos/scenes/zenithalParticleTestScene.js', exportName: 'ZenithalParticleTestScene' },
+  { key: 'zenithal', scene: '/demos/zenithalParticleTestScene/zenithalParticleTestScene.js', exportName: 'ZenithalParticleTestScene' },
 ];
 
 const WORKER_PREFER_IDS = ['particle'];

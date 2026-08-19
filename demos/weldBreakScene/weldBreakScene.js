@@ -1,7 +1,7 @@
 // WeldBreakScene — welded box columns that snap under load; sparks on JointBreakListener
 
-import { WeldBreakBox } from '/demos/gameObjects/weldBreakBox.js';
-import { Floor } from '/demos/gameObjects/floor.js';
+import { WeldBreakBox } from './gameObjects/weldBreakBox.js';
+import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';

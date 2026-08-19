@@ -110,4 +110,4 @@ pixi_worker
 - [`Flash.js`](../src/core/Flash.js)
 - [`FlashComponent.js`](../src/components/FlashComponent.js)
 - [`LightEmitter.js`](../src/components/LightEmitter.js)
-- Demo: [`person.js`](../demos/gameObjects/person.js) (muzzle `castShadows: false`), [`PredatorScene.js`](../demos/scenes/PredatorScene.js) (`maxFlashes`)
+- Demo: [`person.js`](../demos/predatorScene/gameObjects/person.js) (muzzle `castShadows: false`), [`PredatorScene.js`](../demos/predatorScene/predatorScene.js) (`maxFlashes`)

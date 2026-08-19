@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { LAYER_ROCKET, MASK_ROCKET, ROCKET_H, ROCKET_LEN, ROCKET_THRUST } from '/demos/scenes/badPiggiesGrid.js';
+import { LAYER_ROCKET, MASK_ROCKET, ROCKET_H, ROCKET_LEN, ROCKET_THRUST } from '../utils/badPiggiesGrid.js';
 
 const { GameObject, RigidBody, Collider, SpriteRenderer, ParticleEmitter, Keyboard, enums } = WEED;
 const { ShapeType } = enums;

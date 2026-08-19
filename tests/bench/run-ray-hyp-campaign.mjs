@@ -30,7 +30,7 @@ const SCENES = [
   },
   {
     key: 'predator',
-    scene: '/demos/scenes/PredatorScene.js',
+    scene: '/demos/predatorScene/predatorScene.js',
     exportName: 'PredatorScene',
   },
 ];

@@ -1,9 +1,9 @@
 import WEED from '/src/index.js';
-import { DIRECTION_DOWN, PersonComponent } from '../components/personComponent.js';
-import { PersonAnimationFSM } from '../fsm/PersonAnimationFSM.js';
-import { LootableComponent } from '../components/lootableComponent.js';
+import { DIRECTION_DOWN, PersonComponent } from '/demos/predatorScene/components/personComponent.js';
+import { PersonAnimationFSM } from '/demos/predatorScene/fsm/personAnimationFSM.js';
+import { LootableComponent } from '/demos/predatorScene/components/lootableComponent.js';
 import { CarComponent } from '../components/carComponent.js';
-import { ParticleEmitter, SpriteSheetRegistry, SoundManager } from '../../src/index.js';
+import { ParticleEmitter, SpriteSheetRegistry, SoundManager } from '/src/index.js';
 
 const { rng, GameObject, RigidBody, Collider, CollisionListener, SpriteRenderer, NavGrid, Transform } = WEED;
 

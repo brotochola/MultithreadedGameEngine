@@ -3,13 +3,13 @@
 
 import WEED from '/src/index.js';
 
-import { NavGrid } from '../../src/core/NavGrid.js';
+import { NavGrid } from '/src/core/NavGrid.js';
 
-import { Destination } from '../gameObjects/destination.js';
+import { Destination } from './destination.js';
 import { Lootable } from './lootable.js';
 import { LootableComponent } from '../components/lootableComponent.js';
 import { PersonComponent, DIRECTION_DOWN, DIRECTION_NAMES } from '../components/personComponent.js';
-import { PersonAnimationFSM, WALK_SPEED_THRESHOLD } from '../fsm/PersonAnimationFSM.js';
+import { PersonAnimationFSM, WALK_SPEED_THRESHOLD } from '../fsm/personAnimationFSM.js';
 import {
   ParticleEmitter,
   SpriteSheetRegistry,
@@ -21,7 +21,7 @@ import {
   DecorationPool,
   BulletPool,
   randomColor,
-} from '../../src/index.js';
+} from '/src/index.js';
 
 const { RigidBody, Collider, SpriteRenderer, ShadowCaster, Transform, rng } = WEED;
 

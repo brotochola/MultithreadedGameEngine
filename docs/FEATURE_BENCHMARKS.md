@@ -6,11 +6,11 @@ When changing a hot algorithm in WeedJS, measure at three layers. Do not jump st
 |-------|------------------|-----|------|
 | **L1 isolated** | Algorithm throughput (ops/s, ms/N) + correctness | `node tests/bench/<feature>-microbench.mjs` — no workers, fake SoA/SAB | Changed DDA / Dijkstra / query math / grid loop |
 | **L2 intermediate** | Feature inside the engine (workers, real grid, SAB stats) on a synthetic scene | Playwright `run-integrated-worker-benchmark.mjs --scene /tests/bench/stressScenes/...` | Validate the win survives integration |
-| **L3 demo** | Real gameplay load | `demos/scenes/` (Balls, Predator, …) | End-to-end regression only |
+| **L3 demo** | Real gameplay load | `demos/<demo>/` (Balls, Predator, …) | End-to-end regression only |
 
 Always compare with the **same flags**, prefer `pnpm bench:headed:median` (≥5 runs), and check workload equivalence (entity count, casts/frame, `BODY_COUNT`).
 
-L2 scenes live only under [`tests/bench/stressScenes/`](../tests/bench/stressScenes/). Demos stay in `demos/scenes/`.
+L2 scenes live only under [`tests/bench/stressScenes/`](../tests/bench/stressScenes/). Demos stay in `demos/<demoName>/`.
 
 Methodology for the integrated harness: [`tests/bench/BENCHMARK_METHODOLOGY.md`](../tests/bench/BENCHMARK_METHODOLOGY.md).
 

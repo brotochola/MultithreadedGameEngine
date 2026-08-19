@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { Platform } from '/demos/gameObjects/platform.js';
+import { Platform } from './platform.js';
 import { PlatformerCharacterComponent } from '../components/platformerCharacterComponent.js';
 
 const { LightEmitter, GameObject, AdobeAnimComponent, ParticleEmitter, AdobeAnimRegistry, RigidBody, Collider, Keyboard, CollisionListener, Transform } = WEED;

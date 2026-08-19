@@ -1,12 +1,12 @@
 // ConstraintBoxScene - Car-style square boxes (parts + distance constraints)
 
-import { BoxPart } from '/demos/gameObjects/boxPart.js';
-import { ConstraintBox } from '/demos/gameObjects/constraintBox.js';
+import { BoxPart } from './gameObjects/boxPart.js';
+import { ConstraintBox } from './gameObjects/constraintBox.js';
 import {
     ConstraintBoxComponent,
     PART_KEYS,
-} from '/demos/components/constraintBoxComponent.js';
-import { Floor } from '/demos/gameObjects/floor.js';
+} from './components/constraintBoxComponent.js';
+import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 const { Mouse, Transform, RigidBody } = WEED;

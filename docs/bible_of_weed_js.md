@@ -89,7 +89,7 @@ Do **not** branch on `_restorePayload` inside `create()`. Use `createNewGame` / 
 At boot the engine packs `textures` + `spritesheets` into one `bigAtlas` (proxy sheets keep names like `civil1` + `"hurt"`). To skip runtime packing, bake once and point the scene at the output:
 
 ```bash
-npm run bake:atlas -- --scene /demos/scenes/PredatorScene.js --export PredatorScene --out demos/img/baked/PredatorScene
+npm run bake:atlas -- --scene /demos/predatorScene/predatorScene.js --export PredatorScene --out demos/img/baked/PredatorScene
 ```
 
 ```javascript

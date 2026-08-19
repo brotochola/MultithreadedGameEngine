@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { workerLoadPct } from '../../src/workers/workers-utils.js';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
-const ballsScenePath = path.join(repoRoot, 'demos/scenes/BallsScene.js');
+const ballsScenePath = path.join(repoRoot, 'demos/ballsScene/ballsScene.js');
 const siblingRoot = path.resolve(repoRoot, '../box2d_3.0_Wasm_sab');
 const buildBat = path.join(siblingRoot, 'build_for_weed.bat');
 const medianRunner = path.join(repoRoot, 'tests/bench/run-headed-median.mjs');

@@ -3,9 +3,9 @@
 // with additive blending + threshold shader to produce a metaball effect,
 // while boxes render in the default ENTITIES layer.
 
-import { WaterBall } from '/demos/gameObjects/waterBall.js';
-import { Box } from '/demos/gameObjects/box.js';
-import { Floor } from '/demos/gameObjects/floor.js';
+import { WaterBall } from './gameObjects/waterBall.js';
+import { Box } from '/demos/ballsAndRectanglesScene/gameObjects/box.js';
+import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import { Layer } from '/src/core/Layer.js';
 import { BLEND_MODES } from '/src/core/ConfigDefaults.js';

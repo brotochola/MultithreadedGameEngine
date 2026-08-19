@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node scripts/bake-big-atlas.mjs \
- *     --scene /demos/scenes/PredatorScene.js \
+ *     --scene /demos/predatorScene/predatorScene.js \
  *     --export PredatorScene \
  *     --out demos/img/baked/PredatorScene
  */
@@ -37,7 +37,7 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const sceneModule = args.scene || '/demos/scenes/PredatorScene.js';
+  const sceneModule = args.scene || '/demos/predatorScene/predatorScene.js';
   const sceneExport = args.export || args['scene-export'] || 'PredatorScene';
   const outRel = args.out || 'demos/img/baked/PredatorScene';
   const outDir = path.resolve(repoRoot, outRel);

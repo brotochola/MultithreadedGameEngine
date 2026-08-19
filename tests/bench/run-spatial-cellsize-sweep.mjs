@@ -21,15 +21,15 @@ const outReport = path.join(repoRoot, 'tests/results', 'spatial-cellsize-sweep.j
 const SCENES = [
   {
     key: 'balls',
-    file: path.join(repoRoot, 'demos/scenes/BallsScene.js'),
-    scene: '/demos/scenes/BallsScene.js',
+    file: path.join(repoRoot, 'demos/ballsScene/ballsScene.js'),
+    scene: '/demos/ballsScene/ballsScene.js',
     exportName: 'BallsScene',
     defaultCellSize: 100,
   },
   {
     key: 'predator',
-    file: path.join(repoRoot, 'demos/scenes/PredatorScene.js'),
-    scene: '/demos/scenes/PredatorScene.js',
+    file: path.join(repoRoot, 'demos/predatorScene/predatorScene.js'),
+    scene: '/demos/predatorScene/predatorScene.js',
     exportName: 'PredatorScene',
     defaultCellSize: 128,
   },

@@ -1,8 +1,8 @@
 // ConstraintsTestScene.js - Distance Constraints Demo
 // Demonstrates distance constraints (ropes, chains, soft bodies)
 
-import { Ball } from '/demos/gameObjects/ball.js';
-import { Floor } from '/demos/gameObjects/floor.js';
+import { Ball } from '/demos/ballsScene/gameObjects/ball.js';
+import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 
 import WEED from '/src/index.js';
 const { Scene, Camera, Mouse, Joint, RigidBody, Transform, Grid, Collider, distanceSq2D, ShapeType } = WEED;

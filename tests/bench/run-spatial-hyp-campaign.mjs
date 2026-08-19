@@ -24,12 +24,12 @@ const summaryPath = path.join(outDir, 'campaign-summary.json');
 const SCENES = [
   {
     key: 'balls',
-    scene: '/demos/scenes/BallsScene.js',
+    scene: '/demos/ballsScene/ballsScene.js',
     exportName: 'BallsScene',
   },
   {
     key: 'predator',
-    scene: '/demos/scenes/PredatorScene.js',
+    scene: '/demos/predatorScene/predatorScene.js',
     exportName: 'PredatorScene',
   },
 ];

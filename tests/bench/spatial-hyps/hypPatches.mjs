@@ -11,8 +11,8 @@ const repoRoot = path.resolve(here, '../../..');
 
 export const PATHS = {
   spatial: path.join(repoRoot, 'src/workers/spatial_worker.js'),
-  balls: path.join(repoRoot, 'demos/scenes/BallsScene.js'),
-  predator: path.join(repoRoot, 'demos/scenes/PredatorScene.js'),
+  balls: path.join(repoRoot, 'demos/ballsScene/ballsScene.js'),
+  predator: path.join(repoRoot, 'demos/predatorScene/predatorScene.js'),
   baselineSpatial: path.join(here, 'baseline_spatial_worker.js'),
   baselineBalls: path.join(here, 'baseline_BallsScene.js'),
   baselinePredator: path.join(here, 'baseline_PredatorScene.js'),

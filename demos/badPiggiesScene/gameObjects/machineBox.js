@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { CELL, LAYER_BOX, MASK_BOX } from '/demos/scenes/badPiggiesGrid.js';
+import { CELL, LAYER_BOX, MASK_BOX } from '../utils/badPiggiesGrid.js';
 
 const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
 const { ShapeType } = enums;

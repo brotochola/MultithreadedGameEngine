@@ -4,30 +4,30 @@
 import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
 import { TileMap } from '/src/core/TileMap.js';
-import { Boid } from '../gameObjects/boid.js';
+import { Boid } from '/demos/predatorScene/gameObjects/boid.js';
 
-// import { Player } from "../gameObjects/player.js";
-import { TallLight } from '../gameObjects/tallLight.js';
+// import { Player } from "/demos/predatorScene/gameObjects/player.js";
+import { TallLight } from '/demos/predatorScene/gameObjects/tallLight.js';
 
-import { House } from '../gameObjects/house.js';
+import { House } from '/demos/predatorScene/gameObjects/house.js';
 
-import { Tree } from '../gameObjects/tree.js';
-import { Barrel } from '../gameObjects/barrel.js';
-import { Rock } from '../gameObjects/rock.js';
-import { Fire } from '../gameObjects/fire.js';
-import { Explosion } from '../gameObjects/explosion.js';
-import { MySoldier } from '../gameObjects/mySoldier.js';
-import { Destination } from '../gameObjects/destination.js';
-import { NavGrid } from '../../src/core/NavGrid.js';
-import { containerRadius } from '../../src/core/utils.js';
-import { DropMoney } from '../gameObjects/dropMoney.js';
-import { DropAk47 } from '../gameObjects/dropAk47.js';
-import { DropShotgun } from '../gameObjects/dropShotgun.js';
-import { DropPistol } from '../gameObjects/dropPistol.js';
-import { Civilian } from '../gameObjects/civilian.js';
-import { CameraController } from '../gameObjects/cameraController.js';
-import { Trash } from '../gameObjects/trash.js';
-import { Bug } from '../gameObjects/bug.js';
+import { Tree } from '/demos/predatorScene/gameObjects/tree.js';
+import { Barrel } from '/demos/predatorScene/gameObjects/barrel.js';
+import { Rock } from '/demos/predatorScene/gameObjects/rock.js';
+import { Fire } from '/demos/predatorScene/gameObjects/fire.js';
+import { Explosion } from '/demos/predatorScene/gameObjects/explosion.js';
+import { MySoldier } from '/demos/predatorScene/gameObjects/mySoldier.js';
+import { Destination } from '/demos/predatorScene/gameObjects/destination.js';
+import { NavGrid } from '/src/core/NavGrid.js';
+import { containerRadius } from '/src/core/utils.js';
+import { DropMoney } from '/demos/predatorScene/gameObjects/dropMoney.js';
+import { DropAk47 } from '/demos/predatorScene/gameObjects/dropAk47.js';
+import { DropShotgun } from '/demos/predatorScene/gameObjects/dropShotgun.js';
+import { DropPistol } from '/demos/predatorScene/gameObjects/dropPistol.js';
+import { Civilian } from '/demos/predatorScene/gameObjects/civilian.js';
+import { CameraController } from '/demos/predatorScene/gameObjects/cameraController.js';
+import { Trash } from '/demos/predatorScene/gameObjects/trash.js';
+import { Bug } from './gameObjects/bug.js';
 
 const { DecorationPool, Mouse, Camera } = WEED;
 

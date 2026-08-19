@@ -96,7 +96,7 @@ function runOnce(tag, i, args) {
       integratedRunner,
       '--headed',
       '--scene',
-      '/demos/scenes/PredatorScene.js',
+      '/demos/predatorScene/predatorScene.js',
       '--scene-export',
       'PredatorScene',
       '--warmup-ms',

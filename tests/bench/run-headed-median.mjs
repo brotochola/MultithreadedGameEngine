@@ -6,7 +6,7 @@
  * Usage:
  *   node tests/bench/run-headed-median.mjs
  *   node tests/bench/run-headed-median.mjs --runs 6 --json-out tests/results/research-spatial-headed.json
- *   node tests/bench/run-headed-median.mjs --scene /demos/scenes/carScene.js --scene-export CarScene
+ *   node tests/bench/run-headed-median.mjs --scene /demos/carScene/carScene.js --scene-export CarScene
  *
  * Leave the Chromium window visible; do not minimize during measurement.
  */
@@ -320,7 +320,7 @@ try {
           warmupMs,
           durationMs,
           runs,
-          scene: scene || '/demos/scenes/BallsScene.js',
+          scene: scene || '/demos/ballsScene/ballsScene.js',
           sceneExport: sceneExport || 'BallsScene',
           generatedAt: new Date().toISOString(),
         },

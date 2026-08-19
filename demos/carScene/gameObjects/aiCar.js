@@ -3,7 +3,7 @@
 import WEED from '/src/index.js';
 import { Car } from './car.js';
 import { PlayerCar } from './playerCar.js';
-import { NavGrid } from '../../src/core/NavGrid.js';
+import { NavGrid } from '/src/core/NavGrid.js';
 import { CarComponent } from '../components/carComponent.js';
 import { dot2 } from '/src/core/utils.js';
 

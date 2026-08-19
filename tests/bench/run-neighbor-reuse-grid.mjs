@@ -24,8 +24,8 @@ const WARMUP_MS = 12_000;
 const DURATION_MS = 10_000;
 
 const SCENES = [
-  { key: 'balls', scene: '/demos/scenes/BallsScene.js', exportName: 'BallsScene' },
-  { key: 'predator', scene: '/demos/scenes/PredatorScene.js', exportName: 'PredatorScene' },
+  { key: 'balls', scene: '/demos/ballsScene/ballsScene.js', exportName: 'BallsScene' },
+  { key: 'predator', scene: '/demos/predatorScene/predatorScene.js', exportName: 'PredatorScene' },
 ];
 
 const defaultsOriginal = fs.readFileSync(defaultsPath, 'utf8');

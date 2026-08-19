@@ -2,7 +2,7 @@ import WEED from '/src/index.js';
 
 import { LootableComponent } from '../components/lootableComponent.js';
 import { DropMoney } from './dropMoney.js';
-import { randomColor } from '../../src/index.js';
+import { randomColor } from '/src/index.js';
 
 const { GameObject } = WEED;
 

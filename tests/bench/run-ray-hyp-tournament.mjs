@@ -29,7 +29,7 @@ const outDir = path.join(repoRoot, 'tests/results/ray-hyps/tournament');
 
 const SCENES = [
   { key: 'rayStress', scene: '/tests/bench/stressScenes/RayStressScene.js', exportName: 'RayStressScene' },
-  { key: 'predator', scene: '/demos/scenes/PredatorScene.js', exportName: 'PredatorScene' },
+  { key: 'predator', scene: '/demos/predatorScene/predatorScene.js', exportName: 'PredatorScene' },
 ];
 
 const HYP_TARGETS = {

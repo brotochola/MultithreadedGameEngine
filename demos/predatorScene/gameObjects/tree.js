@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { ParticleEmitter } from '../../src/index.js';
+import { ParticleEmitter } from '/src/index.js';
 
 // Destructure what we need from WEED
 const {

@@ -6,7 +6,7 @@
  *   node tests/bench/run-spatial-cell-study.mjs
  *   node tests/bench/run-spatial-cell-study.mjs --runs 3 --warmup-ms 10000 --duration-ms 8000
  *
- * To compare different spatial.cellSize values, change `demos/scenes/BallsScene.js` static config
+ * To compare different spatial.cellSize values, change `demos/ballsScene/ballsScene.js` static config
  * between runs (no CLI overrides).
  */
 

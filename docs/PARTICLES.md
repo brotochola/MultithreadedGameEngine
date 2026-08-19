@@ -125,4 +125,4 @@ pixi_worker
 - [`ParticleEmitter.js`](../src/core/ParticleEmitter.js)
 - [`ParticleComponent.js`](../src/components/ParticleComponent.js)
 - [`particle_worker.js`](../src/workers/particle_worker.js)
-- Demo: [`zenithalParticleTestScene.js`](../demos/scenes/zenithalParticleTestScene.js), [`bluePlatformerPlayer.js`](../demos/gameObjects/bluePlatformerPlayer.js)
+- Demo: [`zenithalParticleTestScene.js`](../demos/zenithalParticleTestScene/zenithalParticleTestScene.js), [`bluePlatformerPlayer.js`](../demos/platformerGameScene/gameObjects/bluePlatformerPlayer.js)

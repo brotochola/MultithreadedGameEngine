@@ -1,4 +1,4 @@
-import { AdobeAnimateCharacter } from '/demos/gameObjects/adobeAnimateCharacter.js';
+import { AdobeAnimateCharacter } from './gameObjects/adobeAnimateCharacter.js';
 
 import WEED from '/src/index.js';
 const { Scene, Camera, Mouse } = WEED;

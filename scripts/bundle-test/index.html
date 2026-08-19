@@ -25,7 +25,7 @@
   <!--
     Entity definitions as inert text (not executed directly).
     Workers fetch this via Blob URL; main thread imports it dynamically.
-    Mirrors demos/gameObjects/ball.js + floor.js for the BallsScene smoke.
+    Mirrors demos/ballsScene/gameObjects/ball.js + floor.js for the BallsScene smoke.
   -->
   <script type="text/plain" id="entity-source">
 const { GameObject, Keyboard, Mouse, RigidBody, Collider, SpriteRenderer, rng, enums } = WEED;
@@ -142,7 +142,7 @@ export class Floor extends GameObject {
 
     const BALL_COUNT = 9000;
 
-    // Mirrors demos/scenes/BallsScene.js
+    // Mirrors demos/ballsScene/ballsScene.js
     class TestScene extends Scene {
       static config = {
         worldWidth: 4000,

@@ -120,7 +120,7 @@ On-demand Box2D broadphase query for entity ids (parallel to spatial `neighborDa
 - Single-flight SAB (`box2dQueryAabb`): one outstanding query process-wide; concurrent callers serialize.
 - Physics services pending queries in `doStep` after command drain (and when `dt==0` so paused worlds still answer).
 - Optional `filter`: `{ categoryBits, maskBits }` (defaults match `physics-api` overlap filters).
-- Demo self-check: [`demos/scenes/Box2dQueryAabbScene.js`](../demos/scenes/Box2dQueryAabbScene.js).
+- Demo self-check: [`demos/box2dQueryAabbScene/box2dQueryAabbScene.js`](../demos/box2dQueryAabbScene/box2dQueryAabbScene.js).
 
 ---
 
@@ -173,7 +173,7 @@ Physics sync iterates the dense active list (`activeIndices` / `activeCount`), n
 
 ### Break thresholds
 
-`Joint.addDistance` / `addRevolute` / `addWeld` accept `forceThreshold` / `torqueThreshold` (default `Infinity` — never breaks). On successful create, `weedjs_post` wires them via `joint_configure(handle, weedJointIndex, forceThreshold, torqueThreshold)`. When Box2D reports the joint exceeded a threshold, `weedjs_post` destroys the WASM joint, removes it from the `Joint` dense active list, and publishes a **joint-break ring** (`box2dJointBreakRing`) record. Logic workers drain it only when at least one entity type has **`JointBreakListener`**, and dispatch `GameObject.onJointBreak(jointIndex, entityA, entityB)` only to listening types on A and/or B (same worker-partition + generation rules as contacts). Hits stay on `CollisionListener`; breaks use `JointBreakListener`. Demo: **Weld Break** scene (`demos/scenes/WeldBreakScene.js`) — welded stacks + particle burst on snap.
+`Joint.addDistance` / `addRevolute` / `addWeld` accept `forceThreshold` / `torqueThreshold` (default `Infinity` — never breaks). On successful create, `weedjs_post` wires them via `joint_configure(handle, weedJointIndex, forceThreshold, torqueThreshold)`. When Box2D reports the joint exceeded a threshold, `weedjs_post` destroys the WASM joint, removes it from the `Joint` dense active list, and publishes a **joint-break ring** (`box2dJointBreakRing`) record. Logic workers drain it only when at least one entity type has **`JointBreakListener`**, and dispatch `GameObject.onJointBreak(jointIndex, entityA, entityB)` only to listening types on A and/or B (same worker-partition + generation rules as contacts). Hits stay on `CollisionListener`; breaks use `JointBreakListener`. Demo: **Weld Break** scene (`demos/weldBreakScene/weldBreakScene.js`) — welded stacks + particle burst on snap.
 
 ### Explosions
 

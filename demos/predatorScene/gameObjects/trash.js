@@ -1,4 +1,4 @@
-import { RigidBody } from '../../src/index.js';
+import { RigidBody } from '/src/index.js';
 import { LootableComponent } from '../components/lootableComponent.js';
 import { Lootable } from './lootable.js';
 import WEED from '/src/index.js';

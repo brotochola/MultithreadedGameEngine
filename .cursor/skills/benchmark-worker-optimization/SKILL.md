@@ -106,7 +106,7 @@ Predator with screenshots:
 
 ```bash
 node tests/bench/run-integrated-worker-benchmark.mjs --headed \
-  --scene /demos/scenes/PredatorScene.js --scene-export PredatorScene \
+  --scene /demos/predatorScene/predatorScene.js --scene-export PredatorScene \
   --output tests/results/predator-base-1.json --screenshots
 ```
 
@@ -132,7 +132,7 @@ Each worker in the benchmark JSON may include `statsEnd` and `statsSamplesAverag
 ## Key code touchpoints
 
 - `src/box2d/physics_host.impl.js`, `src/box2d/weedjs_post.js`, `src/workers/spatial_worker.js`, `src/workers/AbstractWorker.js`
-- `src/core/QuerySystem.js`, `src/core/Grid.js`, `demos/scenes/BallsScene.js`
+- `src/core/QuerySystem.js`, `src/core/Grid.js`, `demos/ballsScene/ballsScene.js`
 - Render: `src/workers/pixi_worker.js`, `src/workers/pre_render_worker.js`
 
 Keep changes scoped to the task.

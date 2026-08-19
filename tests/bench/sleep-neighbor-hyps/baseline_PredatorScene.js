@@ -2,28 +2,28 @@
 // Demonstrates the new Scene-based architecture for WeedJS
 
 import WEED from '/src/index.js';
-import { Boid } from '../gameObjects/boid.js';
+import { Boid } from './gameObjects/boid.js';
 
-// import { Player } from "../gameObjects/player.js";
-import { TallLight } from '../gameObjects/tallLight.js';
+// import { Player } from "./gameObjects/player.js";
+import { TallLight } from './gameObjects/tallLight.js';
 
-import { House } from '../gameObjects/house.js';
+import { House } from './gameObjects/house.js';
 
-import { Tree } from '../gameObjects/tree.js';
-import { Barrel } from '../gameObjects/barrel.js';
-import { Rock } from '../gameObjects/rock.js';
-import { Fire } from '../gameObjects/fire.js';
-import { Explosion } from '../gameObjects/explosion.js';
-import { MySoldier } from '../gameObjects/mySoldier.js';
-import { Destination } from '../gameObjects/destination.js';
-import { DropMoney } from '../gameObjects/dropMoney.js';
-import { DropAk47 } from '../gameObjects/dropAk47.js';
-import { DropShotgun } from '../gameObjects/dropShotgun.js';
-import { DropPistol } from '../gameObjects/dropPistol.js';
-import { Civilian } from '../gameObjects/civilian.js';
-import { CameraController } from '../gameObjects/cameraController.js';
-import { Trash } from '../gameObjects/trash.js';
-import { Cloud } from '../gameObjects/cloud.js';
+import { Tree } from './gameObjects/tree.js';
+import { Barrel } from './gameObjects/barrel.js';
+import { Rock } from './gameObjects/rock.js';
+import { Fire } from './gameObjects/fire.js';
+import { Explosion } from './gameObjects/explosion.js';
+import { MySoldier } from './gameObjects/mySoldier.js';
+import { Destination } from './gameObjects/destination.js';
+import { DropMoney } from './gameObjects/dropMoney.js';
+import { DropAk47 } from './gameObjects/dropAk47.js';
+import { DropShotgun } from './gameObjects/dropShotgun.js';
+import { DropPistol } from './gameObjects/dropPistol.js';
+import { Civilian } from './gameObjects/civilian.js';
+import { CameraController } from './gameObjects/cameraController.js';
+import { Trash } from './gameObjects/trash.js';
+import { Cloud } from './gameObjects/cloud.js';
 
 const {
   DecorationPool,

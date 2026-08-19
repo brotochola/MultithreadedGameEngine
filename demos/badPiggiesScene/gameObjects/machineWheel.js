@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { LAYER_WHEEL, MASK_WHEEL, WHEEL_RADIUS } from '/demos/scenes/badPiggiesGrid.js';
+import { LAYER_WHEEL, MASK_WHEEL, WHEEL_RADIUS } from '../utils/badPiggiesGrid.js';
 
 const { GameObject, RigidBody, Collider, SpriteRenderer } = WEED;
 

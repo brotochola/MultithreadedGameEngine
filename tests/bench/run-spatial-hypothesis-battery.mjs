@@ -32,7 +32,7 @@ const { headless, warmupMs, durationMs } = parseArgs(process.argv.slice(2));
 const variants = [
   {
     id: 'balls_scene_default',
-    description: 'BallsScene as configured in demos/scenes/BallsScene.js (no benchmark patches)',
+    description: 'BallsScene as configured in demos/ballsScene/ballsScene.js (no benchmark patches)',
     extraArgs: [],
   },
 ];

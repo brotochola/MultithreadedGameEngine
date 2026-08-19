@@ -3,8 +3,8 @@
 
 import WEED from '/src/index.js';
 
-import { Mouse } from '../../src/core/Mouse.js';
-import { containerRadius, DecorationPool, Decoration } from '../../src/index.js';
+import { Mouse } from '/src/core/Mouse.js';
+import { containerRadius, DecorationPool, Decoration } from '/src/index.js';
 
 const {
   GameObject,

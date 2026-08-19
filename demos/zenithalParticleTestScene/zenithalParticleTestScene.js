@@ -3,8 +3,8 @@
 
 import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
-import { ZenithalCar } from '../gameObjects/zenithalCar.js';
-import { ZenithalLight } from '../gameObjects/zenithalLight.js';
+import { ZenithalCar } from './gameObjects/zenithalCar.js';
+import { ZenithalLight } from './gameObjects/zenithalLight.js';
 
 const { rng, ParticleEmitter, Scene, Camera, Mouse, Transform, RigidBody } = WEED;
 

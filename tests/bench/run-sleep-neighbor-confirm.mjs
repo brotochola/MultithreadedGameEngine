@@ -20,8 +20,8 @@ const RUNS = 5;
 const CONFIRM = ['S0', 'S1', 'S2', 'S3', 'S6'];
 
 const SCENES = [
-  { key: 'balls', scene: '/demos/scenes/BallsScene.js', exportName: 'BallsScene' },
-  { key: 'predator', scene: '/demos/scenes/PredatorScene.js', exportName: 'PredatorScene' },
+  { key: 'balls', scene: '/demos/ballsScene/ballsScene.js', exportName: 'BallsScene' },
+  { key: 'predator', scene: '/demos/predatorScene/predatorScene.js', exportName: 'PredatorScene' },
 ];
 
 function median(arr) {

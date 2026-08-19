@@ -36,7 +36,7 @@ Integrated benchmarks use **BallsScene** by default. You can select another scen
 
 ```bash
 node tests/bench/run-integrated-worker-benchmark.mjs --headed \
-  --scene /demos/scenes/BallsAndRectanglesScene.js \
+  --scene /demos/ballsAndRectanglesScene/ballsAndRectanglesScene.js \
   --scene-export BallsAndRectanglesScene \
   --output tests/results/balls-and-rectangles-headed.json
 ```

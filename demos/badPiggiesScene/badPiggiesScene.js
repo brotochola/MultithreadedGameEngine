@@ -1,7 +1,7 @@
-import { MachineBox } from '/demos/gameObjects/machineBox.js';
-import { MachineWheel } from '/demos/gameObjects/machineWheel.js';
-import { MachineRocket } from '/demos/gameObjects/machineRocket.js';
-import { Floor } from '/demos/gameObjects/floor.js';
+import { MachineBox } from './gameObjects/machineBox.js';
+import { MachineWheel } from './gameObjects/machineWheel.js';
+import { MachineRocket } from './gameObjects/machineRocket.js';
+import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 import {
@@ -20,7 +20,7 @@ import {
   parseCellKey,
   planJoints,
   snapWorld,
-} from '/demos/scenes/badPiggiesGrid.js';
+} from './utils/badPiggiesGrid.js';
 
 const { Scene, Mouse, Keyboard, Transform, RigidBody, Joint, Noise2D } = WEED;
 

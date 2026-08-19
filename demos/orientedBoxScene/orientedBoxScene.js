@@ -1,8 +1,8 @@
 // OrientedBoxScene - Validate OBB colliders + angular dynamics (spin, stack, toss)
 
-import { OrientedBox } from '/demos/gameObjects/orientedBox.js';
-import { Floor } from '/demos/gameObjects/floor.js';
-import { Ball } from '/demos/gameObjects/ball.js';
+import { OrientedBox } from './gameObjects/orientedBox.js';
+import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
+import { Ball } from '/demos/ballsScene/gameObjects/ball.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 

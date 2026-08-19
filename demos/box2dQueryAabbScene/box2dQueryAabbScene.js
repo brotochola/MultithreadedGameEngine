@@ -2,7 +2,7 @@ import WEED from '/src/index.js';
 import {
   Box2dQueryAabbProbe,
   Box2dQueryAabbTarget,
-} from '../gameObjects/box2dQueryAabbProbe.js';
+} from './gameObjects/box2dQueryAabbProbe.js';
 
 const { Scene, Camera } = WEED;
 
