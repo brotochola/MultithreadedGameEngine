@@ -10,7 +10,7 @@
 //
 // emit(config)         — heighted; screenY = y + z (topdown / iso)
 // emitZenithal(config) — heighted; XY on floor, scale/alpha from -z
-// emitFlat(config)     — no ground; always integrate XY; screenY = y
+// emitFlat(config)     — no ground; XY + optional vy gravity; screenY = y
 //
 // Zenithal projection curve (zenithalMaxHeight / ScaleFactor / AlphaFade) is
 // scene-level only — not per-emit params.
@@ -101,6 +101,7 @@ export class ParticleEmitter extends SharedAtomicPool {
 
   /**
    * Flat (screen-plane) particles: no ground plane, always integrate XY.
+   * Gravity (px/frame², dtRatio ≈ 1 at 60fps) applies to vy. Floor flags ignored.
    * @param {Object} config - Same shape as emit(); floor flags are ignored by the worker
    * @returns {number} - Number of particles actually spawned
    */
@@ -256,11 +257,15 @@ export class ParticleEmitter extends SharedAtomicPool {
 
       gravity[i] = cfg.gravity ?? 0.15;
 
-      const uniformScale = randomRange(cfg.scale, 1);
-      scaleX[i] =
-        cfg.scaleX !== undefined ? randomRange(cfg.scaleX, uniformScale) : uniformScale;
-      scaleY[i] =
-        cfg.scaleY !== undefined ? randomRange(cfg.scaleY, uniformScale) : uniformScale;
+      // Uniform scale unless stamp/muzzle pass both axes with no `scale`.
+      if (cfg.scale == null && cfg.scaleX != null && cfg.scaleY != null) {
+        scaleX[i] = randomRange(cfg.scaleX, 1);
+        scaleY[i] = randomRange(cfg.scaleY, 1);
+      } else {
+        const s = randomRange(cfg.scale ?? cfg.scaleX ?? cfg.scaleY, 1);
+        scaleX[i] = s;
+        scaleY[i] = s;
+      }
       alpha[i] = randomRange(cfg.alpha, 1);
       const particleColor = randomColor(cfg.tint);
       tint[i] = particleColor;

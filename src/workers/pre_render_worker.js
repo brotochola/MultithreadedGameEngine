@@ -131,6 +131,8 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueType = null;
         this.renderQueueEntityIndex = null;
         this.renderQueueSortKey = null;
+        this.renderQueueRepeatX = null;
+        this.renderQueueRepeatY = null;
         this.renderQueueCamera = null;
         this._frameCameraZoom = 1;
         this._frameCameraX = 0;
@@ -186,6 +188,7 @@ class PreRenderWorker extends AbstractWorker {
             x: null, y: null, scaleX: null, scaleY: null,
             rotC: null, rotS: null, alpha: null, tint: null, textureId: null,
             anchorX: null, anchorY: null, type: null, entityIndex: null,
+            repeatX: null, repeatY: null,
         };
 
         // Flash grid-query: scratch buffer for candidate shadow casters + dedup marker
@@ -647,6 +650,8 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueType = buffer.type;
         this.renderQueueEntityIndex = buffer.entityIndex;
         this.renderQueueSortKey = buffer.sortKey;
+        this.renderQueueRepeatX = buffer.repeatX;
+        this.renderQueueRepeatY = buffer.repeatY;
         this.renderQueueCamera = this.renderQueueCameraBuffers[bufferIdx];
 
         // Swap custom layer write buffers in sync
@@ -1534,6 +1539,8 @@ class PreRenderWorker extends AbstractWorker {
             ref.anchorY[writeIndex] = pieceAnchorY[p];
             ref.type[writeIndex] = 6;
             ref.entityIndex[writeIndex] = entityIndex;
+            if (ref.repeatX) ref.repeatX[writeIndex] = 0;
+            if (ref.repeatY) ref.repeatY[writeIndex] = 0;
             if (ref.sortKey) ref.sortKey[writeIndex] = sortKey;
             writeIndex++;
         }
@@ -1581,6 +1588,8 @@ class PreRenderWorker extends AbstractWorker {
         const rqType = this.renderQueueType;
         const rqEntityIndex = this.renderQueueEntityIndex;
         const rqSortKey = this.renderQueueSortKey;
+        const rqRepeatX = this.renderQueueRepeatX;
+        const rqRepeatY = this.renderQueueRepeatY;
         const entityLastTextureId = this.entityLastTextureId;
 
         // Cache component arrays
@@ -1601,6 +1610,8 @@ class PreRenderWorker extends AbstractWorker {
         const srInheritTransformRotation = SpriteRenderer.inheritTransformRotation;
         const srSpriteRotC = SpriteRenderer.spriteRotC;
         const srSpriteRotS = SpriteRenderer.spriteRotS;
+        const srRepeatX = SpriteRenderer.repeatX;
+        const srRepeatY = SpriteRenderer.repeatY;
 
         const particleX = ParticleComponent.x;
         const particleY = ParticleComponent.y;
@@ -1667,6 +1678,7 @@ class PreRenderWorker extends AbstractWorker {
         ref.textureId = rqTextureId; ref.anchorX = rqAnchorX; ref.anchorY = rqAnchorY;
         ref.type = rqType; ref.entityIndex = rqEntityIndex;
         ref.sortKey = rqSortKey;
+        ref.repeatX = rqRepeatX; ref.repeatY = rqRepeatY;
 
         let writeCount = 0;
         const stashPx = this._renderablePx;
@@ -1691,6 +1703,8 @@ class PreRenderWorker extends AbstractWorker {
 
             const out = writeCount++;
             if (rqSortKey) rqSortKey[out] = sk;
+            if (rqRepeatX) rqRepeatX[out] = 0;
+            if (rqRepeatY) rqRepeatY[out] = 0;
 
             if (type === 0) {
                 // === ENTITY === (pose stashed at collect)
@@ -1712,6 +1726,8 @@ class PreRenderWorker extends AbstractWorker {
                 rqTint[out] = srTint[idx];
                 rqAnchorX[out] = srAnchorX[idx];
                 rqAnchorY[out] = srAnchorY[idx];
+                if (rqRepeatX) rqRepeatX[out] = srRepeatX[idx];
+                if (rqRepeatY) rqRepeatY[out] = srRepeatY[idx];
 
                 rqType[out] = 0;
                 rqEntityIndex[out] = idx;
@@ -1954,6 +1970,8 @@ class PreRenderWorker extends AbstractWorker {
         const srInheritTransformRotation = SpriteRenderer.inheritTransformRotation;
         const srSpriteRotC = SpriteRenderer.spriteRotC;
         const srSpriteRotS = SpriteRenderer.spriteRotS;
+        const srRepeatX = SpriteRenderer.repeatX;
+        const srRepeatY = SpriteRenderer.repeatY;
 
         const frameIndex = this.entityFrameIndex;
         const frameAccum = this.entityFrameAccumulator;
@@ -2051,12 +2069,15 @@ class PreRenderWorker extends AbstractWorker {
             const rqType = ref.type;
             const rqEntityIndex = ref.entityIndex;
             const rqSortKey = ref.sortKey;
+            const rqRepeatX = ref.repeatX;
+            const rqRepeatY = ref.repeatY;
             const layerRef = this._emitRef;
             layerRef.x = rqX; layerRef.y = rqY; layerRef.scaleX = rqScaleX; layerRef.scaleY = rqScaleY;
             layerRef.rotC = rqRotC; layerRef.rotS = rqRotS; layerRef.alpha = rqAlpha; layerRef.tint = rqTint;
             layerRef.textureId = rqTextureId; layerRef.anchorX = rqAnchorX; layerRef.anchorY = rqAnchorY;
             layerRef.type = rqType; layerRef.entityIndex = rqEntityIndex;
             layerRef.sortKey = rqSortKey;
+            layerRef.repeatX = rqRepeatX; layerRef.repeatY = rqRepeatY;
 
             let writeCount = 0;
 
@@ -2072,6 +2093,8 @@ class PreRenderWorker extends AbstractWorker {
 
                 const out = writeCount++;
                 if (rqSortKey) rqSortKey[out] = sk;
+                if (rqRepeatX) rqRepeatX[out] = 0;
+                if (rqRepeatY) rqRepeatY[out] = 0;
 
                 if (type === 0) {
                     // === ENTITY ===
@@ -2092,6 +2115,8 @@ class PreRenderWorker extends AbstractWorker {
                     rqTint[out] = srTint[idx];
                     rqAnchorX[out] = srAnchorX[idx];
                     rqAnchorY[out] = srAnchorY[idx];
+                    if (rqRepeatX) rqRepeatX[out] = srRepeatX[idx];
+                    if (rqRepeatY) rqRepeatY[out] = srRepeatY[idx];
                     rqType[out] = 0;
                     rqEntityIndex[out] = idx;
 

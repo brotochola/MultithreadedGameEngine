@@ -1310,6 +1310,35 @@ export declare class Camera {
   static getViewportBounds(out?: CameraViewportBounds): CameraViewportBounds;
 }
 
+export declare class Noise2D {
+  constructor(seed?: number);
+  readonly seed: number;
+  reseed(seed: number): this;
+  sample(x: number, y: number): number;
+  fbm(
+    x: number,
+    y: number,
+    octaves?: number,
+    freq?: number,
+    amp?: number,
+    lacunarity?: number,
+    gain?: number
+  ): number;
+  fillHeight1D(out: Float32Array, x0: number, dx: number, count: number, ySlice?: number): Float32Array;
+  static seed(seed: number): void;
+  static sample(x: number, y: number): number;
+  static fbm(
+    x: number,
+    y: number,
+    octaves?: number,
+    freq?: number,
+    amp?: number,
+    lacunarity?: number,
+    gain?: number
+  ): number;
+  static fillHeight1D(out: Float32Array, x0: number, dx: number, count: number, ySlice?: number): Float32Array;
+}
+
 export declare class Ray {
   /** Aliases of {@link ShapeType} (Box=0, Circle=1, Polygon=2). */
   static readonly SHAPE_BOX: number;
@@ -2114,6 +2143,8 @@ export declare class SpriteRenderer extends Component {
     inheritTransformRotation: typeof Uint8Array;
     spriteRotC: typeof Float32Array;
     spriteRotS: typeof Float32Array;
+    repeatX: typeof Uint16Array;
+    repeatY: typeof Uint16Array;
   };
   static active: Uint8Array;
   static isAnimated: Uint8Array;
@@ -2140,8 +2171,14 @@ export declare class SpriteRenderer extends Component {
   static inheritTransformRotation: Uint8Array;
   static spriteRotC: Float32Array;
   static spriteRotS: Float32Array;
+  static repeatX: Uint16Array;
+  static repeatY: Uint16Array;
   get spriteRotation(): number;
   set spriteRotation(v: number);
+  get repeatX(): number;
+  set repeatX(value: number);
+  get repeatY(): number;
+  set repeatY(value: number);
   static getOriginalWidth(entityIndex: number): number;
   static getOriginalHeight(entityIndex: number): number;
   static updateBounds(entityIndex: number): void;

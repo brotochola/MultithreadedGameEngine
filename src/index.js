@@ -21,6 +21,7 @@ export { DebugDraw } from './core/debug/DebugDraw.js';
 export { Mouse } from './core/Mouse.js';
 export { Gamepad } from './core/Gamepad.js';
 export { Camera } from './core/Camera.js';
+export { Noise2D } from './core/Noise2D.js';
 export { Ray } from './core/Ray.js';
 export { NavGrid } from './core/NavGrid.js';
 export { Grid } from './core/Grid.js';
@@ -173,6 +174,7 @@ import { DebugDraw } from './core/debug/DebugDraw.js';
 import { Mouse } from './core/Mouse.js';
 import { Gamepad } from './core/Gamepad.js';
 import { Camera } from './core/Camera.js';
+import { Noise2D } from './core/Noise2D.js';
 import { Ray } from './core/Ray.js';
 import { NavGrid } from './core/NavGrid.js';
 import { Grid } from './core/Grid.js';
@@ -274,6 +276,7 @@ const WEED = Object.freeze({
   Mouse,
   Gamepad,
   Camera,
+  Noise2D,
   Ray,
   NavGrid,
   Grid,

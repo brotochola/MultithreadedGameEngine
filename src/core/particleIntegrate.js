@@ -91,9 +91,10 @@ export function updateParticlePhysicsBuffers({
     }
   }
 
-  // Flat pass: pure XY integration, no ground/floor branches ever taken.
+  // Flat pass: XY + gravity on vy. No ground/floor/collision.
   for (let k = 0; k < flatCount; k++) {
     const i = _flatScratch[k];
+    vy[i] += gravity[i] * dtRatio;
     x[i] += vx[i] * dtRatio;
     y[i] += vy[i] * dtRatio;
   }

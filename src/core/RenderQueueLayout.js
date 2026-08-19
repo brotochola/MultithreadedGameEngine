@@ -32,6 +32,9 @@ const FIELDS = [
     ['entityIndex', Uint16Array,            2,   0],
     // Composite collector key (worldY*K+innerZ / -z / glow bias) — GPU depth when CPU sort skipped
     ['sortKey',     Float32Array,           4,   0],
+    // World-space tile period in px; 0 = stretch. Packed u16 pair, then align4.
+    ['repeatX',     Uint16Array,            2,   0],
+    ['repeatY',     Uint16Array,            2,   0],
 ];
 
 function align4(n) { return (n + 3) & ~3; }

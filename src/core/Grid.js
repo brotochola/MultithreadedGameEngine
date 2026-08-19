@@ -120,10 +120,10 @@ export class Grid {
     Grid.gridHeight = metadata.gridHeight || metadata.gridRows || 0;
     Grid.totalCells = Grid.gridWidth * Grid.gridHeight;
 
-    // Configure spatial limits from scene
-    Grid.maxNeighbors = metadata.maxNeighbors || SPATIAL_DEFAULTS.maxNeighbors;
-    Grid.maxEntitiesPerCell = metadata.maxEntitiesPerCell || SPATIAL_DEFAULTS.maxEntitiesPerCell;
-    Grid.rowsPerBlock = metadata.rowsPerBlock || SPATIAL_DEFAULTS.rowsPerBlock;
+    // Configure spatial limits from scene (0 is valid for maxNeighbors — disable lists)
+    Grid.maxNeighbors = metadata.maxNeighbors ?? SPATIAL_DEFAULTS.maxNeighbors;
+    Grid.maxEntitiesPerCell = metadata.maxEntitiesPerCell ?? SPATIAL_DEFAULTS.maxEntitiesPerCell;
+    Grid.rowsPerBlock = metadata.rowsPerBlock ?? SPATIAL_DEFAULTS.rowsPerBlock;
 
     // Compute derived values: 4-byte header + Uint16 entity ids
     Grid.cellByteSize = 4 + Grid.maxEntitiesPerCell * 2;

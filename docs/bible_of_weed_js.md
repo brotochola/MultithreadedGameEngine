@@ -659,7 +659,7 @@ WEED.Camera.setZoom(1.5);
 // Particles — pick mode at call site (see docs/PARTICLES.md)
 // emit: heighted, screenY = y + z
 // emitZenithal: heighted, height → scale (scene zenithal* knobs)
-// emitFlat: no ground, screenY = y
+// emitFlat: no ground, gravity on vy, screenY = y
 WEED.ParticleEmitter.emit({
   x: this.x,
   y: this.y,

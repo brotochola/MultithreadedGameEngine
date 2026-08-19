@@ -265,6 +265,8 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueTextureId = null; // Uint16Array (encoded)
     this.renderQueueAnchorX = null; // Float32Array
     this.renderQueueAnchorY = null; // Float32Array
+    this.renderQueueRepeatX = null; // Uint16Array
+    this.renderQueueRepeatY = null; // Uint16Array
     this.renderQueueType = null;
     this.renderQueueEntityIndex = null;
     this.renderQueueSortKey = null;
@@ -432,6 +434,8 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueTextureId = buffer.textureId;
     this.renderQueueAnchorX = buffer.anchorX;
     this.renderQueueAnchorY = buffer.anchorY;
+    this.renderQueueRepeatX = buffer.repeatX;
+    this.renderQueueRepeatY = buffer.repeatY;
     this.renderQueueType = buffer.type;
     this.renderQueueEntityIndex = buffer.entityIndex;
     this.renderQueueSortKey = buffer.sortKey;
@@ -668,6 +672,8 @@ class PixiRenderer extends AbstractWorker {
       textureId: this.renderQueueTextureId,
       anchorX: this.renderQueueAnchorX,
       anchorY: this.renderQueueAnchorY,
+      repeatX: this.renderQueueRepeatX,
+      repeatY: this.renderQueueRepeatY,
     };
     const useSortKey = !!(this.ySorting && this.renderQueueSortKey);
     const baseOpts = {
@@ -3438,6 +3444,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           textureId: ref.textureId,
           anchorX: ref.anchorX,
           anchorY: ref.anchorY,
+          repeatX: ref.repeatX,
+          repeatY: ref.repeatY,
         },
         renderToRT
           ? {

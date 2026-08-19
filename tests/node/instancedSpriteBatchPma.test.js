@@ -40,8 +40,10 @@ test('vertex shader uses aInstRotCS without cos/sin of angle', () => {
   assert.match(src, /in vec2 aInstRotCS/);
   assert.match(src, /float c = aInstRotCS\.x/);
   assert.doesNotMatch(src, /cos\(aInstRot\)/);
-  assert.match(src, /INSTANCED_SPRITE_FLOATS = 23/);
+  assert.match(src, /INSTANCED_SPRITE_FLOATS = 25/);
   assert.match(src, /this\.buffer\.update\(out \* INSTANCED_SPRITE_STRIDE\)/);
+  assert.match(src, /aInstTileInv/);
+  assert.match(src, /fract\(vWorld\.x \* vTileInv\.x\)/);
 });
 
 test('ctor sets State.depthMask; upload excludeType accepts a list', () => {
@@ -61,4 +63,12 @@ test('particle batch: no Z write, no alpha discard; ENTITIES excludes type 1', (
   assert.match(pixiSrc, /depthMask: false/);
   assert.match(pixiSrc, /alphaDiscard: false/);
   assert.match(pixiSrc, /entitiesParticleBatch/);
+});
+
+test('entity and custom-layer uploads pass queue repeatX/Y', () => {
+  assert.match(pixiSrc, /this\.renderQueueRepeatX = buffer\.repeatX/);
+  assert.match(pixiSrc, /repeatX: this\.renderQueueRepeatX/);
+  assert.match(pixiSrc, /repeatY: this\.renderQueueRepeatY/);
+  assert.match(pixiSrc, /repeatX: ref\.repeatX/);
+  assert.match(pixiSrc, /repeatY: ref\.repeatY/);
 });

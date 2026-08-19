@@ -35,6 +35,10 @@ export class SpriteRenderer extends Component {
     spriteRotC: Float32Array, // facing cos when inheritTransformRotation === 0
     spriteRotS: Float32Array, // facing sin
 
+    // World-space texture repeat period in px. 0 = stretch (default). 1..65535 = tile size.
+    repeatX: Uint16Array,
+    repeatY: Uint16Array,
+
     // Layer assignment (0 = default ENTITIES layer, set via GameObject.setLayer())
     layerId: Uint8Array,
 
@@ -112,6 +116,24 @@ export class SpriteRenderer extends Component {
     const i = this.index;
     SpriteRenderer.spriteRotC[i] = Math.cos(v);
     SpriteRenderer.spriteRotS[i] = Math.sin(v);
+  }
+
+  get repeatX() {
+    return SpriteRenderer.repeatX[this.index];
+  }
+  set repeatX(value) {
+    const v = value | 0;
+    SpriteRenderer.repeatX[this.index] = v < 0 ? 0 : v > 65535 ? 65535 : v;
+    SpriteRenderer.renderDirty[this.index] = 1;
+  }
+
+  get repeatY() {
+    return SpriteRenderer.repeatY[this.index];
+  }
+  set repeatY(value) {
+    const v = value | 0;
+    SpriteRenderer.repeatY[this.index] = v < 0 ? 0 : v > 65535 ? 65535 : v;
+    SpriteRenderer.renderDirty[this.index] = 1;
   }
 
   static initializeArrays(buffer, count) {

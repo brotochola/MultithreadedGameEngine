@@ -20,7 +20,7 @@ import {
 
 import { DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
 
-export const INSTANCED_SPRITE_FLOATS = 23;
+export const INSTANCED_SPRITE_FLOATS = 25;
 export const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 const Y_SORT_K = DECORATION_Y_SORT_SCALE;
@@ -37,13 +37,17 @@ in float aInstDepth;
 in vec4 aInstUV;
 in vec4 aInstColor;
 in vec4 aInstTrim;
+in vec2 aInstTileInv;
 
 uniform mat3 uProjectionMatrix;
 uniform mat3 uWorldTransformMatrix;
 uniform mat3 uTransformMatrix;
 
-out vec2 vUV;
+out vec2 vLocal;
 out vec4 vColor;
+out vec2 vWorld;
+out vec4 vAtlasUV;
+out vec2 vTileInv;
 
 void main() {
   vec2 content = aInstTrim.xy + aQuad * aInstTrim.zw;
@@ -55,20 +59,40 @@ void main() {
   mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
   vec3 clip = mvp * vec3(world, 1.0);
   gl_Position = vec4(clip.xy, aInstDepth, 1.0);
-  vUV = mix(aInstUV.xy, aInstUV.zw, aQuad);
+  vLocal = aQuad;
   vColor = aInstColor;
+  vWorld = world;
+  vAtlasUV = aInstUV;
+  vTileInv = aInstTileInv;
 }
 `;
+
+/** Sample atlas rect; optional world-space fract tile (repeatX/Y). */
+function tiledSamplePrelude() {
+  return `
+vec2 weedUv() {
+  vec2 t = vLocal;
+  if (vTileInv.x > 0.0) t.x = fract(vWorld.x * vTileInv.x);
+  if (vTileInv.y > 0.0) t.y = fract(vWorld.y * vTileInv.y);
+  return mix(vAtlasUV.xy, vAtlasUV.zw, t);
+}
+`;
+}
 
 /** Normal + depth-write: discard clear atlas texels so they do not punch Z. */
 const FRAGMENT_SRC = `
 precision highp float;
-in vec2 vUV;
+in vec2 vLocal;
 in vec4 vColor;
+in vec2 vWorld;
+in vec4 vAtlasUV;
+in vec2 vTileInv;
 uniform sampler2D uTexture;
 
+${tiledSamplePrelude()}
+
 void main() {
-  vec4 t = texture2D(uTexture, vUV);
+  vec4 t = texture2D(uTexture, weedUv());
   float a = t.a * vColor.a;
   if (a < 0.01) discard;
   gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
@@ -78,12 +102,17 @@ void main() {
 /** Soft particles (no Z write): PMA blend only — no discard (ParticleContainer-style fill). */
 const FRAGMENT_SRC_BLEND = `
 precision highp float;
-in vec2 vUV;
+in vec2 vLocal;
 in vec4 vColor;
+in vec2 vWorld;
+in vec4 vAtlasUV;
+in vec2 vTileInv;
 uniform sampler2D uTexture;
 
+${tiledSamplePrelude()}
+
 void main() {
-  vec4 t = texture2D(uTexture, vUV);
+  vec4 t = texture2D(uTexture, weedUv());
   float a = t.a * vColor.a;
   gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
 }
@@ -92,12 +121,17 @@ void main() {
 /** Additive glows: same rgb scale, alpha 0 so ADD (ONE,ONE) never darkens. */
 const FRAGMENT_SRC_ADDITIVE = `
 precision highp float;
-in vec2 vUV;
+in vec2 vLocal;
 in vec4 vColor;
+in vec2 vWorld;
+in vec4 vAtlasUV;
+in vec2 vTileInv;
 uniform sampler2D uTexture;
 
+${tiledSamplePrelude()}
+
 void main() {
-  vec4 t = texture2D(uTexture, vUV);
+  vec4 t = texture2D(uTexture, weedUv());
   gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, 0.0);
 }
 `;
@@ -203,6 +237,7 @@ export class InstancedSpriteBatch {
         aInstUV: { buffer: buf, format: 'float32x4', stride, offset: 44, instance: true },
         aInstColor: { buffer: buf, format: 'float32x4', stride, offset: 60, instance: true },
         aInstTrim: { buffer: buf, format: 'float32x4', stride, offset: 76, instance: true },
+        aInstTileInv: { buffer: buf, format: 'float32x2', stride, offset: 92, instance: true },
       },
       indexBuffer: [0, 1, 2, 0, 2, 3],
     });
@@ -306,6 +341,8 @@ export class InstancedSpriteBatch {
     const rqTextureId = q.textureId;
     const rqAnchorX = q.anchorX;
     const rqAnchorY = q.anchorY;
+    const rqRepeatX = q.repeatX;
+    const rqRepeatY = q.repeatY;
 
     const screenScale = zoom * resolution;
     const hasLut = texLut && texLutCount > 0;
@@ -430,6 +467,10 @@ export class InstancedSpriteBatch {
       data[base + 20] = trimY;
       data[base + 21] = trimW;
       data[base + 22] = trimH;
+      const rx = rqRepeatX ? rqRepeatX[i] : 0;
+      const ry = rqRepeatY ? rqRepeatY[i] : 0;
+      data[base + 23] = rx > 0 ? 1 / rx : 0;
+      data[base + 24] = ry > 0 ? 1 / ry : 0;
       base += INSTANCED_SPRITE_FLOATS;
       out++;
     }

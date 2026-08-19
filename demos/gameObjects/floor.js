@@ -1,75 +1,53 @@
 import WEED from '/src/index.js';
 
-// Destructure what we need from WEED
 const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
 const { ShapeType } = enums;
 
 class Floor extends GameObject {
-    // Auto-detected by GameEngine - no manual path needed in registerEntityClass!
     static scriptUrl = import.meta.url;
-
-    // entityType auto-assigned during registration (no manual ID needed!)
-    static instances = []; // Instance tracking for this class
-
-    // Define components this entity uses
+    static instances = [];
     static components = [RigidBody, Collider, SpriteRenderer];
 
-    /**
-     * LIFECYCLE: Configure this entity TYPE - runs ONCE per instance
-     * All components are guaranteed to be initialized at this point
-     */
     setup() {
         this.rigidBody.static = 1;
-
-        // Set collider shape type to Box
         this.collider.shapeType = ShapeType.Box;
-
-        // Enable sprite renderer to make floor/walls visible
         this.spriteRenderer.active = 1;
-        // Set visual range for spatial queries
         this.collider.visualRange = 0;
     }
 
-    /**
-     * LIFECYCLE: Called when floor is spawned/respawned from pool
-     * Initialize THIS instance - runs EVERY spawn
-     * @param {Object} spawnConfig - Spawn-time parameters passed to GameObject.spawn()
-     */
     onSpawned(spawnConfig = {}) {
         const config = spawnConfig || {};
 
         this.rigidBody.static = 1;
 
-        // Get dimensions from spawn config
         const width = config.width || 100;
         const height = config.height || 100;
 
-        // Set collider dimensions
         this.collider.width = width;
         this.collider.height = height;
-        this.collider.radius = 0; // Not used for boxes
-        this.collider.friction = 0.6;
+        this.collider.radius = 0;
+        this.collider.friction = config.friction ?? 0.6;
+        this.rotation = config.rotation ?? 0;
 
-        // Update visual range based on size
         const halfDiagonal = Math.hypot(width, height) / 2;
         this.collider.visualRange = halfDiagonal + 200;
 
-        // Set up visual representation using built-in white texture
-        // Scale it to match the floor/wall dimensions
-        this.setSprite('_white');
-        this.setScale(width / 8, height / 8); // _white is 8x8, so scale to match dimensions
-        this.setAnchor(0.5, 0.5); // Center anchor
-        this.setTint(0x666666); // Gray color for floor/walls
-        this.setAlpha(0.8); // Slightly transparent
+        const sprite = config.sprite || '_white';
+        this.setSprite(sprite);
+        const origW = this.spriteRenderer.originalWidth || (sprite === '_white' ? 8 : 554);
+        const origH = this.spriteRenderer.originalHeight || origW;
+        this.setScale(width / origW, height / origH);
+        this.setAnchor(0.5, 0.5);
+        this.setTint(config.tint ?? (sprite === '_white' ? 0x666666 : 0xffffff));
+        this.setAlpha(config.alpha ?? (sprite === '_white' ? 0.8 : 1));
+
+        const rx = config.repeatX != null ? config.repeatX : sprite === '_white' ? 0 : origW;
+        const ry = config.repeatY != null ? config.repeatY : sprite === '_white' ? 0 : origH;
+        this.spriteRenderer.repeatX = rx | 0;
+        this.spriteRenderer.repeatY = ry | 0;
     }
 
-    /**
-     * Main update - static objects don't need updates
-     */
-    tick(dtRatio) {
-        // Static objects don't move
-    }
+    tick() { }
 }
 
-// ES6 module export
 export { Floor };

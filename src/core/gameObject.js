@@ -2038,6 +2038,8 @@ export class GameObject {
       SpriteRenderer.inheritTransformRotation[i] = 1;
       SpriteRenderer.spriteRotC[i] = 1;
       SpriteRenderer.spriteRotS[i] = 0;
+      SpriteRenderer.repeatX[i] = 0;
+      SpriteRenderer.repeatY[i] = 0;
       SpriteRenderer.renderVisible[i] = 1;
       SpriteRenderer.isItOnScreen[i] = 0;
       SpriteRenderer.animationState[i] = -1;

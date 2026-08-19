@@ -8,9 +8,9 @@ Mode is chosen at the call site via `emit` / `emitZenithal` / `emitFlat`.
 
 | Method | Physics | Screen mapping |
 | --- | --- | --- |
-| `ParticleEmitter.emit(config)` | Heighted: `z`, gravity, floor flags | `screenY = y + z` (topdown / iso) |
+| `ParticleEmitter.emit(config)` | Heighted: `z`, gravity on `vz`, floor flags | `screenY = y + z` (topdown / iso) |
 | `ParticleEmitter.emitZenithal(config)` | Same heighted physics | XY on floor plane; scale (+ optional alpha) from `-z` |
-| `ParticleEmitter.emitFlat(config)` | No ground; always integrate XY | `screenY = y` (ignore `z`) |
+| `ParticleEmitter.emitFlat(config)` | No ground; XY + gravity on `vy` | `screenY = y` (ignore `z`) |
 | `ParticleEmitter.stampDecal(config)` | Instant floor stamp via heighted `emit` | Decal on tilemap |
 
 Per-particle flags written at spawn:
@@ -57,6 +57,7 @@ WEED.ParticleEmitter.emitFlat({
   count: 3,
   angleXY: { min: -180, max: 180 },
   speed: { min: 1, max: 4 },
+  gravity: 0.8,
   lifespan: 300,
   tweenToAlpha0: true,
 });
@@ -64,11 +65,15 @@ WEED.ParticleEmitter.emitFlat({
 
 `emitFlat` forces `z: 0`, `vz: 0`, and defaults `gravity` to `0`. Floor flags (`despawnOnGroundContact`, `stayOnTheFloor`, `fadeOnTheFloor`) are cleared at spawn and ignored by the worker.
 
+Particle `gravity` is px/frame² (`dtRatio ≈ 1` at 60fps), **not** Box2D scene `{ x, y }` (px/s²). Typical heighted values are `0.15–1`; flat side-view fall is the same ballpark on `vy`.
+
+`scale: { min, max }` (or a single `scaleX` / `scaleY`) samples once and writes both axes — aspect stays locked. Pass both `scaleX` and `scaleY` with no `scale` only for non-uniform stamps (decals, muzzle).
+
 ## Physics (`particle_worker`)
 
 Convention: `z < 0` = airborne, `z >= 0` = on ground.
 
-- **Flat:** integrate `x`/`y` every step; skip gravity, ground clamp, and floor flags. Death by lifespan (and optional `tweenToAlpha0`).
+- **Flat:** `vy += gravity`; integrate `x`/`y` every step; skip ground clamp and floor flags. Death by lifespan (and optional `tweenToAlpha0`). No collision.
 - **Heighted:** `vz += gravity`; while airborne integrate `x`/`y`/`z`; on ground zero velocity then:
   - `despawnOnGroundContact` → return to pool
   - `stayOnTheFloor` → queue decal stamp → return to pool

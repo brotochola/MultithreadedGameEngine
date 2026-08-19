@@ -70,7 +70,7 @@ export class ParticleComponent extends Component {
     layerId: Uint8Array,
 
     // === Physics / view mode (set by ParticleEmitter.emit / emitFlat / emitZenithal) ===
-    // flat=1: screen-plane only — always integrate XY, ignore ground / floor flags
+    // flat=1: screen-plane XY + gravity on vy; ignore ground / floor flags
     flat: Uint8Array,
     // viewMode: CAMERA_TYPES.TOPDOWN | ZENITHAL
     viewMode: Uint8Array,
