@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   CELL,
+  LAYER_BOX,
+  LAYER_ROCKET,
+  LAYER_WHEEL,
+  MASK_ROCKET,
   canPlaceBox,
   canPlaceRocket,
   canPlaceWheel,
@@ -12,6 +16,13 @@ import {
   heightsToSegments,
   worldToCell,
 } from '../../demos/scenes/badPiggiesGrid.js';
+
+test('rocket collides with ground only, not boxes or wheels', () => {
+  assert.equal(LAYER_ROCKET, 3);
+  assert.ok(MASK_ROCKET & (1 << 0));
+  assert.equal(MASK_ROCKET & (1 << LAYER_BOX), 0);
+  assert.equal(MASK_ROCKET & (1 << LAYER_WHEEL), 0);
+});
 
 test('worldToCell / cellToWorld round-trip at cell centers', () => {
   const originX = 100;

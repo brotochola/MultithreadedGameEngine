@@ -1,5 +1,5 @@
 import WEED from '/src/index.js';
-import { LAYER_BOX, MASK_BOX, ROCKET_H, ROCKET_LEN, ROCKET_THRUST } from '/demos/scenes/badPiggiesGrid.js';
+import { LAYER_ROCKET, MASK_ROCKET, ROCKET_H, ROCKET_LEN, ROCKET_THRUST } from '/demos/scenes/badPiggiesGrid.js';
 
 const { GameObject, RigidBody, Collider, SpriteRenderer, ParticleEmitter, Keyboard, enums } = WEED;
 const { ShapeType } = enums;
@@ -30,8 +30,8 @@ export class MachineRocket extends GameObject {
     this.collider.isTrigger = ghost ? 1 : 0;
     this.collider.friction = 0.4;
     this.collider.visualRange = Math.hypot(width, height) * 0.5 + 200;
-    this.collider.collisionLayer = LAYER_BOX;
-    this.collider.collisionMask = ghost ? 0 : MASK_BOX;
+    this.collider.collisionLayer = LAYER_ROCKET;
+    this.collider.collisionMask = ghost ? 0 : MASK_ROCKET;
 
     this.rigidBody.static = 1;
     this.rigidBody.linearDamping = 0.05;
@@ -59,36 +59,37 @@ export class MachineRocket extends GameObject {
     const ny = -s;
     const tailX = this.x + nx * (ROCKET_LEN);
     const tailY = this.y + ny * (ROCKET_LEN);
-    const exhaustDeg = (Math.atan2(ny, nx) * 180) / Math.PI;
+    // const exhaustDeg = (Math.atan2(ny, nx) * 180) / Math.PI;
 
     ParticleEmitter.emitFlat({
-      count: 20,
+      count: { min: 5, max: 15 },
       x: tailX,
       y: tailY,
       dirX: nx,
       dirY: ny,
-      spread: 0.01,
-      speed: { min: 10, max: 30 },
-      gravity: 1.2,
+      spread: 0.1,
+      speed: { min: 20, max: 60 },
+      gravity: 0.66,
       lifespan: { min: 180, max: 580 },
-      scale: { min: 0.5, max: 1 },
+      scale: { min: 0.33, max: 1 },
       texture: '_whiteCircle',
       tint: { min: 0xffee66, max: 0xff6600 },
       alpha: { min: 0.7, max: 1 },
     });
 
     ParticleEmitter.emitFlat({
-      count: 2,
+      count: { min: 1, max: 3 },
       x: tailX,
       y: tailY,
-      angleXY: { min: exhaustDeg - 18, max: exhaustDeg + 18 },
-      speed: { min: 1, max: 2 },
-      gravity: -0.15,
+      spread: { min: 0, max: 360 },
+      // angleXY: { min: exhaustDeg - 18, max: exhaustDeg + 18 },
+      speed: { min: 1, max: 5 },
+      gravity: -0.33,
       lifespan: { min: 350, max: 900 },
       scale: { min: 0.5, max: 1.3 },
       texture: 'smoke',
       tint: { min: 0x666666, max: 0xbbbbbb },
-      alpha: { min: 0.3, max: 0.8 },
+      alpha: { min: 0.1, max: 0.3 },
       tweenToAlpha0: true,
       rotation: { min: 0, max: 360 },
     });

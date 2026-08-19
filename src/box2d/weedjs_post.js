@@ -1181,8 +1181,8 @@
     }
     if (!collectDetailedStats) {
       syncBodies(entityCount);
-      syncJoints();
       drainCommands();
+      syncJoints();
       serviceQueryAabb();
       snapshotPrevPose(entityCount);
       applyForcesAndTorque();
@@ -1194,9 +1194,9 @@
     const t0 = performance.now();
     const bodySyncChanges = syncBodies(entityCount);
     const t1 = performance.now();
-    const jointSyncChanges = syncJoints();
-    const t2 = performance.now();
     const commandCount = drainCommands();
+    const t2 = performance.now();
+    const jointSyncChanges = syncJoints();
     const t3 = performance.now();
     serviceQueryAabb();
     snapshotPrevPose(entityCount);
@@ -1209,8 +1209,8 @@
     const t6 = performance.now();
     writePhysicsStats(
       t1 - t0,
-      t2 - t1,
       t3 - t2,
+      t2 - t1,
       t4 - t3,
       t5 - t4,
       t6 - t5,
