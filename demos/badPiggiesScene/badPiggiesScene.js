@@ -57,6 +57,7 @@ export class BadPiggiesScene extends Scene {
       subStepCount: 5,
       noLimitFPS: false,
       maxJoints: 8024,
+      commandRingCapacity: 32768,
       gravity: { x: 0, y: 1800 },
       sleeping: false,
     },

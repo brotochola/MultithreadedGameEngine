@@ -183,6 +183,8 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   box2dWorkerCount: 4,
   /** SPMC contact/sensor event ring capacity (begin+end). Dense spawns need large. */
   contactRingCapacity: 65536,
+  /** MPSC SET_TRANSFORM/VEL/ROT ring. Boot-time only; dense teleports need large. */
+  commandRingCapacity: 4096,
   /** Master switch: maps to b2World_EnableSleeping. When false, Box2D never sleeps dynamics. */
   sleeping: true,
   /** Min relative approach speed (px/s) to emit a Collider.enableHitEvents contact-hit. 0 = Box2D default. */

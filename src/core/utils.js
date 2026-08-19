@@ -811,6 +811,12 @@ export function validatePhysicsConfig(currentConfig, newConfig) {
         current.contactRingCapacity ??
         PHYSICS_DEFAULTS.contactRingCapacity) | 0
     ),
+    commandRingCapacity: Math.max(
+      64,
+      (newConfig.commandRingCapacity ??
+        current.commandRingCapacity ??
+        PHYSICS_DEFAULTS.commandRingCapacity) | 0
+    ),
   };
 }
 

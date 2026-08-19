@@ -30,6 +30,7 @@
     maximumLinearSpeed: 50000,
     box2dWorkerCount: 4,
     contactRingCapacity: 65536,
+    commandRingCapacity: 4096,
     sleeping: true,
     hitEventThreshold: 0,
   };
@@ -162,6 +163,12 @@
         n.contactRingCapacity != null
           ? n.contactRingCapacity
           : base.contactRingCapacity,
+      commandRingCapacity: Math.max(
+        64,
+        (n.commandRingCapacity != null
+          ? n.commandRingCapacity
+          : base.commandRingCapacity) | 0,
+      ),
       sleeping: n.sleeping != null ? n.sleeping : base.sleeping,
       hitEventThreshold:
         n.hitEventThreshold != null
@@ -363,7 +370,9 @@
       );
     }
 
-    state.commandSab = Box2dCommandRing.createCommandRingSab();
+    state.commandSab = Box2dCommandRing.createCommandRingSab(
+      state.settings.commandRingCapacity,
+    );
     Box2dCommandRing.bindCommandRing(state.commandSab);
     state.queryAabbSab = Box2dQueryAabb.createQueryAabbSab();
     Box2dQueryAabb.bindQueryAabbSab(state.queryAabbSab);
