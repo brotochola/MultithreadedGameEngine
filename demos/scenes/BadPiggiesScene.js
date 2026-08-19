@@ -49,14 +49,14 @@ export class BadPiggiesScene extends Scene {
 
     particle: {
       noLimitFPS: false,
-      maxParticles: 4000,
+      maxParticles: 40000,
       decals: false,
     },
 
     physics: {
       subStepCount: 5,
       noLimitFPS: false,
-      maxJoints: 1024,
+      maxJoints: 8024,
       gravity: { x: 0, y: 1800 },
       sleeping: false,
     },
@@ -76,10 +76,10 @@ export class BadPiggiesScene extends Scene {
   };
 
   static entities = [
-    [MachineBox, 256],
-    [MachineWheel, 256],
-    [MachineRocket, 128],
-    [Floor, 1024],
+    [MachineBox, 1500],
+    [MachineWheel, 1500],
+    [MachineRocket, 1500],
+    [Floor, 2024],
   ];
 
   constructor(game) {
@@ -96,7 +96,6 @@ export class BadPiggiesScene extends Scene {
     this.ghostBoxIdx = -1;
     this.ghostWheelIdx = -1;
     this.ghostRocketIdx = -1;
-    this._drag = null;
     this._hud = null;
     this._paletteBar = null;
     this._wheelJoints = [];
@@ -211,7 +210,7 @@ export class BadPiggiesScene extends Scene {
     const aimingRocket = this.mode === MODE_EDITOR && this._aimHoveredRocket();
     if (!aimingRocket) {
       const zoom = Camera.zoom * (1 - Mouse.wheel * 0.1);
-      Camera.setZoom(Math.max(0.25, Math.min(3, zoom)));
+      Camera.setZoom(Math.max(0.025, Math.min(3, zoom)));
     }
   }
 
@@ -221,40 +220,13 @@ export class BadPiggiesScene extends Scene {
       this._deleteAt(snap.gx, snap.gy, this._pickKindAt(Mouse.x, Mouse.y));
     }
 
-    if (Mouse.isButton2Pressed) {
-      this._drag = null;
+    if (Mouse.isButton2Down) {
       const snap = snapWorld(Mouse.x, Mouse.y, this.originX, this.originY);
       this._deleteAt(snap.gx, snap.gy, this._pickKindAt(Mouse.x, Mouse.y));
       return;
     }
 
-    if (Mouse.isButton0Pressed) {
-      // Place first: a box cell is a hit, so pick-first ate wheel drops.
-      const placed = this._placeAtMouse();
-      if (placed) {
-        this._drag = placed;
-      } else {
-        const hit = this._pickAt(Mouse.x, Mouse.y);
-        if (hit) {
-          this._drag = {
-            kind: hit.kind,
-            startKey: hit.key,
-            boxIndex: hit.boxIndex,
-            wheelIndex: hit.wheelIndex,
-            rocketIndex: hit.rocketIndex,
-          };
-        }
-      }
-    }
-
-    if (this._drag && Mouse.isButton0Down) {
-      this._dragVisual();
-    }
-
-    if (this._drag && Mouse.isButton0Released) {
-      this._commitDrag();
-      this._drag = null;
-    }
+    if (Mouse.isButton0Down) this._placeAtMouse();
   }
 
   _pickKindAt(mx, my) {
@@ -302,131 +274,36 @@ export class BadPiggiesScene extends Scene {
 
   _placeAtMouse() {
     const snap = snapWorld(Mouse.x, Mouse.y, this.originX, this.originY);
-    if (!this._cellInBounds(snap.gx, snap.gy)) return null;
+    if (!this._cellInBounds(snap.gx, snap.gy)) return;
 
     if (this.palette === PALETTE_BOX) {
-      if (!canPlaceBox(this.occupancy, snap.gx, snap.gy)) return null;
+      if (!canPlaceBox(this.occupancy, snap.gx, snap.gy)) return;
       const spawned = MachineBox.spawn({ x: snap.x, y: snap.y });
-      if (!spawned) return null;
+      if (!spawned) return;
       this.occupancy.set(cellKey(snap.gx, snap.gy), {
         boxIndex: spawned.index,
         wheelIndex: -1,
         rocketIndex: -1,
         rocketAngle: DEFAULT_ROCKET_ANGLE,
       });
-      return {
-        kind: 'box',
-        startKey: cellKey(snap.gx, snap.gy),
-        boxIndex: spawned.index,
-        wheelIndex: -1,
-        rocketIndex: -1,
-      };
+      return;
     }
 
     if (this.palette === PALETTE_WHEEL) {
-      if (!canPlaceWheel(this.occupancy, snap.gx, snap.gy)) return null;
+      if (!canPlaceWheel(this.occupancy, snap.gx, snap.gy)) return;
       const rec = this.occupancy.get(cellKey(snap.gx, snap.gy));
       const spawned = MachineWheel.spawn({ x: snap.x, y: snap.y });
-      if (!spawned) return null;
+      if (!spawned) return;
       rec.wheelIndex = spawned.index;
-      return {
-        kind: 'wheel',
-        startKey: cellKey(snap.gx, snap.gy),
-        boxIndex: rec.boxIndex,
-        wheelIndex: spawned.index,
-        rocketIndex: rec.rocketIndex,
-      };
+      return;
     }
 
-    if (!canPlaceRocket(this.occupancy, snap.gx, snap.gy)) return null;
+    if (!canPlaceRocket(this.occupancy, snap.gx, snap.gy)) return;
     const rec = this.occupancy.get(cellKey(snap.gx, snap.gy));
     const spawned = MachineRocket.spawn({ x: snap.x, y: snap.y, rotation: this._placeAngle });
-    if (!spawned) return null;
+    if (!spawned) return;
     rec.rocketIndex = spawned.index;
     rec.rocketAngle = this._placeAngle;
-    return {
-      kind: 'rocket',
-      startKey: cellKey(snap.gx, snap.gy),
-      boxIndex: rec.boxIndex,
-      wheelIndex: rec.wheelIndex,
-      rocketIndex: spawned.index,
-    };
-  }
-
-  _dragVisual() {
-    const snap = snapWorld(Mouse.x, Mouse.y, this.originX, this.originY);
-    if (this._drag.kind === 'box') {
-      this._moveEntity(this._drag.boxIndex, snap.x, snap.y);
-      if (this._drag.wheelIndex >= 0) this._moveEntity(this._drag.wheelIndex, snap.x, snap.y);
-      if (this._drag.rocketIndex >= 0) this._moveEntity(this._drag.rocketIndex, snap.x, snap.y);
-      return;
-    }
-    if (this._drag.kind === 'wheel') {
-      this._moveEntity(this._drag.wheelIndex, snap.x, snap.y);
-      return;
-    }
-    this._moveEntity(this._drag.rocketIndex, snap.x, snap.y);
-  }
-
-  _commitDrag() {
-    const drag = this._drag;
-    const start = this.occupancy.get(drag.startKey);
-    if (!start) return;
-
-    const snap = snapWorld(Mouse.x, Mouse.y, this.originX, this.originY);
-    const destKey = cellKey(snap.gx, snap.gy);
-
-    if (drag.kind === 'box') {
-      const destFree = destKey === drag.startKey || canPlaceBox(this.occupancy, snap.gx, snap.gy);
-      if (!destFree || !this._cellInBounds(snap.gx, snap.gy)) {
-        this._snapPartsToKey(drag.startKey);
-        return;
-      }
-      if (destKey !== drag.startKey) {
-        this.occupancy.delete(drag.startKey);
-        this.occupancy.set(destKey, {
-          boxIndex: drag.boxIndex,
-          wheelIndex: drag.wheelIndex,
-          rocketIndex: drag.rocketIndex ?? start.rocketIndex ?? -1,
-          rocketAngle: start.rocketAngle ?? DEFAULT_ROCKET_ANGLE,
-        });
-      }
-      this._snapPartsToKey(destKey);
-      return;
-    }
-
-    const dest = this.occupancy.get(destKey);
-    if (drag.kind === 'wheel') {
-      const destOk =
-        dest &&
-        dest.boxIndex >= 0 &&
-        (dest.wheelIndex < 0 || dest.wheelIndex === drag.wheelIndex);
-      if (!destOk) {
-        this._snapPartsToKey(drag.startKey);
-        return;
-      }
-      if (destKey !== drag.startKey) {
-        start.wheelIndex = -1;
-        dest.wheelIndex = drag.wheelIndex;
-      }
-      this._snapPartsToKey(destKey);
-      return;
-    }
-
-    const destOk =
-      dest &&
-      dest.boxIndex >= 0 &&
-      (dest.rocketIndex < 0 || dest.rocketIndex === drag.rocketIndex);
-    if (!destOk) {
-      this._snapPartsToKey(drag.startKey);
-      return;
-    }
-    if (destKey !== drag.startKey) {
-      dest.rocketAngle = start.rocketAngle ?? DEFAULT_ROCKET_ANGLE;
-      start.rocketIndex = -1;
-      dest.rocketIndex = drag.rocketIndex;
-    }
-    this._snapPartsToKey(destKey);
   }
 
   _deleteAt(gx, gy, kind) {
@@ -500,7 +377,6 @@ export class BadPiggiesScene extends Scene {
 
   _enterPlay() {
     if (this.occupancy.size === 0) return;
-    this._drag = null;
     this.mode = MODE_PLAY;
 
     for (const [key] of this.occupancy) this._snapPartsToKey(key);
@@ -536,7 +412,6 @@ export class BadPiggiesScene extends Scene {
   }
 
   _enterEditor() {
-    this._drag = null;
     this.mode = MODE_EDITOR;
     this._wheelJoints.length = 0;
 
@@ -555,7 +430,7 @@ export class BadPiggiesScene extends Scene {
   }
 
   _updateGhost() {
-    if (this._drag || !Mouse.isPresent) {
+    if (!Mouse.isPresent || Mouse.isButton0Down || Mouse.isButton2Down) {
       this._hideGhosts();
       return;
     }
@@ -626,7 +501,7 @@ export class BadPiggiesScene extends Scene {
       this.palette === PALETTE_BOX ? 'box' : this.palette === PALETTE_WHEEL ? 'wheel' : 'rocket';
     this._hud.textContent =
       `Bad Piggies  |  ${this.mode === MODE_EDITOR ? 'EDITOR' : 'PLAY'}  |  part: ${part}\n` +
-      `1 box  2 wheel  3 rocket  LMB place/drag  RMB/Del erase  Space play/edit\n` +
+      `1 box  2 wheel  3 rocket  LMB paint  RMB/Del erase  Space play/edit\n` +
       (this.mode === MODE_PLAY
         ? `← → drive  ↑ thrust  WASD camera  R editor`
         : `R rotate rocket 90°  hover rocket + wheel aim  WASD camera`);
