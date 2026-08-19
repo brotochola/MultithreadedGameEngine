@@ -4,7 +4,6 @@
 import WEED from '/src/index.js';
 import { Layer } from '/src/core/Layer.js';
 import { TileMap } from '/src/core/TileMap.js';
-import { Boid } from '/demos/predatorScene/gameObjects/boid.js';
 
 // import { Player } from "/demos/predatorScene/gameObjects/player.js";
 import { TallLight } from '/demos/predatorScene/gameObjects/tallLight.js';

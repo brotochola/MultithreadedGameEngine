@@ -1,293 +1,141 @@
-// Boid.js - Flocking behavior implementation
-// Extends GameObject to implement the classic boids algorithm
+// Boid.js - Classic flocking (cohesion / separation / alignment)
 
 import WEED from '/src/index.js';
-import { Flocking } from '../components/flocking.js';
+import { enqueueSetRotCS } from '/src/box2d/box2dCommandRing.js';
 
-// Destructure what we need from WEED
-const { GameObject, RigidBody, Collider, SpriteRenderer, Mouse, Transform, ShadowCaster } = WEED;
-
+const { enums, GameObject, RigidBody, Collider, SpriteRenderer, Mouse, Transform } = WEED;
+const { ShapeType } = enums;
 class Boid extends GameObject {
-  // Auto-detected by GameEngine - no manual path needed in registerEntityClass!
   static scriptUrl = import.meta.url;
 
-  // Define components this entity uses (including custom Flocking component)
-  static components = [RigidBody, Collider, SpriteRenderer, Flocking, ShadowCaster];
+  static tickInterval = 14;
+  static protectedRangeSq = 50 * 50;
+  static centeringFactor = 1;
+  static avoidFactor = 5;
+  static matchingFactor = 2;
+  static turnFactor = 10;
+  static margin = 20;
+  static mouseAvoidRangeSq = 250 * 250;
+  static mouseAvoidStrength = 1000;
+  static faceSpeedMin = 8;
+  static maxNeighbors = 32;
 
-  // Note: Flocking behavior properties are now in the Flocking component
-  // (protectedRange, centeringFactor, avoidFactor, matchingFactor, turnFactor, margin)
+  static components = [RigidBody, Collider, SpriteRenderer];
 
-  // Note: Constructor is handled by GameObject - developers don't override it!
-  // Use setup() instead to configure entity type properties
-
-  /**
-   * LIFECYCLE: Configure this entity TYPE - runs ONCE per instance
-   * All components are guaranteed to be initialized at this point
-   */
   setup() {
-    // OPTIMIZATION: Pre-allocate reusable context object to avoid per-frame allocations
-    this._neighborContext = {};
-
-    // Initialize RigidBody constraints
     this.rigidBody.linearDamping = 0.01;
 
-    // Initialize Collider
-    this.collider.radius = 10;
-    this.collider.visualRange = 100; // How far boid can see
+    this.collider.width = 10;
+    this.collider.height = 10;
+    this.collider.visualRange = 50;
+    this.collider.collisionMask = 0;
+    this.collider.shapeType = ShapeType.Box
 
-    // // Initialize SpriteRenderer
     this.spriteRenderer.scaleX = 1;
     this.spriteRenderer.scaleY = 1;
-
-    // Set anchor for sprite (centered for bunny)
     this.spriteRenderer.anchorX = 0.5;
     this.spriteRenderer.anchorY = 0.5;
-
-    // Initialize Flocking component behavior properties
-    this.flocking.protectedRange = this.collider.radius * 2; // Minimum distance from others
-    this.flocking.centeringFactor = 3.6; // Cohesion (px/s² per px) — was 0.001 frame
-    this.flocking.avoidFactor = 1080; // Separation — was 0.3 frame
-    this.flocking.matchingFactor = 360; // Alignment — was 0.1 frame
-    this.flocking.turnFactor = 36; // Boundary — was 0.01 frame
-    this.flocking.margin = 20; // Distance from edge to start turning
-
-    // Shadow uses default heightMultiplier = 1 (matches sprite scale)
   }
 
-  // Note: this.flocking is automatically available because Flocking is in static components[]
-  // GameObject._createComponentAccessors() creates instances for all components automatically
-
-  /**
-   * LIFECYCLE: Called when boid is spawned/respawned from pool
-   * Initialize THIS instance - runs EVERY spawn
-   * @param {Object} spawnConfig - Spawn-time parameters passed to GameObject.spawn()
-   */
   onSpawned(spawnConfig = {}) {
-    // Get config from instance (passed during construction)
     const config = this.config || {};
 
-    // Initialize Transform position
-    // Use spawn config if provided, otherwise randomize
     this.x = spawnConfig.x ?? rng() * (config.worldWidth || 800);
     this.y = spawnConfig.y ?? rng() * (config.worldHeight || 600);
     this.transform.rotation = 0;
 
-    // Reset physics state
     this.rigidBody.vx = spawnConfig.vx ?? 0;
     this.rigidBody.vy = spawnConfig.vy ?? 0;
     this.rigidBody.ax = 0;
     this.rigidBody.ay = 0;
 
-    // Initialize sprite (bunny is a static image in bigAtlas)
-    this.setSprite('bunny');
+    this.setFixedRotation(1);
+    this.setSprite(spawnConfig.sprite ?? 'square');
   }
 
-  /**
-   * LIFECYCLE: Called when boid is despawned (returned to pool)
-   * Cleanup and save state if needed
-   */
-  onDespawned() {
-    // console.log(`Boid ${this.index} despawned`);
-  }
-
-  /**
-   * Main update - applies all boid rules
-   * The spatial worker has already found neighbors for us!
-   * Note: this.neighbors and this.neighborCount are updated before this is called
-   */
-  tick(dtRatio) {
+  tick() {
     const i = this.index;
-
-    // Apply all three boid rules in a single optimized loop
-    this.applyFlockingBehaviors(i, dtRatio);
-
-    // Additional behaviors
-    this.avoidMouse(i, dtRatio);
-    this.keepWithinBounds(i, dtRatio);
-  }
-
-  /**
-   * OPTIMIZED: Apply all three boid rules (cohesion, separation, alignment) in a single loop
-   * Uses Template Method Pattern - subclasses can override processNeighbor() to add custom logic
-   * This reduces neighbor iteration from 3+ loops to 1 loop
-   *
-   * NEW: Uses pre-calculated distances from spatial worker (no need to recalculate!)
-   * CACHE-FRIENDLY: Direct array access instead of getters (50-100x faster!)
-   *
-   * @returns {Object} neighborContext - Data that subclasses accumulated during the loop
-   */
-  applyFlockingBehaviors(i, dtRatio) {
-    if (this.neighborCount === 0) return {};
-
-    // PERFORMANCE: Cache array references once (avoids getter overhead)
-    const entityTypes = Transform.entityType;
     const tX = Transform.x;
     const tY = Transform.y;
     const rbVX = RigidBody.vx;
     const rbVY = RigidBody.vy;
-    const rbAX = RigidBody.ax;
-    const rbAY = RigidBody.ay;
 
-    const myEntityType = entityTypes[i];
     const myX = tX[i];
     const myY = tY[i];
-    const protectedRange2 = this.flocking.protectedRange * this.flocking.protectedRange;
+    const protectedRangeSq = Boid.protectedRangeSq;
 
-    // Cohesion accumulators (same type only)
     let centerX = 0;
     let centerY = 0;
-
-    // Alignment accumulators (same type only)
     let avgVX = 0;
     let avgVY = 0;
-
-    // Separation accumulators (all types)
     let separateX = 0;
     let separateY = 0;
+    let flockCount = 0;
 
-    let sameTypeCount = 0;
+    const neighborCount = this.neighborCount;
+    const nMax = neighborCount < Boid.maxNeighbors ? neighborCount : Boid.maxNeighbors;
 
-    // Create context object for subclass to accumulate custom data
-    const neighborContext = this.createNeighborContext();
-
-    // Performance optimization: limit processing to reasonable neighbor count
-    const maxProcessed = this.neighborCount; // Math.min(this.neighborCount, 30); // Process max 30 neighbors
-
-    // Single loop through all neighbors
-    for (let n = 0; n < maxProcessed; n++) {
+    for (let n = 0; n < nMax; n++) {
       const j = this.getNeighbor(n);
-
-      const neighborType = entityTypes[j];
-      const isSameType = neighborType === myEntityType;
-
-      // Use pre-calculated squared distance from spatial worker (OPTIMIZATION!)
-      // This eliminates duplicate distance calculations between spatial & logic workers
-      const dist2 = this.getNeighborDistanceSq(n);
-
-      // Calculate delta using direct array access
       const dx = tX[j] - myX;
       const dy = tY[j] - myY;
+      const dist2 = dx * dx + dy * dy;
 
-      // Separation (all types)
-      if (dist2 < protectedRange2 && dist2 > 0) {
-        separateX -= dx / dist2;
-        separateY -= dy / dist2;
+      if (dist2 < protectedRangeSq && dist2 > 1) {
+        const strength = (protectedRangeSq - dist2) / protectedRangeSq;
+        separateX -= (dx / dist2) * strength;
+        separateY -= (dy / dist2) * strength;
         continue;
       }
 
-      // Cohesion & Alignment (same type only)
-      if (isSameType) {
-        // if (dist2 < protectedRange2) continue;
-        centerX += tX[j];
-        centerY += tY[j];
-        avgVX += rbVX[j];
-        avgVY += rbVY[j];
-        sameTypeCount++;
-      }
-
-      // HOOK: Allow subclasses to process this neighbor (e.g., hunt prey, flee predators)
-      this.processNeighbor(j, neighborType, dx, dy, dist2, isSameType, neighborContext);
+      centerX += tX[j];
+      centerY += tY[j];
+      avgVX += rbVX[j];
+      avgVY += rbVY[j];
+      flockCount++;
     }
 
-    // Apply cohesion force
-    if (sameTypeCount > 0) {
-      centerX /= sameTypeCount;
-      centerY /= sameTypeCount;
-      rbAX[i] += (centerX - myX) * this.flocking.centeringFactor * dtRatio;
-      rbAY[i] += (centerY - myY) * this.flocking.centeringFactor * dtRatio;
+    let ax = separateX * Boid.avoidFactor;
+    let ay = separateY * Boid.avoidFactor;
 
-      // Apply alignment force
-      avgVX /= sameTypeCount;
-      avgVY /= sameTypeCount;
-      rbAX[i] += (avgVX - rbVX[i]) * this.flocking.matchingFactor * dtRatio;
-      rbAY[i] += (avgVY - rbVY[i]) * this.flocking.matchingFactor * dtRatio;
+    if (flockCount > 0) {
+      const inv = 1 / flockCount;
+      centerX *= inv;
+      centerY *= inv;
+      ax += (centerX - myX) * Boid.centeringFactor;
+      ay += (centerY - myY) * Boid.centeringFactor;
+      ax += (avgVX * inv - rbVX[i]) * Boid.matchingFactor;
+      ay += (avgVY * inv - rbVY[i]) * Boid.matchingFactor;
     }
 
-    // Apply separation force
-    rbAX[i] += separateX * this.flocking.avoidFactor * dtRatio;
-    rbAY[i] += separateY * this.flocking.avoidFactor * dtRatio;
-
-    // Return context so subclass can use accumulated data
-    return neighborContext;
-  }
-
-  /**
-   * HOOK: Create context object for subclasses to accumulate custom data during neighbor loop
-   * Override this in subclasses to add custom properties
-   * OPTIMIZATION: Reuses cached object to avoid per-frame allocations (GC pressure)
-   * @returns {Object} Reusable context object (subclasses extend this)
-   */
-  createNeighborContext() {
-    // Return cached object - no new allocation per frame
-    return this._neighborContext;
-  }
-
-  /**
-   * HOOK: Process individual neighbor - called once per neighbor during flocking loop
-   * Override this in subclasses to add custom per-neighbor logic (hunting, fleeing, etc.)
-   *
-   * @param {number} neighborIndex - Index of the neighbor entity
-   * @param {number} neighborType - Entity type of the neighbor
-   * @param {number} dx - Delta X (neighbor.x - my.x)
-   * @param {number} dy - Delta Y (neighbor.y - my.y)
-   * @param {number} dist2 - Squared distance to neighbor
-   * @param {boolean} isSameType - Whether neighbor is same entity type
-   * @param {Object} context - Context object to accumulate data
-   */
-  processNeighbor(neighborIndex, neighborType, dx, dy, dist2, isSameType, context) {
-    // Default: do nothing (base Boid doesn't need extra logic)
-  }
-
-  /**
-   * Avoid the mouse cursor
-   * Uses Mouse static class directly (not an entity)
-   */
-  avoidMouse(i, dtRatio) {
-    if (!Mouse.isDown || !Mouse.isPresent) return;
-
-    // Cache array references
-    const tX = Transform.x;
-    const tY = Transform.y;
-    const rbAX = RigidBody.ax;
-    const rbAY = RigidBody.ay;
-
-    // Calculate distance to mouse
-    const dx = Mouse.x - tX[i];
-    const dy = Mouse.y - tY[i];
-    const dist2 = dx * dx + dy * dy;
-
-    // Only avoid if within range
-    const avoidRange2 = 10000; // 100px squared
-    if (dist2 > avoidRange2 || dist2 === 0) return;
-
-    const strength = 36000; // was 10 frame units
-    rbAX[i] -= (dx / dist2) * strength * dtRatio;
-    rbAY[i] -= (dy / dist2) * strength * dtRatio;
-  }
-
-  /**
-   * Keep boids within world boundaries
-   * CACHE-FRIENDLY: Direct array access
-   */
-  keepWithinBounds(i, dtRatio) {
-    // Cache array references
-    const tX = Transform.x;
-    const tY = Transform.y;
-    const rbAX = RigidBody.ax;
-    const rbAY = RigidBody.ay;
-
-    const x = tX[i];
-    const y = tY[i];
+    const margin = Boid.margin;
+    const turn = Boid.turnFactor;
     const worldWidth = this.config.worldWidth || 800;
     const worldHeight = this.config.worldHeight || 600;
+    if (myX < margin) ax += turn;
+    else if (myX > worldWidth - margin) ax -= turn;
+    if (myY < margin) ay += turn;
+    else if (myY > worldHeight - margin) ay -= turn;
 
-    if (x < this.flocking.margin) rbAX[i] += this.flocking.turnFactor * dtRatio;
-    if (x > worldWidth - this.flocking.margin) rbAX[i] -= this.flocking.turnFactor * dtRatio;
+    if (Mouse.isDown && Mouse.isPresent) {
+      const mdx = Mouse.x - myX;
+      const mdy = Mouse.y - myY;
+      const mDist2 = mdx * mdx + mdy * mdy;
+      if (mDist2 < Boid.mouseAvoidRangeSq && mDist2 > 1) {
+        const mStr = Boid.mouseAvoidStrength / mDist2;
+        ax -= mdx * mStr;
+        ay -= mdy * mStr;
+      }
+    }
 
-    if (y < this.flocking.margin) rbAY[i] += this.flocking.turnFactor * dtRatio;
-    if (y > worldHeight - this.flocking.margin) rbAY[i] -= this.flocking.turnFactor * dtRatio;
+    if (ax !== 0 || ay !== 0) this.addAcceleration(ax, ay);
+
+    const speed = RigidBody.speed[i];
+    if (speed > Boid.faceSpeedMin) {
+      const inv = 1 / speed;
+      enqueueSetRotCS(i, rbVX[i] * inv, rbVY[i] * inv);
+    }
   }
 }
 
-// ES6 module export
 export { Boid };

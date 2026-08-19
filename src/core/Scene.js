@@ -116,11 +116,8 @@ class Scene {
   static entities = []; // [[EntityClass, poolSize], ...]
   static queries = []; // [[ComponentClass, ...], ...] custom active queries to precompute
 
-  static now = Date.now();
-
   constructor(game) {
     this.game = game; // Reference to GameEngine orchestrator
-    this.log = [];
     this.loadedTextures = null;
 
     // Merge static config with any runtime config
@@ -332,7 +329,6 @@ class Scene {
 
     // Entity registration
     this.registeredClasses = [];
-    this.gameObjects = [];
     this.totalEntityCount = 0;
     /** @type {Map<number, GameObject>} */
     this._entityViewCache = new Map();
@@ -908,14 +904,6 @@ class Scene {
 
     await this.createWorkers();
 
-    // Update entity count display
-    const numberBoidsElement = document.getElementById('numberBoids');
-    if (numberBoidsElement) {
-      numberBoidsElement.textContent = `Number of entities: ${this.totalEntityCount}`;
-    }
-
-    // Log current worker ready states
-
     // Wait for all workers to be ready (workers stay paused until we send 'start')
     await this.readyPromise;
 
@@ -996,7 +984,7 @@ class Scene {
     const componentMap = collectAllComponentsFromClasses(this.registeredClasses, window);
 
     // Initialize component views from SharedArrayBuffers (ensures all custom components are connected)
-    const initializedCount = initializeComponentViews(
+    initializeComponentViews(
       componentMap,
       this.buffers.componentData,
       this.componentPools,
@@ -1012,7 +1000,7 @@ class Scene {
     exposeComponentsGlobally(componentMap, window);
 
     // Expose all registered entity classes
-    const exposedEntities = exposeEntityClassesGlobally(this.registeredClasses, window);
+    exposeEntityClassesGlobally(this.registeredClasses, window);
 
     // Expose core classes that might not be in componentMap (system classes)
     window.GameObject = GameObject;
@@ -1600,11 +1588,7 @@ class Scene {
 
   handleMessageFromWorker(e) {
     if (e.data.msg === 'log') {
-      this.log.push({
-        worker: e.currentTarget.name,
-        message: e.data.message,
-        when: e.data.when - Scene.now,
-      });
+      return;
     } else if (e.data.msg === 'workerReady') {
       console.log(`[Scene] 📬 Received 'workerReady' message from ${e.currentTarget.name}`);
       this.handleWorkerReady(e.currentTarget.name);
@@ -1894,21 +1878,23 @@ class Scene {
 
   startMainLoop() {
     const loop = (currentTime) => {
-      const deltaTime = currentTime - this.lastFrameTime;
-      this.lastFrameTime = currentTime;
+      if (!this.state.pause) {
+        const deltaTime = currentTime - this.lastFrameTime;
+        this.lastFrameTime = currentTime;
 
-      const t0 = performance.now();
-      this.updateInternal(deltaTime);
-      this.mainStepMs = performance.now() - t0;
+        const t0 = performance.now();
+        this.updateInternal(deltaTime);
+        this.mainStepMs = performance.now() - t0;
 
-      this.mainFrameNumber++;
-      this.mainFrameTimesSum -= this.mainFrameTimes[this.mainFrameTimeIndex];
-      this.mainFrameTimes[this.mainFrameTimeIndex] = deltaTime;
-      this.mainFrameTimesSum += deltaTime;
-      this.mainFrameTimeIndex = (this.mainFrameTimeIndex + 1) % this.mainFPSFrameCount;
+        this.mainFrameNumber++;
+        this.mainFrameTimesSum -= this.mainFrameTimes[this.mainFrameTimeIndex];
+        this.mainFrameTimes[this.mainFrameTimeIndex] = deltaTime;
+        this.mainFrameTimesSum += deltaTime;
+        this.mainFrameTimeIndex = (this.mainFrameTimeIndex + 1) % this.mainFPSFrameCount;
 
-      const averageFrameTime = this.mainFrameTimesSum / this.mainFPSFrameCount;
-      this.mainFPS = 1000 / averageFrameTime;
+        const averageFrameTime = this.mainFrameTimesSum / this.mainFPSFrameCount;
+        this.mainFPS = 1000 / averageFrameTime;
+      }
 
       // mainFPS is now read directly by DebugUI
 
@@ -2066,6 +2052,7 @@ class Scene {
 
   resume() {
     this.state.pause = false;
+    this.lastFrameTime = performance.now();
     const allWorkers = this.getAllWorkers();
 
     allWorkers.forEach((worker) => {

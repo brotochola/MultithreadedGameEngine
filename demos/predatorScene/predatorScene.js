@@ -2,7 +2,6 @@
 // Demonstrates the new Scene-based architecture for WeedJS
 
 import WEED from '/src/index.js';
-import { Boid } from './gameObjects/boid.js';
 
 // import { Player } from "./gameObjects/player.js";
 import { TallLight } from './gameObjects/tallLight.js';

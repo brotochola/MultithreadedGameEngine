@@ -52,7 +52,7 @@ const DEFAULT_MAX_NEIGHBORS = SPATIAL_DEFAULTS.maxNeighbors; // Max neighbors pe
  *   // Neighbor queries (single buffer - always current/recent data)
  *   const neighborCount = Grid.getNeighborCount(entityId);
  *   const neighborId = Grid.getNeighbor(entityId, k);
- *   const distSq = Grid.getNeighborDistanceSq(entityId, k);
+ *   // dist²: compute yourself from Transform.x/y (SAB stores ids only)
  */
 export class Grid {
   // ===== GRID METADATA =====

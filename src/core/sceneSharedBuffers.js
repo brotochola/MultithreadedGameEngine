@@ -745,8 +745,6 @@ export function teardownSceneSharedState(scene) {
     if (EntityClass.sharedBuffer !== undefined) EntityClass.sharedBuffer = null;
   }
 
-  scene.gameObjects = [];
-
   clearActiveFlags(Transform.active, scene.totalEntityCount);
   clearActiveFlags(RigidBody.active, scene.totalEntityCount);
   clearActiveFlags(Collider.active, scene.totalEntityCount);

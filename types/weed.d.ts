@@ -36,12 +36,6 @@ export interface GameEngineConfig {
   transitionCooldown?: number;
 }
 
-export interface SceneLogEntry {
-  worker: string;
-  message: unknown;
-  when: number;
-}
-
 /** Main-thread camera snapshot synced from {@link Camera} static state. */
 export interface SceneCameraView {
   zoom: number;
@@ -771,7 +765,7 @@ export declare class GameObject {
   static spawn(
     EntityClassOrConfig: typeof GameObject | SpawnConfig,
     spawnConfig?: SpawnConfig,
-    preAssignedIndex?: number,
+    preAssignedIndex?: number
   ): GameObject | { index: number } | null;
   static get(index: number): GameObject | null;
   static getEntityView(entityIndex: number, options?: { cache?: boolean }): GameObject;
@@ -799,7 +793,11 @@ export declare class GameEngine {
   resume(): void;
   spawnEntity(EntityClassOrName: string | typeof GameObject, data?: SpawnConfig): void;
   despawnAllEntities(className: string): void;
-  getPoolStats(EntityClass: string | typeof GameObject): { total: number; active: number; available: number };
+  getPoolStats(EntityClass: string | typeof GameObject): {
+    total: number;
+    active: number;
+    available: number;
+  };
   /** Scene debug flags buffer (same as {@link Scene.debugFlags}). */
   get debug(): DebugFlags | undefined;
   get debugFlags(): DebugFlags | undefined;
@@ -859,7 +857,7 @@ export declare class QuerySystem {
   buildQueries(registeredClasses: SceneRegisteredClassEntry[]): void;
   definePrecomputedQueries(
     componentClasses: QuerySystemPrecomputeComponentMap,
-    sceneQueries?: ReadonlyArray<SceneQueryTuple>,
+    sceneQueries?: ReadonlyArray<SceneQueryTuple>
   ): void;
   createSharedBuffers(): QuerySystemSharedBuffersResult;
   query(componentClasses: ReadonlyArray<typeof Component>): Uint16Array;
@@ -877,9 +875,7 @@ export declare class Scene {
   static audios: string[];
   static entities: SceneEntityDefinitionTuple[];
   static queries: SceneQueryTuple[];
-  static now: number;
   game: GameEngine;
-  log: SceneLogEntry[];
   loadedTextures: unknown;
   config: SceneConfig;
   imageUrls: SceneAssetsManifest;
@@ -939,13 +935,16 @@ export declare class Scene {
     entityIndex: number,
     className: string,
     workerName: string,
-    workerIndex: number,
+    workerIndex: number
   ): void;
   createSharedBuffers(): void;
   preInitializeEntityTypeArrays(): void;
   prepareAdobeAnimateAssets(adobeConfigs?: Record<string, unknown>): Promise<void>;
   finalizeAdobeAnimateAssets(compiledAssets?: Record<string, unknown>): void;
-  preloadAssets(imageUrls: Record<string, string>, spritesheetConfigs?: Record<string, unknown>): Promise<void>;
+  preloadAssets(
+    imageUrls: Record<string, string>,
+    spritesheetConfigs?: Record<string, unknown>
+  ): Promise<void>;
   preloadAudios(audioManifest: unknown): Promise<void>;
   extractDecalTextures(atlasCanvas: HTMLCanvasElement, atlasJson: Record<string, unknown>): void;
   buildTextureMetadata(): void;
@@ -976,8 +975,16 @@ export declare class Scene {
   spawnEntity(EntityClassOrName: string | typeof GameObject, spawnConfig?: SpawnConfig): void;
   despawnEntity(entityIndex: number): void;
   despawnAllEntities(className: string): void;
-  getPoolStats(EntityClass: string | typeof GameObject): { total: number; active: number; available: number };
-  registerEntityClass(EntityClass: typeof GameObject, count: number, scriptPath?: string | null): void;
+  getPoolStats(EntityClass: string | typeof GameObject): {
+    total: number;
+    active: number;
+    available: number;
+  };
+  registerEntityClass(
+    EntityClass: typeof GameObject,
+    count: number,
+    scriptPath?: string | null
+  ): void;
   getEntityView(index: number, options?: { cache?: boolean }): GameObject;
   releaseEntityView(index: number): void;
   loadEntityScriptsInMainThread(): Promise<void>;
@@ -1104,9 +1111,23 @@ export declare class DebugDraw {
   static getBufferSize(maxEntries?: number): number;
   static initialize(sab: SharedArrayBuffer, maxEntries?: number): void;
 
-  static drawLine(x1: number, y1: number, x2: number, y2: number, color?: number, duration?: number): void;
+  static drawLine(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    color?: number,
+    duration?: number
+  ): void;
   static drawCircle(x: number, y: number, radius: number, color?: number, duration?: number): void;
-  static drawRect(x: number, y: number, w: number, h: number, color?: number, duration?: number): void;
+  static drawRect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color?: number,
+    duration?: number
+  ): void;
   static drawPoint(x: number, y: number, color?: number, duration?: number): void;
   static highlightCell(cellX: number, cellY: number, color?: number, duration?: number): void;
   static drawText(x: number, y: number, text: string, color?: number, duration?: number): void;
@@ -1168,7 +1189,11 @@ export declare class Mouse {
 
   static updateEdgeFlags(): void;
   static updateWorldPosition(camera: Vec2Mutable & { zoom: number }): void;
-  static setCanvasPosition(canvasX: number, canvasY: number, camera: Vec2Mutable & { zoom: number }): void;
+  static setCanvasPosition(
+    canvasX: number,
+    canvasY: number,
+    camera: Vec2Mutable & { zoom: number }
+  ): void;
 }
 
 /** Multipad gamepad input (W3C standard mapping). SharedArrayBuffer-backed like Mouse. */
@@ -1324,7 +1349,13 @@ export declare class Noise2D {
     lacunarity?: number,
     gain?: number
   ): number;
-  fillHeight1D(out: Float32Array, x0: number, dx: number, count: number, ySlice?: number): Float32Array;
+  fillHeight1D(
+    out: Float32Array,
+    x0: number,
+    dx: number,
+    count: number,
+    ySlice?: number
+  ): Float32Array;
   static seed(seed: number): void;
   static sample(x: number, y: number): number;
   static fbm(
@@ -1336,7 +1367,13 @@ export declare class Noise2D {
     lacunarity?: number,
     gain?: number
   ): number;
-  static fillHeight1D(out: Float32Array, x0: number, dx: number, count: number, ySlice?: number): Float32Array;
+  static fillHeight1D(
+    out: Float32Array,
+    x0: number,
+    dx: number,
+    count: number,
+    ySlice?: number
+  ): Float32Array;
 }
 
 export declare class Ray {
@@ -1351,7 +1388,7 @@ export declare class Ray {
     xTo: number,
     yTo: number,
     maxDist?: number,
-    mask?: number,
+    mask?: number
   ): number;
   static castWithInfo(
     xFrom: number,
@@ -1360,7 +1397,7 @@ export declare class Ray {
     yTo: number,
     maxDist?: number,
     mask?: number,
-    out?: RayHitInfo | null,
+    out?: RayHitInfo | null
   ): RayHitInfo;
   static castAll(
     xFrom: number,
@@ -1370,7 +1407,7 @@ export declare class Ray {
     maxDist?: number,
     maxHits?: number,
     mask?: number,
-    out?: RayMultiHitEntry[] | null,
+    out?: RayMultiHitEntry[] | null
   ): RayMultiHitEntry[];
   static linecast(
     x1: number,
@@ -1379,20 +1416,20 @@ export declare class Ray {
     y2: number,
     excludeEntities?: Set<number> | number[] | null,
     mask?: number,
-    out?: RayLinecastResult | null,
+    out?: RayLinecastResult | null
   ): RayLinecastResult;
   static linecastBetweenEntities(
     entityIndexA: number,
     entityIndexB: number,
     mask?: number,
-    out?: RayLinecastResult | null,
+    out?: RayLinecastResult | null
   ): RayLinecastResult;
   static hasLineOfSight(entityIndexA: number, entityIndexB: number, mask?: number): boolean;
   static getLineOfSightInfo(
     entityIndexA: number,
     entityIndexB: number,
     mask?: number,
-    out?: RayLinecastResult | null,
+    out?: RayLinecastResult | null
   ): RayLinecastResult;
 }
 
@@ -1407,7 +1444,7 @@ export declare class NavGrid {
   static loadStaticFlowfieldsFromJSON(
     flowfieldUrls: Record<string, string>,
     sceneWorldWidth: number,
-    sceneWorldHeight: number,
+    sceneWorldHeight: number
   ): Promise<void>;
   static serializeStaticFlowfields(): Record<string, NavGridSerializableStaticFlowfield>;
 
@@ -1415,7 +1452,7 @@ export declare class NavGrid {
     name: string,
     worldX: number,
     worldY: number,
-    outVec: Vec2Mutable,
+    outVec: Vec2Mutable
   ): void;
   static reset(): void;
 
@@ -1425,14 +1462,14 @@ export declare class NavGrid {
     fromY: number,
     toX: number,
     toY: number,
-    outPos: Vec2Mutable,
+    outPos: Vec2Mutable
   ): void;
   static getPathAStar(
     fromX: number,
     fromY: number,
     toX: number,
     toY: number,
-    outPath: Vec2Mutable[],
+    outPath: Vec2Mutable[]
   ): void;
 
   static getCellAt(x: number, y: number): number;
@@ -1441,7 +1478,12 @@ export declare class NavGrid {
   static getCellCenter(cellId: number, outPos: Vec2Mutable): void;
   static getGridInfo(): NavGridGridInfo;
 
-  static writeHeader(sab: SharedArrayBuffer, config: NavGridSABConfig, gridWidth: number, gridHeight: number): void;
+  static writeHeader(
+    sab: SharedArrayBuffer,
+    config: NavGridSABConfig,
+    gridWidth: number,
+    gridHeight: number
+  ): void;
   static setWalkability(cellId: number, walkable: number): void;
   static getWalkabilityArray(): Uint8Array | null;
   static updateNavGrid(entityIndices: number[]): void;
@@ -1450,7 +1492,11 @@ export declare class NavGrid {
   static allocateFlowfieldSlot(targetCell: number): number;
   static writeFlowfieldData(slotIndex: number, vectors: Int8Array): void;
   static allocatePathSlot(fromCell: number, toCell: number): number;
-  static writePathData(slotIndex: number, pathCells: ArrayLike<number>, explicitLength?: number): void;
+  static writePathData(
+    slotIndex: number,
+    pathCells: ArrayLike<number>,
+    explicitLength?: number
+  ): void;
 
   static getCachedFlowfieldsList(): NavGridCachedFlowfieldEntry[];
   static getCachedPathsList(): NavGridCachedPathEntry[];
@@ -1749,7 +1795,7 @@ export declare class Layer {
   static initializeFromConfig(
     layersConfig?: Record<string, LayerSceneConfigEntry>,
     builtInLayers?: Record<string, LayerBuiltInConfigEntry>,
-    defaultYSorting?: boolean,
+    defaultYSorting?: boolean
   ): typeof Layer;
 
   static getSerializableData(): LayerSerializableData;
@@ -1787,7 +1833,7 @@ export interface PixiCompositeTilemap {
       tileHeight: number;
       rotate?: number;
       alpha?: number;
-    },
+    }
   ): void;
 }
 
@@ -1851,9 +1897,16 @@ export declare class TileMap {
   getTileId(worldX: number, worldY: number, layerName?: string): number;
   /** Reused object; copy fields if you need to retain across calls. */
   getAllTileIds(worldX: number, worldY: number): Record<string, number>;
-  worldToTile(worldX: number, worldY: number, out: { tileX: number; tileY: number }): { tileX: number; tileY: number };
+  worldToTile(
+    worldX: number,
+    worldY: number,
+    out: { tileX: number; tileY: number }
+  ): { tileX: number; tileY: number };
   tileToWorld(tileX: number, tileY: number, out: Vec2Mutable): Vec2Mutable;
-  buildCompositeTilemap(compositeTilemap: PixiCompositeTilemap, options?: { layers?: string[] | null }): void;
+  buildCompositeTilemap(
+    compositeTilemap: PixiCompositeTilemap,
+    options?: { layers?: string[] | null }
+  ): void;
 
   static count: number;
   static initialized: boolean;
@@ -1886,7 +1939,10 @@ export declare class SpriteSheetRegistry {
     frameHeight: Uint16Array;
     totalFrames: number;
   } | null;
-  static getFrameDimensionsById(spritesheetId: number, animIndex: number): SpriteFrameDimensions | null;
+  static getFrameDimensionsById(
+    spritesheetId: number,
+    animIndex: number
+  ): SpriteFrameDimensions | null;
   static serialize(): Record<string, unknown>;
   static deserialize(serialized: Record<string, unknown> | null | undefined): void;
   static clearForSceneUnload(): void;
@@ -1897,7 +1953,7 @@ export declare class SpriteSheetRegistry {
   static getSpritesheetName(id: number): string;
   static createBigAtlas(
     assetsConfig: Record<string, unknown>,
-    options?: SpriteSheetCreateBigAtlasOptions,
+    options?: SpriteSheetCreateBigAtlasOptions
   ): Promise<BigAtlasCreateResult>;
   static registerProxy(sheetName: string, proxyData: Record<string, unknown>): void;
   static getFrameName(sheetName: string, animName: string, frameIndex?: number): string | null;
@@ -1949,7 +2005,7 @@ export declare class SoundManager {
   static initializeAudioWorklet(
     maxSlots?: number,
     mixGain?: number,
-    masterVolume?: number,
+    masterVolume?: number
   ): Promise<boolean>;
   static getSlotSABConfig(): SoundManagerSlotSABConfig | null;
   static initializeSlotSAB(config: SoundManagerSlotSABConfig | null | undefined): void;
@@ -1965,7 +2021,7 @@ export declare class SoundManager {
     loop?: number,
     mute?: number,
     worldX?: number,
-    worldY?: number,
+    worldY?: number
   ): number;
   static stop(nameOrId: string | number): void;
   static stopAll(): void;
@@ -2547,7 +2603,10 @@ export declare class SharedAtomicPool {
   static freeListTop: Int32Array | null;
   static poolName: string;
   static initialize(maxCount: number): void;
-  static initializeFreeList(freeListBuffer: SharedArrayBuffer, freeListTopBuffer: SharedArrayBuffer): void;
+  static initializeFreeList(
+    freeListBuffer: SharedArrayBuffer,
+    freeListTopBuffer: SharedArrayBuffer
+  ): void;
   static acquireIndex(): number;
   static returnToPool(index: number): void;
   static acquireSpinLock(lockView: Int32Array | null): void;
@@ -2598,7 +2657,7 @@ export declare class DecorationPool extends SharedAtomicPool {
     sabCount: SharedArrayBuffer,
     sabIndices: SharedArrayBuffer,
     entityCount: number,
-    maxAttachedPerEntity: number,
+    maxAttachedPerEntity: number
   ): void;
   static getAttachedCount(entityIdx: number): number;
   static getAttachedDecorationIndex(entityIdx: number, slot: number): number;
@@ -2609,7 +2668,10 @@ export declare class DecorationPool extends SharedAtomicPool {
   static spawnMany(config: DecorationSpawnManyConfig): number;
   static despawn(index: number): boolean;
   static despawnAll(): void;
-  static initializeActiveList(buffer: SharedArrayBuffer, lockBuffer?: SharedArrayBuffer | null): void;
+  static initializeActiveList(
+    buffer: SharedArrayBuffer,
+    lockBuffer?: SharedArrayBuffer | null
+  ): void;
   static reset(): void;
 }
 
@@ -2685,7 +2747,7 @@ export declare class DecorationSpatial {
       gridHeight: number;
       maxDecorations: number;
     },
-    fillEmpty?: boolean,
+    fillEmpty?: boolean
   ): void;
   static reset(): void;
   static clear(): void;

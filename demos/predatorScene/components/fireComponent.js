@@ -1,7 +1,3 @@
-// Flocking.js - Flocking behavior component for boid-like entities
-// Handles cohesion, separation, alignment, and boundary avoidance parameters
-// This is a CUSTOM COMPONENT created for the predators demo, not part of the engine core
-
 import WEED from '/src/index.js';
 const { Component } = WEED;
 
