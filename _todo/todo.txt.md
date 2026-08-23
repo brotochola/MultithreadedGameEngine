@@ -1,4 +1,5 @@
 -use the who moved function of box2d for networking
+-implement water shader: https://tips4devs.com/articles/create-a-liquidfun-box2d-via-web-assembly-waterslide-with-three-js#web-assembly-to-webgl
 
 - static props en components?
 

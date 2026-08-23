@@ -49,6 +49,7 @@
     import { Box2dQueryAabbScene } from '/demos/box2dQueryAabbScene/box2dQueryAabbScene.js';
     import { BadPiggiesScene } from '/demos/badPiggiesScene/badPiggiesScene.js';
     import { LiquidFunDemoScene } from '/demos/liquidFunDemoScene/liquidFunDemoScene.js';
+    import { LiquidFunStressScene } from '/tests/bench/stressScenes/LiquidFunStressScene.js';
 
     // Destructure what we need from WEED
     const { GameEngine } = WEED;
@@ -81,6 +82,7 @@
       { name: 'Box2D QueryAABB', class: Box2dQueryAabbScene },
       { name: '🐷 Bad Piggies', class: BadPiggiesScene },
       { name: '🌊 LiquidFun Fluid', class: LiquidFunDemoScene },
+      { name: '🧪 LiquidFun Stress (bench)', class: LiquidFunStressScene },
     ]
     // Register available scenes with DebugUI for scene switching
     if (game.debugUI) {
