@@ -94,10 +94,25 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   createEnvironment() {
-    this.spawnEntity(Floor, { x: 2000, y: 2200, width: 2400, height: 260, tint: 0x444455 });
+    const floorX = 2000;
+    const floorY = 2200;
+    const floorW = 2400;
+    const floorH = 260;
+    const wallW = 260;
+    const wallX0 = 800;
+    const wallX1 = 3200;
+    // Walls must sit in the floor, not punch through it. A wall that continues
+    // below the floor is a vertical shaft: corner overlap + point CCD slides
+    // particles down inside the wall under the tank.
+    const floorTop = floorY - floorH / 2;
+    const wallTop = 400;
+    const wallBottom = floorY;
+    const wallH = wallBottom - wallTop;
+    const wallY = (wallTop + wallBottom) / 2;
 
-    this.spawnEntity(Floor, { x: 800, y: 1500, width: 260, height: 2400, tint: 0x444455 });
-    this.spawnEntity(Floor, { x: 3200, y: 1500, width: 260, height: 2400, tint: 0x444455 });
+    this.spawnEntity(Floor, { x: floorX, y: floorY, width: floorW, height: floorH, tint: 0x444455 });
+    this.spawnEntity(Floor, { x: wallX0, y: wallY, width: wallW, height: wallH, tint: 0x444455 });
+    this.spawnEntity(Floor, { x: wallX1, y: wallY, width: wallW, height: wallH, tint: 0x444455 });
 
     this.spawnEntity(Floor, { x: 1400, y: 900, width: 800, height: 240, rotation: 0.4, tint: 0x667799 });
     this.spawnEntity(Floor, { x: 2600, y: 900, width: 800, height: 240, rotation: -0.4, tint: 0x667799 });
@@ -108,55 +123,55 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   spawnParticleGroups() {
-    ParticleEmitter.emitLiquidFunParticles({
-      material: 'water',
-      shape: 'circle',
-      posX: 1300,
-      posY: 400,
-      radius: 90,
-      texture: '_whiteCircle',
-    });
-    ParticleEmitter.emitLiquidFunParticles({
-      material: 'oil',
-      shape: 'circle',
-      posX: 1600,
-      posY: 400,
-      radius: 90,
-      texture: '_whiteCircle',
-    });
-    ParticleEmitter.emitLiquidFunParticles({
-      material: 'cream',
-      shape: 'circle',
-      posX: 1900,
-      posY: 400,
-      radius: 170,
-      texture: '_whiteCircle',
-    });
-    ParticleEmitter.emitLiquidFunParticles({
-      material: 'dulceDeLeche',
-      shape: 'circle',
-      posX: 2200,
-      posY: 400,
-      radius: 70,
-      texture: '_whiteCircle',
-    });
-    ParticleEmitter.emitLiquidFunParticles({
-      material: 'jelly',
-      shape: 'circle',
-      posX: 2500,
-      posY: 350,
-      radius: 70,
-      texture: '_whiteCircle',
-    });
-    ParticleEmitter.emitLiquidFunParticles({
-      material: 'sand',
-      shape: 'box',
-      posX: 2000,
-      posY: 100,
-      halfWidth: 50,
-      halfHeight: 50,
-      texture: '_whiteCircle',
-    });
+    // ParticleEmitter.emitLiquidFunParticles({
+    //   material: 'water',
+    //   shape: 'circle',
+    //   posX: 1300,
+    //   posY: 400,
+    //   radius: 90,
+    //   texture: '_whiteCircle',
+    // });
+    // ParticleEmitter.emitLiquidFunParticles({
+    //   material: 'oil',
+    //   shape: 'circle',
+    //   posX: 1600,
+    //   posY: 400,
+    //   radius: 90,
+    //   texture: '_whiteCircle',
+    // });
+    // ParticleEmitter.emitLiquidFunParticles({
+    //   material: 'cream',
+    //   shape: 'circle',
+    //   posX: 1900,
+    //   posY: 400,
+    //   radius: 170,
+    //   texture: '_whiteCircle',
+    // });
+    // ParticleEmitter.emitLiquidFunParticles({
+    //   material: 'dulceDeLeche',
+    //   shape: 'circle',
+    //   posX: 2200,
+    //   posY: 400,
+    //   radius: 70,
+    //   texture: '_whiteCircle',
+    // });
+    // ParticleEmitter.emitLiquidFunParticles({
+    //   material: 'jelly',
+    //   shape: 'circle',
+    //   posX: 2500,
+    //   posY: 350,
+    //   radius: 70,
+    //   texture: '_whiteCircle',
+    // });
+    // ParticleEmitter.emitLiquidFunParticles({
+    //   material: 'sand',
+    //   shape: 'box',
+    //   posX: 2000,
+    //   posY: 100,
+    //   halfWidth: 50,
+    //   halfHeight: 50,
+    //   texture: '_whiteCircle',
+    // });
   }
 
   update(dtRatio, deltaTime) {
