@@ -4,7 +4,7 @@
 import { Boid } from '/demos/predatorScene/gameObjects/boid.js';
 import WEED from '/src/index.js';
 
-const { Scene, Camera, Mouse } = WEED;
+const { Scene, Camera } = WEED;
 
 export class BoidsScene extends Scene {
   static config = {
@@ -65,15 +65,14 @@ export class BoidsScene extends Scene {
 
   constructor(game) {
     super(game);
-    this.cameraPanSpeed = 10;
-    this.cameraFollowX = 0;
-    this.cameraFollowY = 0;
   }
 
   create() {
-    this.cameraFollowX = this.config.worldWidth / 2;
-    this.cameraFollowY = this.config.worldHeight / 2;
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    const cx = this.config.worldWidth / 2;
+    const cy = this.config.worldHeight / 2;
+    Camera.setFree(true, { panSpeed: 10 });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
   }
 
   createNewGame() {
@@ -81,19 +80,6 @@ export class BoidsScene extends Scene {
   }
 
   update(dtRatio, deltaTime, accumulatedTime, frameNumber) {
-    const panSpeed = this.cameraPanSpeed / Camera.zoom;
-    const kb = this.keyboard;
-
-    if (kb.w || kb.arrowup) this.cameraFollowY -= panSpeed;
-    if (kb.s || kb.arrowdown) this.cameraFollowY += panSpeed;
-    if (kb.a || kb.arrowleft) this.cameraFollowX -= panSpeed;
-    if (kb.d || kb.arrowright) this.cameraFollowX += panSpeed;
-
-    this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-    this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15);
-    Camera.setZoom(Camera.zoom * (1 - Mouse.wheel * 0.1));
   }
 
   spawnBoids(count) {

@@ -83,11 +83,6 @@ export class BallsAndRectanglesScene extends WEED.Scene {
     // Scene-specific properties
     this.numberOfBalls = 2000;
     this.numberOfBoxes = 100;
-
-    // Camera control settings
-    this.cameraPanSpeed = 10; // Pixels per frame at zoom 1
-    this.cameraFollowX = 0;
-    this.cameraFollowY = 0;
   }
 
   create() {
@@ -97,10 +92,11 @@ export class BallsAndRectanglesScene extends WEED.Scene {
     this.spawnBalls(this.numberOfBalls);
     this.spawnBoxes(this.numberOfBoxes);
 
-    // Initialize camera at world center
-    this.cameraFollowX = this.config.worldWidth / 2;
-    this.cameraFollowY = this.config.worldHeight / 2;
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    const cx = this.config.worldWidth / 2;
+    const cy = this.config.worldHeight / 2;
+    Camera.setFree(true, { panSpeed: 10 });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
 
     console.log(
       `✅ BallsAndRectanglesScene: Spawned ${this.numberOfBalls} balls and ${this.numberOfBoxes} boxes!`
@@ -108,29 +104,6 @@ export class BallsAndRectanglesScene extends WEED.Scene {
   }
 
   update(time, delta) {
-    // Handle WASD camera panning (use this.keyboard which is the main thread keyboard state)
-    const panSpeed = this.cameraPanSpeed / Camera.zoom;
-    const kb = this.keyboard;
-
-    if (kb.w || kb.arrowup) {
-      this.cameraFollowY -= panSpeed;
-    }
-    if (kb.s || kb.arrowdown) {
-      this.cameraFollowY += panSpeed;
-    }
-    if (kb.a || kb.arrowleft) {
-      this.cameraFollowX -= panSpeed;
-    }
-    if (kb.d || kb.arrowright) {
-      this.cameraFollowX += panSpeed;
-    }
-
-    // Clamp camera target to world bounds
-    this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-    this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-
-    // Update camera (handles smooth following and zoom lerping)
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15);
   }
 
   // ========================================

@@ -1944,6 +1944,9 @@ class Scene {
     // Call user's update hook
     this.update(dtRatio, deltaTime, performance.now(), this.mainFrameNumber);
 
+    // Free-cam after scene.update so scenes can setFreeTarget / pauseFreeZoom first
+    Camera.updateFree(dtRatio);
+
     // Reset per-frame input state (after update so devs can read it)
     Mouse.wheel = 0;
     Mouse.snapshotPreviousFrame();
@@ -1972,6 +1975,8 @@ class Scene {
 
   async destroy() {
     console.log(`🔴 Scene ${this.constructor.name}: Destroying...`);
+
+    Camera.setFree(false);
 
     // =========================================================================
     // CRITICAL: Clear global references FIRST to allow GC of the scene

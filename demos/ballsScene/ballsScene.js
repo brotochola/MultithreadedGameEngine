@@ -5,7 +5,7 @@ import { Ball } from './gameObjects/ball.js';
 import { Floor } from './gameObjects/floor.js';
 
 import WEED from '/src/index.js';
-const { Scene, Camera, Mouse, Gamepad } = WEED;
+const { Scene, Camera } = WEED;
 
 export class BallsScene extends Scene {
   // ========================================
@@ -81,11 +81,6 @@ export class BallsScene extends Scene {
 
   constructor(game) {
     super(game);
-
-    // Camera control settings
-    this.cameraPanSpeed = 10; // Pixels per frame at zoom 1
-    this.cameraFollowX = 0;
-    this.cameraFollowY = 0;
   }
 
   create() {
@@ -96,10 +91,11 @@ export class BallsScene extends Scene {
     // Spawn initial entities
     console.log('🎬 BallsScene: Spawning balls...');
 
-    // Initialize camera at world center
-    this.cameraFollowX = this.config.worldWidth / 2;
-    this.cameraFollowY = this.config.worldHeight / 2;
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    const cx = this.config.worldWidth / 2;
+    const cy = this.config.worldHeight / 2;
+    Camera.setFree(true, { panSpeed: 10 });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
 
     console.log('✅ BallsScene: Balls spawned!');
     // Camera.setZoom(0.5);
@@ -109,37 +105,9 @@ export class BallsScene extends Scene {
   }
 
   update(dtRatio, deltaTime, accumulatedTime, frameNumber) {
-
-    // Handle WASD camera panning (use this.keyboard which is the main thread keyboard state)
-    const panSpeed = this.cameraPanSpeed / Camera.zoom;
-    const kb = this.keyboard;
-
-    if (kb.w || kb.arrowup) {
-      this.cameraFollowY -= panSpeed;
-    }
-    if (kb.s || kb.arrowdown) {
-      this.cameraFollowY += panSpeed;
-    }
-    if (kb.a || kb.arrowleft) {
-      this.cameraFollowX -= panSpeed;
-    }
-    if (kb.d || kb.arrowright) {
-      this.cameraFollowX += panSpeed;
-    }
-
-    // Clamp camera target to world bounds
-    this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-    this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-
-    // Update camera (handles smooth following and zoom lerping)
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15);
-
-    Camera.setZoom(Camera.zoom * (1 - Mouse.wheel * 0.1));
-
     // if (frameNumber % (60 * 5) === 0) {
     //   this.printFPS()
     // }
-
   }
 
   // ========================================

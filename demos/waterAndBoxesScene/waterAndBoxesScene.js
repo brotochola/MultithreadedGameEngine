@@ -10,7 +10,6 @@ import { Camera } from '/src/core/Camera.js';
 import { Layer } from '/src/core/Layer.js';
 import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
-const { Mouse } = WEED;
 
 export class WaterAndBoxesScene extends WEED.Scene {
   // ========================================
@@ -120,9 +119,6 @@ export class WaterAndBoxesScene extends WEED.Scene {
     super(game);
     this.numberOfWaterBalls = 2000;
     this.numberOfBoxes = 80;
-    this.cameraPanSpeed = 10;
-    this.cameraFollowX = 0;
-    this.cameraFollowY = 0;
   }
 
   create() {
@@ -132,9 +128,11 @@ export class WaterAndBoxesScene extends WEED.Scene {
     this.spawnWaterBalls(4000);
     this.spawnBoxes(2);
 
-    this.cameraFollowX = this.config.worldWidth / 2;
-    this.cameraFollowY = this.config.worldHeight / 2;
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    const cx = this.config.worldWidth / 2;
+    const cy = this.config.worldHeight / 2;
+    Camera.setFree(true, { panSpeed: 10, zoomSensitivity: 0.001 });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
 
     console.log(
       `WaterAndBoxesScene: Spawned ${this.numberOfWaterBalls} water balls and ${this.numberOfBoxes} boxes`
@@ -142,20 +140,6 @@ export class WaterAndBoxesScene extends WEED.Scene {
   }
 
   update(dtRatio, deltaTime, time) {
-    const panSpeed = this.cameraPanSpeed / Camera.zoom;
-    const kb = this.keyboard;
-
-    if (kb.w || kb.arrowup) this.cameraFollowY -= panSpeed;
-    if (kb.s || kb.arrowdown) this.cameraFollowY += panSpeed;
-    if (kb.a || kb.arrowleft) this.cameraFollowX -= panSpeed;
-    if (kb.d || kb.arrowright) this.cameraFollowX += panSpeed;
-
-    this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-    this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15);
-    Camera.setZoom(Camera.zoom * (1 - Mouse.wheel * 0.001));
-
     Layer.water.setUniform('uTime', time * 0.002);
   }
 

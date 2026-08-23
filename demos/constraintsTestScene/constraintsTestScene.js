@@ -83,11 +83,6 @@ export class ConstraintsTestScene extends Scene {
     constructor(game) {
         super(game);
 
-        // Camera control settings
-        this.cameraPanSpeed = 10;
-        this.cameraFollowX = 0;
-        this.cameraFollowY = 0;
-
         // Track spawned chains for demo
         this.chains = [];
 
@@ -107,10 +102,11 @@ export class ConstraintsTestScene extends Scene {
         console.log('🎬 ConstraintsTestScene: Spawning floor and walls...');
         this.spawnFloorAndWalls();
 
-        // Initialize camera at world center
-        this.cameraFollowX = this.config.worldWidth / 2;
-        this.cameraFollowY = this.config.worldHeight / 2;
-        Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+        const cx = this.config.worldWidth / 2;
+        const cy = this.config.worldHeight / 2;
+        Camera.setFree(true, { panSpeed: 10, zoomSensitivity: 0.001 });
+        Camera.setFreeTarget(cx, cy);
+        Camera.centerOn(cx, cy);
 
         // Spawn demo constraint structures
         console.log('🎬 ConstraintsTestScene: Creating constraint demos...');
@@ -354,21 +350,8 @@ export class ConstraintsTestScene extends Scene {
                 RigidBody.sleeping[i] = 0
             });
         }
-        // Handle WASD camera panning
-        const panSpeed = this.cameraPanSpeed / Camera.zoom;
+
         const kb = this.keyboard;
-
-        if (kb.w || kb.arrowup) this.cameraFollowY -= panSpeed;
-        if (kb.s || kb.arrowdown) this.cameraFollowY += panSpeed;
-        if (kb.a || kb.arrowleft) this.cameraFollowX -= panSpeed;
-        if (kb.d || kb.arrowright) this.cameraFollowX += panSpeed;
-
-        // Clamp camera target to world bounds
-        this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-        this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-
-        Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15);
-        Camera.setZoom(Camera.zoom * (1 - Mouse.wheel * 0.001));
 
         // Press C to create a new chain at mouse position
         if (kb.c && !this._cPressed) {

@@ -1,7 +1,7 @@
 import { AdobeAnimateCharacter } from './gameObjects/adobeAnimateCharacter.js';
 
 import WEED from '/src/index.js';
-const { Scene, Camera, Mouse } = WEED;
+const { Scene, Camera } = WEED;
 
 export class AdobeAnimateScene extends Scene {
   static config = {
@@ -55,12 +55,12 @@ export class AdobeAnimateScene extends Scene {
 
   constructor(game) {
     super(game);
-    this.cameraFollowX = this.config.worldWidth * 0.5;
-    this.cameraFollowY = this.config.worldHeight * 0.5;
     this._lastClipKey = '';
   }
 
   create() {
+    const cx = this.config.worldWidth * 0.5;
+    const cy = this.config.worldHeight * 0.5;
 
     // Set up grid parameters
     const totalCharacters = 10000;
@@ -68,8 +68,8 @@ export class AdobeAnimateScene extends Scene {
     const gridRows = gridCols
     const spacingX = 50;
     const spacingY = 50;
-    const startX = this.cameraFollowX
-    const startY = this.cameraFollowY
+    const startX = cx;
+    const startY = cy;
 
     for (let i = 0; i < totalCharacters; i++) {
       const col = i % gridCols;
@@ -84,25 +84,13 @@ export class AdobeAnimateScene extends Scene {
       });
     }
 
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    Camera.setFree(true, { panSpeed: 18, zoomSensitivity: 0.08, smoothing: 0.18 });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
     Camera.setZoom(1.4);
   }
 
   update() {
-    const kb = this.keyboard;
-    const panSpeed = 18 / Camera.zoom;
-
-    if (kb.w || kb.arrowup) this.cameraFollowY -= panSpeed;
-    if (kb.s || kb.arrowdown) this.cameraFollowY += panSpeed;
-    if (kb.a || kb.arrowleft) this.cameraFollowX -= panSpeed;
-    if (kb.d || kb.arrowright) this.cameraFollowX += panSpeed;
-
-    this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-    this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.18);
-    Camera.setZoom(Camera.zoom * (1 - Mouse.wheel * 0.08));
-
     // if (kb.j) this.setAllCharactersClip('idle', 'one');
     // if (kb.two) this.setAllCharactersClip('running', 'two');
     // if (kb.three) this.setAllCharactersClip('jumping', 'three');

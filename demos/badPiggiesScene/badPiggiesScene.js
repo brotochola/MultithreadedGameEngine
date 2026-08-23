@@ -85,9 +85,6 @@ export class BadPiggiesScene extends Scene {
 
   constructor(game) {
     super(game);
-    this.cameraPanSpeed = 12;
-    this.cameraFollowX = 0;
-    this.cameraFollowY = 0;
     this.mode = MODE_EDITOR;
     this.palette = PALETTE_BOX;
     this.occupancy = new Map();
@@ -111,9 +108,11 @@ export class BadPiggiesScene extends Scene {
     this.originX = WALL + (PAD_SAMPLES * TERRAIN_DX) * 0.5;
     this.originY = this._padSurfaceY - CELL - CELL / 2;
 
-    this.cameraFollowX = this.originX;
-    this.cameraFollowY = this.originY - CELL * 4;
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    const cx = this.originX;
+    const cy = this.originY - CELL * 4;
+    Camera.setFree(true, { panSpeed: 12, maxZoom: 3, arrows: true });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
     Camera.setZoom(0.7);
 
     const ghostBox = MachineBox.spawn({ x: -9999, y: -9999, ghost: true });
@@ -185,33 +184,19 @@ export class BadPiggiesScene extends Scene {
       n++;
     }
     if (!n) return false;
-    this.cameraFollowX = sx / n;
-    this.cameraFollowY = sy / n;
+    Camera.setFreeTarget(sx / n, sy / n);
     return true;
   }
 
   _panCamera() {
-    const panSpeed = this.cameraPanSpeed / Camera.zoom;
-    const kb = this.keyboard;
-    const wasd = kb.w || kb.s || kb.a || kb.d;
+    Camera.freeArrows = this.mode === MODE_EDITOR;
 
-    if (this.mode === MODE_PLAY && this.occupancy.size && !wasd) {
+    if (this.mode === MODE_PLAY && this.occupancy.size && !Camera.isFreePanning) {
       this._followMachine();
-    } else {
-      if (kb.w || (this.mode === MODE_EDITOR && kb.arrowup)) this.cameraFollowY -= panSpeed;
-      if (kb.s || (this.mode === MODE_EDITOR && kb.arrowdown)) this.cameraFollowY += panSpeed;
-      if (kb.a || (this.mode === MODE_EDITOR && kb.arrowleft)) this.cameraFollowX -= panSpeed;
-      if (kb.d || (this.mode === MODE_EDITOR && kb.arrowright)) this.cameraFollowX += panSpeed;
     }
 
-    // this.cameraFollowX = Math.max(0, Math.min(this.cameraFollowX, this.config.worldWidth));
-    // this.cameraFollowY = Math.max(0, Math.min(this.cameraFollowY, this.config.worldHeight));
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15);
-
-    const aimingRocket = this.mode === MODE_EDITOR && this._aimHoveredRocket();
-    if (!aimingRocket) {
-      const zoom = Camera.zoom * (1 - Mouse.wheel * 0.1);
-      Camera.setZoom(Math.max(0.025, Math.min(3, zoom)));
+    if (this.mode === MODE_EDITOR && this._aimHoveredRocket()) {
+      Camera.pauseFreeZoom();
     }
   }
 

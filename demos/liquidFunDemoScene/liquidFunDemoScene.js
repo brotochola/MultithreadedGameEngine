@@ -89,8 +89,6 @@ export class LiquidFunDemoScene extends WEED.Scene {
     this.liquidTool = 0;
     this._mouse0WasDown = false;
     this._hud = null;
-    this.cameraFollowX = 2000;
-    this.cameraFollowY = 1200;
   }
 
   create() {
@@ -99,7 +97,9 @@ export class LiquidFunDemoScene extends WEED.Scene {
     this._createHud();
     this._refreshHud();
 
-    Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
+    Camera.setFree(true, { panSpeed: 15, zoomSensitivity: 0.001, maxZoom: 3 });
+    Camera.setFreeTarget(2000, 1200);
+    Camera.centerOn(2000, 1200);
     Camera.zoom = 0.3;
     Camera.setZoom(0.3);
     // Allow zooming out past world-fit min (~0.48 for 4k×3k world).
@@ -193,18 +193,6 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   update(dtRatio, deltaTime) {
-    const panSpeed = 15 / Camera.zoom;
-    const kb = this.keyboard;
-    if (kb) {
-      if (kb.w || kb.arrowup) this.cameraFollowY -= panSpeed;
-      if (kb.s || kb.arrowdown) this.cameraFollowY += panSpeed;
-      if (kb.a || kb.arrowleft) this.cameraFollowX -= panSpeed;
-      if (kb.d || kb.arrowright) this.cameraFollowX += panSpeed;
-    }
-
-    Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15, dtRatio);
-    Camera.setZoom(Math.max(0.01, Math.min(3.0, Camera.zoom * (1 - Mouse.wheel * 0.001))));
-
     for (let i = 0; i < LIQUID_TOOLS.length; i++) {
       if (Keyboard.isPressed(LIQUID_TOOLS[i].key)) {
         this.liquidTool = i;

@@ -4,6 +4,8 @@
 
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
+import Keyboard from './Keyboard.js';
+import { Mouse } from './Mouse.js';
 
 /**
  * Static Camera class for managing viewport state
@@ -53,6 +55,17 @@ export class Camera {
   static _poseY = null;
   static _poseRotC = null;
   static _poseRotS = null;
+
+  // Free-cam (WASD/arrows pan + wheel zoom). Ticked by Scene via updateFree().
+  static _free = false;
+  static _freePanSpeed = 10;
+  static _freeZoomSensitivity = 0.1;
+  static _freeSmoothing = 0.15;
+  static _freeArrows = true;
+  static _freeMaxZoom = null;
+  static _freeFollowX = 0;
+  static _freeFollowY = 0;
+  static _freeZoomPaused = false;
 
   // ============================================
   // INITIALIZATION
@@ -420,12 +433,118 @@ export class Camera {
   }
 
   /**
-   * Set target zoom level (will be lerped in follow())
-   * @param {number} targetZoom - Target zoom level
+   * Set zoom immediately and sync targetZoom so follow() does not lerp back.
+   * @param {number} targetZoom - Zoom level
    */
   static setZoom(targetZoom) {
     if (!this._data) return;
-    this.zoom = targetZoom
+    this.zoom = targetZoom;
+    this._data[this.IDX_TARGET_ZOOM] = this._data[this.IDX_ZOOM];
+  }
+
+  /**
+   * Enable/disable free-cam (WASD/arrows pan + wheel zoom).
+   * Scene calls updateFree() each frame while enabled.
+   * @param {boolean} enabled
+   * @param {{panSpeed?: number, zoomSensitivity?: number, smoothing?: number, arrows?: boolean, maxZoom?: number}} [options]
+   */
+  static setFree(enabled, options = {}) {
+    const wasFree = this._free;
+    this._free = !!enabled;
+
+    if (options.panSpeed != null) this._freePanSpeed = options.panSpeed;
+    if (options.zoomSensitivity != null) this._freeZoomSensitivity = options.zoomSensitivity;
+    if (options.smoothing != null) this._freeSmoothing = options.smoothing;
+    if (options.arrows != null) this._freeArrows = !!options.arrows;
+    if (options.maxZoom != null) this._freeMaxZoom = options.maxZoom;
+
+    if (enabled && !wasFree) {
+      const existing = this.getFollowTarget();
+      if (existing) {
+        this._freeFollowX = existing.x;
+        this._freeFollowY = existing.y;
+      } else {
+        this._freeFollowX = this.centerX;
+        this._freeFollowY = this.centerY;
+      }
+    }
+
+    if (!enabled) {
+      this._freeZoomPaused = false;
+      this._freeMaxZoom = null;
+    }
+  }
+
+  /** Override free-cam follow target (e.g. machine follow, create() seed). */
+  static setFreeTarget(x, y) {
+    this._freeFollowX = x;
+    this._freeFollowY = y;
+  }
+
+  /** Skip wheel zoom for one frame (e.g. consume wheel for another action). */
+  static pauseFreeZoom() {
+    this._freeZoomPaused = true;
+  }
+
+  /** True if WASD (/arrows when enabled) currently held. Safe to read during scene.update. */
+  static get isFreePanning() {
+    if (Keyboard.w || Keyboard.s || Keyboard.a || Keyboard.d) return true;
+    if (this._freeArrows && (Keyboard.arrowup || Keyboard.arrowdown || Keyboard.arrowleft || Keyboard.arrowright)) {
+      return true;
+    }
+    return false;
+  }
+
+  static get freeArrows() {
+    return this._freeArrows;
+  }
+
+  static set freeArrows(value) {
+    this._freeArrows = !!value;
+  }
+
+  /**
+   * Tick free-cam. Called by Scene after scene.update(), before Mouse.wheel reset.
+   * @param {number} [dtRatio]
+   */
+  static updateFree(dtRatio) {
+    if (!this._free || !this._data) {
+      this._freeZoomPaused = false;
+      return;
+    }
+
+    const panSpeed = this._freePanSpeed / this.zoom;
+    const arrows = this._freeArrows;
+
+    if (Keyboard.w || (arrows && Keyboard.arrowup)) {
+      this._freeFollowY -= panSpeed;
+    }
+    if (Keyboard.s || (arrows && Keyboard.arrowdown)) {
+      this._freeFollowY += panSpeed;
+    }
+    if (Keyboard.a || (arrows && Keyboard.arrowleft)) {
+      this._freeFollowX -= panSpeed;
+    }
+    if (Keyboard.d || (arrows && Keyboard.arrowright)) {
+      this._freeFollowX += panSpeed;
+    }
+
+    if (this._worldWidth !== Infinity) {
+      this._freeFollowX = Math.max(0, Math.min(this._freeFollowX, this._worldWidth));
+    }
+    if (this._worldHeight !== Infinity) {
+      this._freeFollowY = Math.max(0, Math.min(this._freeFollowY, this._worldHeight));
+    }
+
+    this.follow(this._freeFollowX, this._freeFollowY, this._freeSmoothing, dtRatio);
+
+    if (!this._freeZoomPaused) {
+      let z = this.zoom * (1 - Mouse.wheel * this._freeZoomSensitivity);
+      const maxZ = this._freeMaxZoom != null ? this._freeMaxZoom : this._maxZoom;
+      z = Math.max(this.minZoom, Math.min(maxZ, z));
+      this.setZoom(z);
+    }
+    this._freeZoomPaused = false;
   }
 
   /**
