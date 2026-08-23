@@ -568,6 +568,64 @@ test('WASM STATIC_PRESSURE create and step stays finite', () => {
   }
 });
 
+test('WASM particle x/y deinterleave matches the interleaved position buffer', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createBodyBox = fn('create_body_box');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupCircle = fn('create_particle_group_circle');
+  const getParticleCount = fn('get_particle_count');
+  const getParticlePosByteOffset = fn('get_particle_pos_byte_offset');
+  const getParticleXByteOffset = fn('get_particle_x_byte_offset');
+  const getParticleYByteOffset = fn('get_particle_y_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId, 'create_world failed');
+  assert.ok(bindGameBuffers(16), 'bind_game_buffers failed');
+
+  const floorSlot = createBodyBox(
+    worldId,
+    0,
+    0, 400, 0,
+    2000, 130,
+    0, 0,
+    1, 0.6, 0,
+    0, 0, 1,
+    0, 0, 0,
+    0, 0,
+    1, 0xffffffff,
+    0, 0, 0,
+  );
+  assert.ok(floorSlot >= 0, `create_body_box failed: ${floorSlot}`);
+
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
+  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5);
+  assert.ok(gid >= 0, `circle group failed: ${gid}`);
+  const count = getParticleCount();
+  assert.ok(count > 4, `expected a blob, got ${count}`);
+
+  const dt = 1 / 60;
+  for (let i = 0; i < 30; i++) {
+    stepWorld(worldId, dt, 4);
+  }
+  assert.equal(getParticleCount(), count);
+
+  const heap = new Float32Array(memory.buffer);
+  const posBase = getParticlePosByteOffset() >> 2;
+  const xBase = getParticleXByteOffset() >> 2;
+  const yBase = getParticleYByteOffset() >> 2;
+  assert.ok(posBase > 0 && xBase > 0 && yBase > 0, 'byte offsets missing');
+  assert.notEqual(xBase, posBase, 'x buffer should be separate from the interleaved pos buffer');
+
+  for (let i = 0; i < count; i++) {
+    assert.equal(heap[xBase + i], heap[posBase + (i << 1)], `x[${i}] mismatch`);
+    assert.equal(heap[yBase + i], heap[posBase + (i << 1) + 1], `y[${i}] mismatch`);
+  }
+});
+
 test('WASM create_particle_system strictContactCheck param reaches C (5th arg)', () => {
   const { memory, fn } = instantiateBox2dWasm();
 

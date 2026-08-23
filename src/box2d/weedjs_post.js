@@ -65,7 +65,8 @@
   let jointViews = null;
   let liquidFunViews = null;
   let liquidFunMaxCount = 0;
-  let liquidFunPosFloatOffset = 0;
+  let liquidFunXFloatOffset = 0;
+  let liquidFunYFloatOffset = 0;
   let pendingLiquidFunEmit = {
     spacing: 0,
     strength: 0.5,
@@ -920,7 +921,8 @@
     },
     createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
       if (!world) return;
-      liquidFunPosFloatOffset = 0;
+      liquidFunXFloatOffset = 0;
+      liquidFunYFloatOffset = 0;
       world.createParticleSystem(
         radius || 10,
         maxCount || 10000,
@@ -1148,23 +1150,22 @@
       return;
     }
 
-    if (!liquidFunPosFloatOffset) {
-      const posByteOffset = world.getParticlePosByteOffset();
-      if (!posByteOffset) return;
-      liquidFunPosFloatOffset = posByteOffset >> 2;
+    if (!liquidFunXFloatOffset || !liquidFunYFloatOffset) {
+      const xByteOffset = world.getParticleXByteOffset();
+      const yByteOffset = world.getParticleYByteOffset();
+      if (!xByteOffset || !yByteOffset) return;
+      liquidFunXFloatOffset = xByteOffset >> 2;
+      liquidFunYFloatOffset = yByteOffset >> 2;
     }
 
     const heapF32 = Module.HEAPF32;
     if (!heapF32) return;
 
-    const posFloatOffset = liquidFunPosFloatOffset;
     const maxP = Math.min(count, liquidFunMaxCount || 0);
-    const px = liquidFunViews.x;
-    const py = liquidFunViews.y;
-    for (let i = 0; i < maxP; i++) {
-      px[i] = heapF32[posFloatOffset + (i << 1)];
-      py[i] = heapF32[posFloatOffset + (i << 1) + 1];
-    }
+    // C already deinterleaved x/y into two contiguous arrays (step_world) -
+    // two bulk TypedArray copies instead of a scalar per-particle loop.
+    liquidFunViews.x.set(heapF32.subarray(liquidFunXFloatOffset, liquidFunXFloatOffset + maxP));
+    liquidFunViews.y.set(heapF32.subarray(liquidFunYFloatOffset, liquidFunYFloatOffset + maxP));
     if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
 
@@ -1534,7 +1535,8 @@
         textureId: viewFromDesc(data.liquidFunViews.textureId, Uint16Array),
       };
       liquidFunMaxCount = data.liquidFunMaxCount | 0;
-      liquidFunPosFloatOffset = 0;
+      liquidFunXFloatOffset = 0;
+      liquidFunYFloatOffset = 0;
     }
     if (data.stats) {
       statsF32 = viewFromDesc(data.stats, Float32Array);

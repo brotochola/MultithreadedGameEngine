@@ -468,6 +468,8 @@ function createPhysicsApi(Module) {
   const getParticlePosByteOffset = wrap("get_particle_pos_byte_offset", "number", []);
   const getParticleVelByteOffset = wrap("get_particle_vel_byte_offset", "number", []);
   const getParticleFlagsByteOffset = wrap("get_particle_flags_byte_offset", "number", []);
+  const getParticleXByteOffset = wrap("get_particle_x_byte_offset", "number", []);
+  const getParticleYByteOffset = wrap("get_particle_y_byte_offset", "number", []);
 
   const DEFAULT_MATERIAL = Object.freeze({
     density: 1.0,
@@ -1317,6 +1319,14 @@ function createPhysicsApi(Module) {
 
     getParticleFlagsByteOffset() {
       return getParticleFlagsByteOffset();
+    }
+
+    getParticleXByteOffset() {
+      return getParticleXByteOffset();
+    }
+
+    getParticleYByteOffset() {
+      return getParticleYByteOffset();
     }
   }
 

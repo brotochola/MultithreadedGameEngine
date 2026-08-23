@@ -33,7 +33,7 @@ Shared helpers: [`tests/bench/feature-tournament-lib.mjs`](../tests/bench/featur
 | I | Treiber / rings | Next | pop-push/s | Balls |
 | J | Bullet tick | Next | particle STEP | Predator |
 | K | TileMap queries | L1 only | ns/getTileId | — |
-| **L** | LiquidFun particle step | In progress (H1-H4+H6-H7 shipped, H5 rejected) | `physics.BOX2D_MS` | `demos/liquidFunDemoScene` |
+| **L** | LiquidFun particle step | Campaign complete: H1-H4+H6-H8 shipped, H5 rejected | `physics.BOX2D_MS` | `demos/liquidFunDemoScene` |
 
 Skip: full rigid-body Box2D WASM step (LiquidFun's *particle* step is in scope — see Wave L).
 

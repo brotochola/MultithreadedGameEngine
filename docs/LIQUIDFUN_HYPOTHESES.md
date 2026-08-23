@@ -43,7 +43,7 @@ Every C change: edit sibling repo → `build_for_weed.bat` (incremental, ~10-15s
 | **H5** | `RemoveSpuriousBodyContacts` uses `qsort` (indirect comparator calls) for runs capped at 3 kept contacts per particle | Insertion sort | **Rejected** (see log — the "≤3" cap is post-filter, not the sorted array size) |
 | **H6** | `CapturePairs` (SPRING/BARRIER group creation) is an O(n²) double loop over the new particle range | Route through a scratch grid over just the new range | **Done** |
 | **H7** | `SolveStaticPressure`'s 8-iteration Poisson loop re-filters the *entire* `particleContacts` array every iteration by flag | Compact the qualifying-contact index list once, iterate that 8× | **Done** |
-| **H8** | `syncLiquidFunParticlesToSharedBuffers` (JS) scalar-loops the interleaved→deinterleaved position copy every frame | Deinterleave in C once (tight loop over contiguous `b2Vec2`), JS does two bulk `.set()` calls | Planned |
+| **H8** | `syncLiquidFunParticlesToSharedBuffers` (JS) scalar-loops the interleaved→deinterleaved position copy every frame | Deinterleave in C once (tight loop over contiguous `b2Vec2`), JS does two bulk `.set()` calls | **Done** |
 
 ## Results log
 
@@ -263,7 +263,61 @@ sense, the bench scene's 1k-particle STATIC_PRESSURE group means a meaningful
 fraction of `particleContacts` qualifies, so cutting the per-iteration flag-test
 from "every contact, 8x" to "compacted list, 8x" removes real repeated work.
 
-Running total from baseline: **~3.30ms → ~2.78ms (~16% cumulative)**, `strictContactCheck:false`, H2-H4+H6-H7 stacked (H5 rejected/reverted).
+Running total from original baseline: **~3.30ms → ~2.78ms (~16% cumulative)**, `strictContactCheck:false`, H2-H4+H6-H7 stacked (H5 rejected/reverted).
+
+## Scene resized after H7 (2026-08-23)
+
+`BOX2D_MS` was down to ~2.78ms — close enough to this campaign's observed
+run-to-run noise (~0.1-0.3ms, sometimes wider) that further optimizations would
+be hard to distinguish from noise. Bumped `LiquidFunStressScene` from ~5.1k
+water + ~1k spring/staticPressure (~6.1k total) to **~10.2k water + ~2k
+spring/staticPressure (~12.2k total)** — same wall/floor geometry, wider boxes,
+`maxCount` raised 8000 → 15000. All H1-H7 numbers above are on the **old, smaller
+scene** and are not directly comparable to anything from here on.
+
+**New baseline** (2 runs, `strictContactCheck:false`, all of H1-H4+H6-H7 already landed):
+
+| Run | `BOX2D_MS` | Load% |
+|-----|-----------|-------|
+| 1 | 6.087 | 37% |
+| 2 | 5.750 | 35% |
+
+Avg **~5.92ms**. Every hypothesis from here (H8 onward) compares against this
+number, not the old ~2.78ms.
+
+### H8 — JS/WASM particle position deinterleave moved into C (2026-08-23)
+
+Added `g_particle_x`/`g_particle_y` scratch buffers in `wasm_wrapper.c` (allocated
+in `create_particle_system`, freed in both `create_particle_system`'s reset path
+and `destroy_particle_system`, sized to `g_particle_capacity`), filled with one
+tight C loop over `lfParticleSystem_GetPositionBuffer` right after
+`lfParticleSystem_Step` inside `step_world`. New exports
+`get_particle_x_byte_offset()` / `get_particle_y_byte_offset()` follow the
+existing `get_particle_pos_byte_offset` pattern exactly. `physics-api.js` wraps
+both; `weedjs_post.js`'s `syncLiquidFunParticlesToSharedBuffers` now does two
+bulk `Float32Array.set(heapF32.subarray(...))` calls instead of a scalar
+per-particle loop reading interleaved floats out of `Module.HEAPF32`.
+
+New test added (nothing in the existing suite touched the JS-side sync path or
+the new exports at all): `WASM particle x/y deinterleave matches the
+interleaved position buffer` — steps a real particle blob, then asserts every
+`x[i]`/`y[i]` in the new deinterleaved arrays exactly equals the corresponding
+interleaved `pos[i].x`/`pos[i].y`. Correctness: 18/18 liquidfun tests, 169/169
+full suite.
+
+| | Run 1 `BOX2D_MS` | Run 2 `BOX2D_MS` | Avg |
+|---|------------------|------------------|-----|
+| Before (resized-scene baseline) | 6.087 | 5.750 | 5.919 |
+| After (H8 deinterleave) | 5.507 | 5.491 | 5.499 |
+
+**Verdict: improved, ~7.1%.** Consistent across both samples (both "after" runs
+beat both "before" runs). This is the last planned hot-loop hypothesis in this
+campaign — H2-H4 and H6-H8 shipped, H5 rejected and reverted.
+
+Running total on the resized scene: **~5.92ms → ~5.50ms**. Not directly
+comparable to the original ~3.30ms baseline (different particle counts), but
+every hypothesis that landed (H2-H4, H6-H8) measured a real, reproducible win on
+whichever scene was current at the time, and none regressed correctness.
 
 ## Related
 
