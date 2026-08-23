@@ -1245,7 +1245,7 @@ function createPhysicsApi(Module) {
       };
     }
 
-    createParticleSystem(radius = 10, maxCount = 5000, density = 1.0, subSteps = 2) {
+    createParticleSystem(radius = 10, maxCount = 10000, density = 1.0, subSteps = 1) {
       this._particleSystem = createParticleSystem(this.worldId, radius, density, maxCount);
       if (subSteps > 0) setParticleSubSteps(subSteps);
       return this._particleSystem;

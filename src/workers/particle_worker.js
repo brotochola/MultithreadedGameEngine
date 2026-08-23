@@ -664,7 +664,7 @@ class ParticleWorker extends AbstractWorker {
     const visibleData = this.visibleParticlesData;
     const maxParticles = this.maxParticles;
 
-    // Scan all potential active particles (CPU emitter + Box2D LiquidFun)
+    // CPU emitter pool only. LiquidFun lives on its own render SAB.
     const expectedActive = maxParticles;
 
     // Early exit if camera not ready (can't calculate visibility)

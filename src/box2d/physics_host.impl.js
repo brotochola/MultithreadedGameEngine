@@ -33,6 +33,14 @@
     commandRingCapacity: 4096,
     sleeping: true,
     hitEventThreshold: 0,
+    // ponytail: keep in sync with ConfigDefaults PHYSICS_DEFAULTS.liquidFun.
+    liquidFun: {
+      enabled: false,
+      radius: 10,
+      maxCount: 10000,
+      subSteps: 1,
+      density: 1,
+    },
   };
 
   // Mirrors PHYSICS_STATS (workers-utils.js) — host writes FPS / STEP_MS / MSG_MS.
@@ -94,39 +102,29 @@
     polyNormalY: { type: Float32Array, length: MAX_POLYGON_VERTICES },
   };
 
-  var PARTICLE_SCHEMA = {
-    active: Uint8Array,
-    x: Float32Array,
-    y: Float32Array,
-    z: Float32Array,
-    vx: Float32Array,
-    vy: Float32Array,
-    vz: Float32Array,
-    lifespan: Uint16Array,
-    currentLife: Uint16Array,
-    gravity: Float32Array,
-    scaleX: Float32Array,
-    scaleY: Float32Array,
-    alpha: Float32Array,
-    tint: Uint32Array,
-    baseTint: Uint32Array,
-    textureId: Uint16Array,
-    rotC: Float32Array,
-    rotS: Float32Array,
-    flipX: Uint8Array,
-    flipY: Uint8Array,
-    fadeOnTheFloor: Uint16Array,
-    timeOnFloor: Uint16Array,
-    initialAlpha: Float32Array,
-    stayOnTheFloor: Uint8Array,
-    despawnOnGroundContact: Uint8Array,
-    tweenToAlpha0: Uint8Array,
-    isItOnScreen: Uint8Array,
-    blendMode: Uint8Array,
-    layerId: Uint8Array,
-    flat: Uint8Array,
-    viewMode: Uint8Array,
-  };
+  function bindLiquidFunRenderViews(sab, maxCount) {
+    var n = maxCount | 0;
+    var off = 8;
+    var count = new Int32Array(sab, 0, 1);
+    var x = new Float32Array(sab, off, n);
+    off += n * 4;
+    var y = new Float32Array(sab, off, n);
+    off += n * 4;
+    var scaleX = new Float32Array(sab, off, n);
+    off += n * 4;
+    var scaleY = new Float32Array(sab, off, n);
+    off += n * 4;
+    var rotC = new Float32Array(sab, off, n);
+    off += n * 4;
+    var rotS = new Float32Array(sab, off, n);
+    off += n * 4;
+    var alpha = new Float32Array(sab, off, n);
+    off += n * 4;
+    var tint = new Uint32Array(sab, off, n);
+    off += n * 4;
+    var textureId = new Uint16Array(sab, off, n);
+    return { count: count, x: x, y: y, scaleX: scaleX, scaleY: scaleY, rotC: rotC, rotS: rotS, alpha: alpha, tint: tint, textureId: textureId };
+  }
 
   function schemaEntry(typeOrSpec) {
     if (typeOrSpec && typeof typeOrSpec === 'object' && typeOrSpec.type) {
@@ -208,6 +206,29 @@
         n.hitEventThreshold != null
           ? n.hitEventThreshold
           : base.hitEventThreshold,
+      liquidFun: mergeLiquidFunConfig(base.liquidFun, n.liquidFun),
+    };
+  }
+
+  function mergeLiquidFunConfig(currentLf, newLf) {
+    var d = PHYSICS_DEFAULTS.liquidFun;
+    var src = {};
+    var i;
+    var from;
+    var keys;
+    from = [d, currentLf || {}, newLf || {}];
+    for (i = 0; i < from.length; i++) {
+      keys = Object.keys(from[i]);
+      for (var k = 0; k < keys.length; k++) {
+        src[keys[k]] = from[i][keys[k]];
+      }
+    }
+    return {
+      enabled: !!src.enabled,
+      radius: Math.max(1e-6, src.radius > 0 ? src.radius : d.radius),
+      maxCount: Math.min(65535, Math.max(1, (src.maxCount != null ? src.maxCount : d.maxCount) | 0)),
+      subSteps: Math.max(1, (src.subSteps != null ? src.subSteps : d.subSteps) | 0),
+      density: typeof src.density === 'number' && isFinite(src.density) ? src.density : d.density,
     };
   }
 
@@ -445,6 +466,7 @@
       hitSab: state.hitSab,
       jointBreakSab: state.jointBreakSab,
       hitEventThreshold: s.hitEventThreshold,
+      liquidFun: s.liquidFun,
       stats: state.stats ? packView(state.stats) : null,
       collectDetailedStats: !!state.collectDetailedStats,
       posePublish: state.posePublish
@@ -532,21 +554,20 @@
       };
     }
 
-    if (state.particle) {
-      var P = state.particle;
-      initPayload.maxParticles = state.maxParticles;
-      initPayload.particleViews = {
-        active: packView(P.active),
-        x: packView(P.x),
-        y: packView(P.y),
-        scaleX: packView(P.scaleX),
-        scaleY: packView(P.scaleY),
-        rotC: packView(P.rotC),
-        rotS: packView(P.rotS),
-        alpha: packView(P.alpha),
-        tint: packView(P.tint),
-        textureId: packView(P.textureId),
-        flat: packView(P.flat),
+    if (state.liquidFun) {
+      var L = state.liquidFun;
+      initPayload.liquidFunMaxCount = state.liquidFunMaxCount;
+      initPayload.liquidFunViews = {
+        count: packView(L.count),
+        x: packView(L.x),
+        y: packView(L.y),
+        scaleX: packView(L.scaleX),
+        scaleY: packView(L.scaleY),
+        rotC: packView(L.rotC),
+        rotS: packView(L.rotS),
+        alpha: packView(L.alpha),
+        tint: packView(L.tint),
+        textureId: packView(L.textureId),
       };
     }
 
@@ -649,13 +670,13 @@
       COLLIDER_SCHEMA,
     );
 
-    if (componentData.ParticleComponent) {
-      state.particle = bindSchema(
-        componentData.ParticleComponent,
-        data.maxParticles || 10000,
-        PARTICLE_SCHEMA,
-      );
-      state.maxParticles = data.maxParticles || 10000;
+    var lfMax = data.liquidFunMaxCount | 0;
+    if (!lfMax && data.config && data.config.physics && data.config.physics.liquidFun) {
+      lfMax = data.config.physics.liquidFun.maxCount | 0;
+    }
+    if (buffers.liquidFunRender && lfMax > 0) {
+      state.liquidFun = bindLiquidFunRenderViews(buffers.liquidFunRender, lfMax);
+      state.liquidFunMaxCount = lfMax;
     }
 
     if (buffers.bodyDirtyFlags && buffers.bodyDirtyWords && buffers.bodyGeneration) {

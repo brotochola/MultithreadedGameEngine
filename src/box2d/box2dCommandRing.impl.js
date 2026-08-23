@@ -22,6 +22,7 @@
     CREATE_PARTICLE_GROUP_CIRCLE: 10, // systemId, posX, posY, radius, flags
     DESTROY_PARTICLE_GROUP: 11, // systemId, groupId
     DESTROY_PARTICLE_SYSTEM: 12, // systemId
+    SET_LIQUIDFUN_EMIT: 13, // spacing, strength, tintBits, textureId (next create consumes)
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -158,7 +159,18 @@
   }
 
   function enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps) {
-    return enqueue(BOX2D_CMD.CREATE_PARTICLE_SYSTEM, systemId, radius, maxCount, subSteps || 2, 0);
+    return enqueue(BOX2D_CMD.CREATE_PARTICLE_SYSTEM, systemId, radius, maxCount, subSteps > 0 ? subSteps : 1, 0);
+  }
+
+  function enqueueSetLiquidFunEmit(spacing, strength, tintBits, textureId) {
+    return enqueue(
+      BOX2D_CMD.SET_LIQUIDFUN_EMIT,
+      0,
+      spacing || 0,
+      strength || 0,
+      tintBits || 0,
+      textureId || 0,
+    );
   }
 
   function enqueueCreateParticleGroupBox(systemId, posX, posY, halfWidth, halfHeight, flags) {
@@ -230,6 +242,9 @@
         case BOX2D_CMD.DESTROY_PARTICLE_SYSTEM:
           if (handlers.destroyParticleSystem) handlers.destroyParticleSystem(entity);
           break;
+        case BOX2D_CMD.SET_LIQUIDFUN_EMIT:
+          if (handlers.setLiquidFunEmit) handlers.setLiquidFunEmit(a, b, c, d);
+          break;
         default:
           break;
       }
@@ -257,6 +272,7 @@
     enqueueExplode: enqueueExplode,
     enqueueSetSleepThreshold: enqueueSetSleepThreshold,
     enqueueCreateParticleSystem: enqueueCreateParticleSystem,
+    enqueueSetLiquidFunEmit: enqueueSetLiquidFunEmit,
     enqueueCreateParticleGroupBox: enqueueCreateParticleGroupBox,
     enqueueCreateParticleGroupCircle: enqueueCreateParticleGroupCircle,
     enqueueDestroyParticleGroup: enqueueDestroyParticleGroup,

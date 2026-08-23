@@ -43,6 +43,7 @@ import {
 } from '../core/ConfigDefaults.js';
 import { Layer } from '../core/Layer.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
+import { bindLiquidFunRender } from '../core/liquidFunRender.js';
 import { DECORATION_NO_PARENT } from '../core/DecorationPool.js';
 import { AdobeAnimRegistry } from '../core/AdobeAnimRegistry.js';
 const INVALID_TEXTURE_ID = 0xFFFF;
@@ -81,6 +82,8 @@ class PreRenderWorker extends AbstractWorker {
         // Entity and particle counts
         this.globalEntityCount = 0;
         this.maxParticles = 0;
+        this.liquidFun = null;
+        this.liquidFunMaxCount = 0;
         this.maxDecorations = 0;
         this.maxBullets = 0;
 
@@ -302,6 +305,10 @@ class PreRenderWorker extends AbstractWorker {
         // Store counts
         this.globalEntityCount = data.globalEntityCount || 0;
         this.maxParticles = data.maxParticles || 0;
+        this.liquidFunMaxCount = data.liquidFunMaxCount || 0;
+        if (data.buffers?.liquidFunRender && this.liquidFunMaxCount > 0) {
+            this.liquidFun = bindLiquidFunRender(data.buffers.liquidFunRender, this.liquidFunMaxCount);
+        }
         this.maxDecorations = data.maxDecorations || 0;
         this.maxBullets = data.maxBullets || 0;
 
@@ -802,6 +809,7 @@ class PreRenderWorker extends AbstractWorker {
         // Collect visible renderables for render queue (entities + sun shadows fused in one pass)
         if (detail) t0 = performance.now();
         this.collectVisibleParticles();
+        this.collectVisibleLiquidFun();
         this.collectVisibleEntities();
         this.collectVisibleAdobeAnimations();
         this.collectVisibleDecorations();
@@ -892,6 +900,40 @@ class PreRenderWorker extends AbstractWorker {
                     : (y[i] + z[i]) * Y_SORT_K;
             this.collectRenderable(1, i, sortKey);
             this.visibleParticlesCount++;
+        }
+    }
+
+    collectVisibleLiquidFun() {
+        const lf = this.liquidFun;
+        if (!lf) return;
+        const count = lf.count[0] | 0;
+        if (count <= 0) return;
+
+        const x = lf.x;
+        const y = lf.y;
+        const bounds = this._frameCameraBoundsValid ? this.calculateCameraBounds() : null;
+        if (!bounds) {
+            for (let i = 0; i < count; i++) {
+                this.collectRenderable(7, i, y[i] * Y_SORT_K);
+                this.visibleParticlesCount++;
+            }
+            return;
+        }
+
+        const camZoom = bounds.zoom;
+        const camOffX = bounds.cameraOffsetX;
+        const camOffY = bounds.cameraOffsetY;
+        const minX = bounds.minX;
+        const maxX = bounds.maxX;
+        const minY = bounds.minY;
+        const maxY = bounds.maxY;
+        for (let i = 0; i < count; i++) {
+            const sx = x[i] * camZoom - camOffX;
+            const sy = y[i] * camZoom - camOffY;
+            if (sx > minX && sx < maxX && sy > minY && sy < maxY) {
+                this.collectRenderable(7, i, y[i] * Y_SORT_K);
+                this.visibleParticlesCount++;
+            }
         }
     }
 
@@ -1279,6 +1321,7 @@ class PreRenderWorker extends AbstractWorker {
      * Layer routing by type:
      *   type 0 (entity)       -> SpriteRenderer.layerId[index]
      *   type 1 (particle)     -> ParticleComponent.layerId[index]
+     *   type 7 (LiquidFun)    -> default ENTITIES layer
      *   type 2 (decoration)   -> DecorationComponent.layerId[index]
      *   type 3 (light glow)   -> LightEmitter.layerIdOfGlowSprite[index] || SpriteRenderer.layerId[index]
      *   type 4 (bullet)       -> BulletComponent.layerId[index]
@@ -1296,6 +1339,7 @@ class PreRenderWorker extends AbstractWorker {
             let layerId = 0;
             if (type === 0) layerId = SpriteRenderer.layerId[index];
             else if (type === 1) layerId = ParticleComponent.layerId[index];
+            else if (type === 7) layerId = 0;
             else if (type === 2) layerId = DecorationComponent.layerId[index];
             else if (type === 3) layerId = LightEmitter.layerIdOfGlowSprite[index] || SpriteRenderer.layerId[index];
             else if (type === 4 || type === 5) layerId = BulletComponent.layerId[index];
@@ -1822,6 +1866,24 @@ class PreRenderWorker extends AbstractWorker {
                 rqTextureId[out] = pAnimIdx === 0
                     ? whiteCircleTextureId
                     : (this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID);
+                rqAnchorX[out] = 0.5;
+                rqAnchorY[out] = 0.5;
+                rqType[out] = 1;
+                rqEntityIndex[out] = -1;
+            } else if (type === 7) {
+                const lf = this.liquidFun;
+                rqX[out] = lf.x[idx];
+                rqY[out] = lf.y[idx];
+                rqScaleX[out] = lf.scaleX[idx];
+                rqScaleY[out] = lf.scaleY[idx];
+                rqAlpha[out] = lf.alpha[idx];
+                rqRotC[out] = lf.rotC[idx];
+                rqRotS[out] = lf.rotS[idx];
+                rqTint[out] = lf.tint[idx];
+                const lfAnimIdx = lf.textureId[idx];
+                rqTextureId[out] = lfAnimIdx === 0
+                    ? whiteCircleTextureId
+                    : (this.animationFrameStart?.[lfAnimIdx] ?? INVALID_TEXTURE_ID);
                 rqAnchorX[out] = 0.5;
                 rqAnchorY[out] = 0.5;
                 rqType[out] = 1;

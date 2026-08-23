@@ -347,16 +347,22 @@ export class ParticleEmitter extends SharedAtomicPool {
   }
 
   /**
-   * Spawns LiquidFun particle physics in Box2D.
-   * Convenience wrapper delegating to LiquidFunSystem.
+   * LiquidFun create via command ring only. Never `_spawn` / never the CPU pool.
    *
    * @param {Object} options
+   * @param {string} [options.material] - water | oil | cream | dulceDeLeche | jelly | sand
    */
   static emitLiquidFunParticles(options) {
-    if (options && options.shape === 'box') {
-      LiquidFunSystem.createParticleBox(options);
+    const o = options || {};
+    let textureId = o.textureId | 0;
+    if (!textureId && o.texture) {
+      textureId = SpriteSheetRegistry.getTextureId(o.texture) | 0;
+    }
+    const resolved = textureId ? { ...o, textureId } : o;
+    if (resolved.shape === 'box') {
+      LiquidFunSystem.createParticleBox(resolved);
     } else {
-      LiquidFunSystem.createParticleCircle(options);
+      LiquidFunSystem.createParticleCircle(resolved);
     }
   }
 

@@ -191,6 +191,13 @@ export const PHYSICS_DEFAULTS = Object.freeze({
   hitEventThreshold: 0,
   noLimitFPS: false,
   fixedFps: 0,
+  liquidFun: Object.freeze({
+    enabled: false, // scene sets true to auto-create the system at physics init
+    radius: 10, // particle radius, world px
+    maxCount: 10000,
+    subSteps: 1, // particle solver only; not Box2D subStepCount
+    density: 1,
+  }),
 });
 
 // ============================================================================

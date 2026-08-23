@@ -47,6 +47,7 @@ import {
   PRE_RENDER_STATS,
 } from '../workers/workers-utils.js';
 import { ParticleEmitter } from './ParticleEmitter.js';
+import { liquidFunRenderByteSize } from './liquidFunRender.js';
 import { Joint } from './Joint.js';
 import { SoundManager } from './SoundManager.js';
 import { MAX_COMPONENTS, MAX_ENTITIES, MAX_ENTITY_TYPES } from './QuerySystem.js';
@@ -189,6 +190,15 @@ function initializeParticleBuffers(scene) {
   createCompactUint16ListPair(buffers, 'activeParticlesData', 'visibleParticlesData', maxParticles);
 }
 
+function initializeLiquidFunRenderBuffer(scene) {
+  const lf = scene.config.physics?.liquidFun;
+  if (!lf?.enabled) return;
+  const maxCount = lf.maxCount | 0;
+  if (maxCount <= 0) return;
+  scene.buffers.liquidFunRender = new SharedArrayBuffer(liquidFunRenderByteSize(maxCount));
+  scene.liquidFunMaxCount = maxCount;
+}
+
 function initializeDecorationBuffers(scene) {
   const { buffers, config } = scene;
   const totalEntityCount = scene.totalEntityCount;
@@ -296,6 +306,9 @@ export function computeAutoMaxVisibleRenderables(scene) {
   const config = scene.config || {};
   const totalEntityCount = scene.totalEntityCount | 0;
   const maxParticles = config.particle?.maxParticles | 0;
+  const liquidFunMax = config.physics?.liquidFun?.enabled
+    ? (config.physics.liquidFun.maxCount | 0)
+    : 0;
   const maxDecorations = config.decoration?.maxDecorations | 0;
   const maxBullets = config.bullet?.maxBullets | 0;
   const lightingEnabled = !!config.lighting?.enabled;
@@ -323,6 +336,7 @@ export function computeAutoMaxVisibleRenderables(scene) {
   return (
     totalEntityCount +
     maxParticles +
+    liquidFunMax +
     maxDecorations +
     maxBullets * 2 +
     glowSlots +
@@ -712,6 +726,7 @@ export function createSceneSharedBuffers(scene) {
   validateSceneSharedBufferConfig(scene);
   initializeCoreEntityAndComponentBuffers(scene);
   initializeParticleBuffers(scene);
+  initializeLiquidFunRenderBuffer(scene);
   initializeDecorationBuffers(scene);
   initializeBulletBuffers(scene);
   initializeLightingAndRenderBuffers(scene);
