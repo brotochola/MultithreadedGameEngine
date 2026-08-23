@@ -17,6 +17,11 @@
     SET_FIXED_ROTATION: 5, // entity, flag (0|1)
     EXPLODE: 6, // maskBits as entity, x, y, radius, impulsePerLength (falloff=0.5*radius)
     SET_SLEEP_THRESHOLD: 7, // entity, threshold
+    CREATE_PARTICLE_SYSTEM: 8, // systemId, radius, maxCount, subSteps
+    CREATE_PARTICLE_GROUP_BOX: 9, // flags (entity slot), posX, posY, halfWidth, halfHeight
+    CREATE_PARTICLE_GROUP_CIRCLE: 10, // systemId, posX, posY, radius, flags
+    DESTROY_PARTICLE_GROUP: 11, // systemId, groupId
+    DESTROY_PARTICLE_SYSTEM: 12, // systemId
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -152,6 +157,27 @@
     return enqueue(BOX2D_CMD.SET_SLEEP_THRESHOLD, entity, threshold, 0, 0, 0);
   }
 
+  function enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps) {
+    return enqueue(BOX2D_CMD.CREATE_PARTICLE_SYSTEM, systemId, radius, maxCount, subSteps || 2, 0);
+  }
+
+  function enqueueCreateParticleGroupBox(systemId, posX, posY, halfWidth, halfHeight, flags) {
+    // Singleton particle system: entity slot carries flags (systemId unused).
+    return enqueue(BOX2D_CMD.CREATE_PARTICLE_GROUP_BOX, flags || 0, posX, posY, halfWidth, halfHeight);
+  }
+
+  function enqueueCreateParticleGroupCircle(systemId, posX, posY, radius, flags) {
+    return enqueue(BOX2D_CMD.CREATE_PARTICLE_GROUP_CIRCLE, systemId, posX, posY, radius, flags || 0);
+  }
+
+  function enqueueDestroyParticleGroup(systemId, groupId) {
+    return enqueue(BOX2D_CMD.DESTROY_PARTICLE_GROUP, systemId, groupId, 0, 0, 0);
+  }
+
+  function enqueueDestroyParticleSystem(systemId) {
+    return enqueue(BOX2D_CMD.DESTROY_PARTICLE_SYSTEM, systemId, 0, 0, 0, 0);
+  }
+
   function drainCommandRing(i32, f32, handlers) {
     if (!i32 || !f32 || !handlers) return 0;
     var cap = i32[HDR_CAP] | 0;
@@ -189,6 +215,21 @@
         case BOX2D_CMD.SET_SLEEP_THRESHOLD:
           if (handlers.setSleepThreshold) handlers.setSleepThreshold(entity, a);
           break;
+        case BOX2D_CMD.CREATE_PARTICLE_SYSTEM:
+          if (handlers.createParticleSystem) handlers.createParticleSystem(entity, a, b, c);
+          break;
+        case BOX2D_CMD.CREATE_PARTICLE_GROUP_BOX:
+          if (handlers.createParticleGroupBox) handlers.createParticleGroupBox(entity, a, b, c, d);
+          break;
+        case BOX2D_CMD.CREATE_PARTICLE_GROUP_CIRCLE:
+          if (handlers.createParticleGroupCircle) handlers.createParticleGroupCircle(entity, a, b, c, d);
+          break;
+        case BOX2D_CMD.DESTROY_PARTICLE_GROUP:
+          if (handlers.destroyParticleGroup) handlers.destroyParticleGroup(entity, a);
+          break;
+        case BOX2D_CMD.DESTROY_PARTICLE_SYSTEM:
+          if (handlers.destroyParticleSystem) handlers.destroyParticleSystem(entity);
+          break;
         default:
           break;
       }
@@ -215,6 +256,11 @@
     enqueueSetFixedRotation: enqueueSetFixedRotation,
     enqueueExplode: enqueueExplode,
     enqueueSetSleepThreshold: enqueueSetSleepThreshold,
+    enqueueCreateParticleSystem: enqueueCreateParticleSystem,
+    enqueueCreateParticleGroupBox: enqueueCreateParticleGroupBox,
+    enqueueCreateParticleGroupCircle: enqueueCreateParticleGroupCircle,
+    enqueueDestroyParticleGroup: enqueueDestroyParticleGroup,
+    enqueueDestroyParticleSystem: enqueueDestroyParticleSystem,
     drainCommandRing: drainCommandRing,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

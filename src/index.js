@@ -74,6 +74,7 @@ export { JointBreakListener } from './components/JointBreakListener.js';
 // ============================================================================
 // Note: Particles are NOT GameObjects - they use ParticleComponent directly
 export { ParticleEmitter, DECAL_STAMPS_BLEND_MODE } from './core/ParticleEmitter.js';
+export { LiquidFunSystem, LIQUIDFUN_FLAGS } from './core/LiquidFunSystem.js';
 
 // ============================================================================
 // DECORATIONS
@@ -206,6 +207,7 @@ import { AdobeAnimComponent } from './components/AdobeAnimComponent.js';
 import { ParticleComponent } from './components/ParticleComponent.js';
 
 import { ParticleEmitter, DECAL_STAMPS_BLEND_MODE } from './core/ParticleEmitter.js';
+import { LiquidFunSystem, LIQUIDFUN_FLAGS } from './core/LiquidFunSystem.js';
 import { DecorationPool, SWAY_OFF, SWAY_LOOP, SWAY_IMPULSE } from './core/DecorationPool.js';
 import { Decoration } from './core/Decoration.js';
 import { DecorationSpatial } from './core/DecorationSpatial.js';
@@ -311,6 +313,8 @@ const WEED = Object.freeze({
 
   // Particles
   ParticleEmitter,
+  LiquidFunSystem,
+  LIQUIDFUN_FLAGS,
 
   // Decorations
   DecorationPool,

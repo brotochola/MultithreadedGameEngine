@@ -422,6 +422,52 @@ function createPhysicsApi(Module) {
     "number",
   ]);
 
+  const createParticleSystem = wrap("create_particle_system", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const destroyParticleSystem = wrap("destroy_particle_system", null, []);
+  const createParticleBox = wrap("create_particle_box", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const createParticleGroupBox = wrap("create_particle_group_box", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const createParticleGroupCircle = wrap("create_particle_group_circle", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const destroyParticleGroup = wrap("destroy_particle_group", null, [
+    "number",
+  ]);
+  const setParticleSubSteps = wrap("set_particle_sub_steps", null, [
+    "number",
+  ]);
+  const getParticleCount = wrap("get_particle_count", "number", []);
+  const getParticleCapacity = wrap("get_particle_capacity", "number", []);
+  const getParticleRadius = wrap("get_particle_radius", "number", []);
+  const getParticleCountByteOffset = wrap("get_particle_count_byte_offset", "number", []);
+  const getParticlePosByteOffset = wrap("get_particle_pos_byte_offset", "number", []);
+  const getParticleVelByteOffset = wrap("get_particle_vel_byte_offset", "number", []);
+  const getParticleFlagsByteOffset = wrap("get_particle_flags_byte_offset", "number", []);
+
   const DEFAULT_MATERIAL = Object.freeze({
     density: 1.0,
     friction: 0.3,
@@ -1197,6 +1243,79 @@ function createPhysicsApi(Module) {
         jointEventsBaseIndex: getJointEventsByteOffset() >> 2,
         jointEventCapacity: getJointEventCapacity(),
       };
+    }
+
+    createParticleSystem(radius = 10, maxCount = 5000, density = 1.0, subSteps = 2) {
+      this._particleSystem = createParticleSystem(this.worldId, radius, density, maxCount);
+      if (subSteps > 0) setParticleSubSteps(subSteps);
+      return this._particleSystem;
+    }
+
+    destroyParticleSystem() {
+      destroyParticleSystem();
+      this._particleSystem = null;
+    }
+
+    createParticleBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0) {
+      if (!this._particleSystem) this.createParticleSystem();
+      return createParticleBox(
+        posX - halfWidth,
+        posY - halfHeight,
+        posX + halfWidth,
+        posY + halfHeight,
+        spacing,
+        flags >>> 0,
+      );
+    }
+
+    createParticleGroupBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0, strength = 0.5) {
+      if (!this._particleSystem) this.createParticleSystem();
+      return createParticleGroupBox(
+        posX - halfWidth,
+        posY - halfHeight,
+        posX + halfWidth,
+        posY + halfHeight,
+        spacing,
+        flags >>> 0,
+        strength,
+      );
+    }
+
+    createParticleGroupCircle(posX, posY, radius, spacing = 0, flags = 0, strength = 0.5) {
+      if (!this._particleSystem) this.createParticleSystem();
+      return createParticleGroupCircle(posX, posY, radius, spacing, flags >>> 0, strength);
+    }
+
+    destroyParticleGroup(groupId) {
+      destroyParticleGroup(groupId);
+    }
+
+    setParticleSubSteps(steps) {
+      setParticleSubSteps(steps);
+    }
+
+    getParticleCount() {
+      return getParticleCount();
+    }
+
+    getParticleCapacity() {
+      return getParticleCapacity();
+    }
+
+    getParticleRadius() {
+      return getParticleRadius();
+    }
+
+    getParticlePosByteOffset() {
+      return getParticlePosByteOffset();
+    }
+
+    getParticleVelByteOffset() {
+      return getParticleVelByteOffset();
+    }
+
+    getParticleFlagsByteOffset() {
+      return getParticleFlagsByteOffset();
     }
   }
 

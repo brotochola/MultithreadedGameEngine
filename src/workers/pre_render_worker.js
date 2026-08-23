@@ -869,6 +869,10 @@ class PreRenderWorker extends AbstractWorker {
         if (!visibleData) return;
 
         const visibleCount = visibleData[0];
+        if (visibleCount > 0 && visibleCount !== this._lastLoggedVisibleParticles) {
+            this._lastLoggedVisibleParticles = visibleCount;
+            console.log(`[pre_render_worker] Collecting ${visibleCount} visible particles into render queue`);
+        }
         const y = ParticleComponent.y;
         const z = ParticleComponent.z;
         const flat = ParticleComponent.flat;
@@ -1632,6 +1636,8 @@ class PreRenderWorker extends AbstractWorker {
         const glowHeightOffset = LightEmitter.glowHeightOffset;
         const lightGradientAnimIdx = this.animationNameToIndex?.['_lightGradient'] ?? 0;
         const lightGradientTextureId = this.animationFrameStart?.[lightGradientAnimIdx] ?? 0;
+        const whiteCircleAnimIdx = this.animationNameToIndex?.['_whiteCircle'] ?? -1;
+        const whiteCircleTextureId = whiteCircleAnimIdx >= 0 ? (this.animationFrameStart?.[whiteCircleAnimIdx] ?? INVALID_TEXTURE_ID) : INVALID_TEXTURE_ID;
 
         const decoX = DecorationComponent.x;
         const decoY = DecorationComponent.y;
@@ -1813,7 +1819,9 @@ class PreRenderWorker extends AbstractWorker {
                 rqRotS[out] = particleRotS[idx];
                 rqTint[out] = particleTint[idx];
                 const pAnimIdx = particleTextureId[idx];
-                rqTextureId[out] = this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID;
+                rqTextureId[out] = pAnimIdx === 0
+                    ? whiteCircleTextureId
+                    : (this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID);
                 rqAnchorX[out] = 0.5;
                 rqAnchorY[out] = 0.5;
                 rqType[out] = 1;
@@ -2036,6 +2044,8 @@ class PreRenderWorker extends AbstractWorker {
         const glowHeightOffset = LightEmitter.glowHeightOffset;
         const lightGradientAnimIdx = this.animationNameToIndex?.['_lightGradient'] ?? 0;
         const lightGradientTextureId = this.animationFrameStart?.[lightGradientAnimIdx] ?? 0;
+        const whiteCircleAnimIdx2 = this.animationNameToIndex?.['_whiteCircle'] ?? -1;
+        const whiteCircleTextureId2 = whiteCircleAnimIdx2 >= 0 ? (this.animationFrameStart?.[whiteCircleAnimIdx2] ?? INVALID_TEXTURE_ID) : INVALID_TEXTURE_ID;
 
         const layerEntries = this._customLayerEntries;
         for (let li = 0; li < layerEntries.length; li++) {
@@ -2201,7 +2211,9 @@ class PreRenderWorker extends AbstractWorker {
                     rqRotS[out] = particleRotS[idx];
                     rqTint[out] = particleTint[idx];
                     const pAnimIdx = particleTextureId[idx];
-                    rqTextureId[out] = this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID;
+                    rqTextureId[out] = pAnimIdx === 0
+                        ? whiteCircleTextureId2
+                        : (this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID);
                     rqAnchorX[out] = 0.5;
                     rqAnchorY[out] = 0.5;
                     rqType[out] = 1;

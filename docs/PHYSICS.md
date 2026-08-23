@@ -6,7 +6,7 @@ Bundle builds (`npm run make_bundle`) shove glue + `.wasm` + the `importScripts`
 
 This doc is about the **pipeline** (step, contacts, joints, invariants). Implementation: `src/box2d/physics_host.impl.js`, `src/box2d/weedjs_post.js`, `src/components/RigidBody.js`, `src/core/gameObject.js`, `src/core/Joint.js`.
 
-Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architecture](./WORKERS_ARCHITECTURE.md), [Memory structure](./MEMORY_STRUCTURE.md).
+Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architecture](./WORKERS_ARCHITECTURE.md), [Memory structure](./MEMORY_STRUCTURE.md), [LiquidFun fluids](./LIQUIDFUN.md).
 
 ---
 

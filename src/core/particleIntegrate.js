@@ -73,7 +73,7 @@ export function updateParticlePhysicsBuffers({
 
     currentLife[i] += deltaTime;
 
-    if (currentLife[i] >= lifespan[i]) {
+    if (lifespan[i] > 0 && currentLife[i] >= lifespan[i]) {
       active[i] = 0;
       ParticleEmitter.returnToPool(i);
       continue;

@@ -63,6 +63,8 @@
   let bodyGeneration = null;
   let seenBodyGeneration = null;
   let jointViews = null;
+  let particleViews = null;
+  let maxParticles = 0;
   let jointHandle = null; // Int32Array, -1 = none, -2 = fail this revision
   let jointSeenRev = null; // Uint32Array — last synced Joint.revision
   let jointDense = null; // Uint16Array — indices with live WASM handles
@@ -901,6 +903,31 @@
       if (!hasBody[entity]) return;
       bodySetSleepThresholdFn(entity, threshold);
     },
+    createParticleSystem(systemId, radius, maxCount, subSteps) {
+      if (!world) return;
+      const sys = world.createParticleSystem(radius || 10, maxCount || 5000, 1.0, subSteps || 2);
+      console.log(`[weedjs_post] Created particle system ptr: ${sys} (radius: ${radius}, maxCount: ${maxCount})`);
+    },
+    createParticleGroupBox(flags, posX, posY, halfWidth, halfHeight) {
+      if (!world) return;
+      const grp = world.createParticleGroupBox(posX, posY, halfWidth, halfHeight, 0, flags || 0, 0.5);
+      const count = world.getParticleCount();
+      console.log(`[weedjs_post] Created particle box group: ${grp}, total particles: ${count}`);
+    },
+    createParticleGroupCircle(systemId, posX, posY, radius, flags) {
+      if (!world) return;
+      const grp = world.createParticleGroupCircle(posX, posY, radius, 0, flags || 0, 0.5);
+      const count = world.getParticleCount();
+      console.log(`[weedjs_post] Created particle circle group: ${grp} at (${posX}, ${posY}), total particles: ${count}`);
+    },
+    destroyParticleGroup(systemId, groupId) {
+      if (!world) return;
+      world.destroyParticleGroup(groupId);
+    },
+    destroyParticleSystem(systemId) {
+      if (!world) return;
+      world.destroyParticleSystem();
+    },
   };
 
   function drainCommands() {
@@ -1033,11 +1060,62 @@
     }
   }
 
+  let _lastLiquidFunLogCount = 0;
+  function syncLiquidFunParticlesToSharedBuffers() {
+    if (!world || typeof world.getParticleCount !== 'function') return;
+    const count = world.getParticleCount();
+    if (count <= 0) return;
+
+    const posByteOffset = world.getParticlePosByteOffset();
+    if (!posByteOffset) return;
+
+    const heapF32 = Module.HEAPF32;
+    if (!heapF32) return;
+
+    const posFloatOffset = posByteOffset >> 2;
+    if (!particleViews || !particleViews.active) return;
+
+    if (count !== _lastLiquidFunLogCount) {
+      _lastLiquidFunLogCount = count;
+      const x0 = heapF32[posFloatOffset];
+      const y0 = heapF32[posFloatOffset + 1];
+      console.log(`[weedjs_post] LiquidFun WASM active particles: ${count}, particle[0] pos = (${x0}, ${y0})`);
+    }
+
+    const maxP = Math.min(count, maxParticles || 10000);
+    const active = particleViews.active;
+    const px = particleViews.x;
+    const py = particleViews.y;
+    const scaleX = particleViews.scaleX;
+    const scaleY = particleViews.scaleY;
+    const rotC = particleViews.rotC;
+    const rotS = particleViews.rotS;
+    const alpha = particleViews.alpha;
+    const tint = particleViews.tint;
+    const textureId = particleViews.textureId;
+    const flat = particleViews.flat;
+
+    for (let i = 0; i < maxP; i++) {
+      active[i] = 1;
+      px[i] = heapF32[posFloatOffset + (i << 1)];
+      py[i] = heapF32[posFloatOffset + (i << 1) + 1];
+      if (!scaleX[i]) scaleX[i] = 1.0;
+      if (!scaleY[i]) scaleY[i] = 1.0;
+      if (rotC && !rotC[i]) rotC[i] = 1.0;
+      if (rotS && !rotS[i]) rotS[i] = 0.0;
+      if (!alpha[i]) alpha[i] = 1.0;
+      if (!textureId[i]) textureId[i] = 0;
+      if (!tint[i]) tint[i] = 0x3399ff;
+      flat[i] = 1;
+    }
+  }
+
   function afterStep() {
     publishContactRingFromWasm();
     publishHitsFromWasm();
     publishJointBreaksFromWasm();
     publishMovedSabFromStep();
+    syncLiquidFunParticlesToSharedBuffers();
   }
 
   function publishMovedSabFromStep() {
@@ -1368,6 +1446,22 @@
       throw new Error('[weedjs-box2d] WEEDJS_INIT missing bodySync dirty buffers');
     }
     bindJointViews(data.jointViews, data.maxJoints | 0);
+    if (data.particleViews) {
+      particleViews = {
+        active: viewFromDesc(data.particleViews.active, Uint8Array),
+        x: viewFromDesc(data.particleViews.x, Float32Array),
+        y: viewFromDesc(data.particleViews.y, Float32Array),
+        scaleX: viewFromDesc(data.particleViews.scaleX, Float32Array),
+        scaleY: viewFromDesc(data.particleViews.scaleY, Float32Array),
+        rotC: data.particleViews.rotC ? viewFromDesc(data.particleViews.rotC, Float32Array) : null,
+        rotS: data.particleViews.rotS ? viewFromDesc(data.particleViews.rotS, Float32Array) : null,
+        alpha: viewFromDesc(data.particleViews.alpha, Float32Array),
+        tint: viewFromDesc(data.particleViews.tint, Uint32Array),
+        textureId: viewFromDesc(data.particleViews.textureId, Uint16Array),
+        flat: viewFromDesc(data.particleViews.flat, Uint8Array),
+      };
+      maxParticles = data.maxParticles | 0;
+    }
     if (data.stats) {
       statsF32 = viewFromDesc(data.stats, Float32Array);
     } else {

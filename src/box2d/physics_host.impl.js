@@ -94,6 +94,40 @@
     polyNormalY: { type: Float32Array, length: MAX_POLYGON_VERTICES },
   };
 
+  var PARTICLE_SCHEMA = {
+    active: Uint8Array,
+    x: Float32Array,
+    y: Float32Array,
+    z: Float32Array,
+    vx: Float32Array,
+    vy: Float32Array,
+    vz: Float32Array,
+    lifespan: Uint16Array,
+    currentLife: Uint16Array,
+    gravity: Float32Array,
+    scaleX: Float32Array,
+    scaleY: Float32Array,
+    alpha: Float32Array,
+    tint: Uint32Array,
+    baseTint: Uint32Array,
+    textureId: Uint16Array,
+    rotC: Float32Array,
+    rotS: Float32Array,
+    flipX: Uint8Array,
+    flipY: Uint8Array,
+    fadeOnTheFloor: Uint16Array,
+    timeOnFloor: Uint16Array,
+    initialAlpha: Float32Array,
+    stayOnTheFloor: Uint8Array,
+    despawnOnGroundContact: Uint8Array,
+    tweenToAlpha0: Uint8Array,
+    isItOnScreen: Uint8Array,
+    blendMode: Uint8Array,
+    layerId: Uint8Array,
+    flat: Uint8Array,
+    viewMode: Uint8Array,
+  };
+
   function schemaEntry(typeOrSpec) {
     if (typeOrSpec && typeof typeOrSpec === 'object' && typeOrSpec.type) {
       return { type: typeOrSpec.type, length: typeOrSpec.length | 0 || 1 };
@@ -364,9 +398,9 @@
     if (entityCount > MAX_BODIES_HINT) {
       throw new Error(
         'Physics: totalEntityCount ' +
-          entityCount +
-          ' exceeds Box2D MAX_BODIES ' +
-          MAX_BODIES_HINT,
+        entityCount +
+        ' exceeds Box2D MAX_BODIES ' +
+        MAX_BODIES_HINT,
       );
     }
 
@@ -415,18 +449,18 @@
       collectDetailedStats: !!state.collectDetailedStats,
       posePublish: state.posePublish
         ? {
-            dataA: state.posePublish.dataA,
-            dataB: state.posePublish.dataB,
-            sync: state.posePublish.sync,
-            capacity: state.posePublish.capacity | 0,
-          }
+          dataA: state.posePublish.dataA,
+          dataB: state.posePublish.dataB,
+          sync: state.posePublish.sync,
+          capacity: state.posePublish.capacity | 0,
+        }
         : null,
       bodySync: state.bodySyncViews
         ? {
-            dirtyFlags: packView(state.bodySyncViews.dirtyFlags),
-            dirtyWords: packView(state.bodySyncViews.dirtyWords),
-            generation: packView(state.bodySyncViews.generation),
-          }
+          dirtyFlags: packView(state.bodySyncViews.dirtyFlags),
+          dirtyWords: packView(state.bodySyncViews.dirtyWords),
+          generation: packView(state.bodySyncViews.generation),
+        }
         : null,
       views: {
         entityActive: packView(T.active),
@@ -495,6 +529,24 @@
         activeCount: packView(J.activeCount),
         activeListLock: packView(J.activeListLock),
         revision: packView(J.revision),
+      };
+    }
+
+    if (state.particle) {
+      var P = state.particle;
+      initPayload.maxParticles = state.maxParticles;
+      initPayload.particleViews = {
+        active: packView(P.active),
+        x: packView(P.x),
+        y: packView(P.y),
+        scaleX: packView(P.scaleX),
+        scaleY: packView(P.scaleY),
+        rotC: packView(P.rotC),
+        rotS: packView(P.rotS),
+        alpha: packView(P.alpha),
+        tint: packView(P.tint),
+        textureId: packView(P.textureId),
+        flat: packView(P.flat),
       };
     }
 
@@ -596,6 +648,15 @@
       state.globalEntityCount,
       COLLIDER_SCHEMA,
     );
+
+    if (componentData.ParticleComponent) {
+      state.particle = bindSchema(
+        componentData.ParticleComponent,
+        data.maxParticles || 10000,
+        PARTICLE_SCHEMA,
+      );
+      state.maxParticles = data.maxParticles || 10000;
+    }
 
     if (buffers.bodyDirtyFlags && buffers.bodyDirtyWords && buffers.bodyGeneration) {
       state.bodySyncViews = {

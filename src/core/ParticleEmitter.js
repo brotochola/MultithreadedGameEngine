@@ -45,6 +45,7 @@ import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { SharedAtomicPool } from './SharedAtomicPool.js';
 import { CAMERA_TYPES } from './ConfigDefaults.js';
 import { randomRange, randomColor, rng } from './utils.js';
+import { LiquidFunSystem } from './LiquidFunSystem.js';
 
 export const DECAL_STAMPS_BLEND_MODE = Object.freeze({
   normal: 0,
@@ -343,6 +344,20 @@ export class ParticleEmitter extends SharedAtomicPool {
     s.flat = 0;
     s.viewMode = CAMERA_TYPES.TOPDOWN;
     return this._spawn(s, null);
+  }
+
+  /**
+   * Spawns LiquidFun particle physics in Box2D.
+   * Convenience wrapper delegating to LiquidFunSystem.
+   *
+   * @param {Object} options
+   */
+  static emitLiquidFunParticles(options) {
+    if (options && options.shape === 'box') {
+      LiquidFunSystem.createParticleBox(options);
+    } else {
+      LiquidFunSystem.createParticleCircle(options);
+    }
   }
 
   /**

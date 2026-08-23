@@ -664,9 +664,8 @@ class ParticleWorker extends AbstractWorker {
     const visibleData = this.visibleParticlesData;
     const maxParticles = this.maxParticles;
 
-    // freeListTop[1] is the free count (eventually consistent - fine for an early-exit bound)
-    const freeListTop = ParticleEmitter.freeListTop;
-    const expectedActive = freeListTop ? maxParticles - freeListTop[1] : maxParticles;
+    // Scan all potential active particles (CPU emitter + Box2D LiquidFun)
+    const expectedActive = maxParticles;
 
     // Early exit if camera not ready (can't calculate visibility)
     if (!this.cameraData) {
@@ -716,6 +715,12 @@ class ParticleWorker extends AbstractWorker {
     });
 
     this.activeParticleCount = activeCount;
+    if (activeCount !== this._lastLoggedActiveCount) {
+      this._lastLoggedActiveCount = activeCount;
+      const x0 = ParticleComponent.x ? ParticleComponent.x[0] : 0;
+      const y0 = ParticleComponent.y ? ParticleComponent.y[0] : 0;
+      console.log(`[particle_worker] Active particles: ${activeCount}, Visible: ${visibleData ? visibleData[0] : 0}, particle[0]=(${x0}, ${y0}), cam=(${cameraX.toFixed(1)}, ${cameraY.toFixed(1)}, z=${zoom.toFixed(2)})`);
+    }
   }
 
   /**

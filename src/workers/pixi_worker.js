@@ -659,6 +659,10 @@ class PixiRenderer extends AbstractWorker {
     if (!this.renderQueueEnabled || !this.entitiesBatch) return;
 
     const count = this.renderQueueCount[0];
+    if (count !== this._lastLoggedRenderQueueCount) {
+      this._lastLoggedRenderQueueCount = count;
+      console.log(`[pixi_worker] DRAW: renderQueueCount = ${count}`);
+    }
     const q = {
       count,
       x: this.renderQueueX,
