@@ -42,7 +42,7 @@ Every C change: edit sibling repo → `build_for_weed.bat` (incremental, ~10-15s
 | **H4** | `FindBodyContacts` and `SolveCollision` each run their own `b2World_OverlapAABB` broad-phase query per substep | Swept-cloud AABB is a proven superset of the static-cloud AABB (same padding) — one shared query feeds both passes | Planned |
 | **H5** | `RemoveSpuriousBodyContacts` uses `qsort` (indirect comparator calls) for runs capped at 3 kept contacts per particle | Insertion sort | **Rejected** (see log — the "≤3" cap is post-filter, not the sorted array size) |
 | **H6** | `CapturePairs` (SPRING/BARRIER group creation) is an O(n²) double loop over the new particle range | Route through a scratch grid over just the new range | **Done** |
-| **H7** | `SolveStaticPressure`'s 8-iteration Poisson loop re-filters the *entire* `particleContacts` array every iteration by flag | Compact the qualifying-contact index list once, iterate that 8× | Planned |
+| **H7** | `SolveStaticPressure`'s 8-iteration Poisson loop re-filters the *entire* `particleContacts` array every iteration by flag | Compact the qualifying-contact index list once, iterate that 8× | **Done** |
 | **H8** | `syncLiquidFunParticlesToSharedBuffers` (JS) scalar-loops the interleaved→deinterleaved position copy every frame | Deinterleave in C once (tight loop over contiguous `b2Vec2`), JS does two bulk `.set()` calls | Planned |
 
 ## Results log
@@ -241,6 +241,29 @@ O(n²)→O(n) win, exactly what H5's rejection was a reminder to actually verify
 rather than assume. L2 regression check (same scene, unrelated to this group,
 just confirming no steady-state cost): `BOX2D_MS` 3.054/3.122 (avg 3.088) — within
 the noise band already established for this scene, no regression.
+
+### H7 — Compact static-pressure contact sublist (2026-08-23)
+
+Added `int* staticPressureContactIndices` to `lfParticleSystem`, grown in lockstep
+with `particleContactCapacity` (same realloc site as `particleContacts` in
+`PushParticleContact`, plus the initial allocation in `Create` and the free in
+`Destroy`). `SolveStaticPressure` now builds the compacted index list once (one
+pass over `particleContacts`, testing the flag), then the 8-iteration Poisson
+relaxation loop walks only that compacted list instead of re-testing the flag on
+every contact every iteration. Correctness: 17/17, including the dedicated
+STATIC_PRESSURE test.
+
+| | Run 1 `BOX2D_MS` | Run 2 `BOX2D_MS` | Avg |
+|---|------------------|------------------|-----|
+| Before (H6) | 3.054 | 3.122 | 3.088 |
+| After (H7 compaction) | 2.813 | 2.749 | 2.781 |
+
+**Verdict: improved, ~10%.** The largest single win since H2's SIMD pass — makes
+sense, the bench scene's 1k-particle STATIC_PRESSURE group means a meaningful
+fraction of `particleContacts` qualifies, so cutting the per-iteration flag-test
+from "every contact, 8x" to "compacted list, 8x" removes real repeated work.
+
+Running total from baseline: **~3.30ms → ~2.78ms (~16% cumulative)**, `strictContactCheck:false`, H2-H4+H6-H7 stacked (H5 rejected/reverted).
 
 ## Related
 
