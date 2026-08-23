@@ -81,8 +81,6 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   create() {
-    console.log('🌊 LiquidFunDemoScene: Initializing LiquidFun Physics...');
-
     this.createEnvironment();
     this.spawnParticleGroups();
 

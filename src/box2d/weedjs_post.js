@@ -921,14 +921,13 @@
     createParticleSystem(systemId, radius, maxCount, subSteps) {
       if (!world) return;
       liquidFunPosFloatOffset = 0;
-      const sys = world.createParticleSystem(radius || 10, maxCount || 10000, 1.0, subSteps > 0 ? subSteps : 1);
-      // console.log(`[weedjs_post] Created particle system ptr: ${sys} (radius: ${radius}, maxCount: ${maxCount})`);
+      world.createParticleSystem(radius || 10, maxCount || 10000, 1.0, subSteps > 0 ? subSteps : 1);
     },
     createParticleGroupBox(flags, posX, posY, halfWidth, halfHeight) {
       if (!world) return;
       const emit = takePendingLiquidFunEmit();
       const oldCount = world.getParticleCount();
-      const grp = world.createParticleGroupBox(
+      world.createParticleGroupBox(
         posX,
         posY,
         halfWidth,
@@ -938,14 +937,12 @@
         emit.strength,
       );
       paintNewLiquidFunParticles(oldCount, emit);
-      const count = world.getParticleCount();
-      // console.log(`[weedjs_post] Created particle box group: ${grp}, total particles: ${count}`);
     },
     createParticleGroupCircle(systemId, posX, posY, radius, flags) {
       if (!world) return;
       const emit = takePendingLiquidFunEmit();
       const oldCount = world.getParticleCount();
-      const grp = world.createParticleGroupCircle(
+      world.createParticleGroupCircle(
         posX,
         posY,
         radius,
@@ -954,8 +951,6 @@
         emit.strength,
       );
       paintNewLiquidFunParticles(oldCount, emit);
-      const count = world.getParticleCount();
-      // console.log(`[weedjs_post] Created particle circle group: ${grp} at (${posX}, ${posY}), total particles: ${count}`);
     },
     destroyParticleGroup(systemId, groupId) {
       if (!world) return;
@@ -1138,7 +1133,6 @@
     if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
 
-  let _lastLiquidFunLogCount = 0;
   function syncLiquidFunParticlesToSharedBuffers() {
     if (!world || typeof world.getParticleCount !== 'function') return;
     if (!liquidFunViews) return;
@@ -1158,13 +1152,6 @@
     if (!heapF32) return;
 
     const posFloatOffset = liquidFunPosFloatOffset;
-    if (count !== _lastLiquidFunLogCount) {
-      _lastLiquidFunLogCount = count;
-      const x0 = heapF32[posFloatOffset];
-      const y0 = heapF32[posFloatOffset + 1];
-      console.log(`[weedjs_post] LiquidFun WASM active particles: ${count}, particle[0] pos = (${x0}, ${y0})`);
-    }
-
     const maxP = Math.min(count, liquidFunMaxCount || 0);
     const px = liquidFunViews.x;
     const py = liquidFunViews.y;

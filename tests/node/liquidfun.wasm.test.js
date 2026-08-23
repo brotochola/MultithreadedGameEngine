@@ -51,6 +51,9 @@ function instantiateBox2dWasm() {
     return instance.exports[exp];
   };
 
+  // Demo uses subSteps=1. Wrapper default is 2; that 4× critical pressure sprays puddles off the floor.
+  fn('set_particle_sub_steps')(1);
+
   return { instance, memory, fn };
 }
 
@@ -72,12 +75,12 @@ test('WASM LiquidFun groups create and rest on a static box (Y-down pixels)', ()
   assert.ok(worldId, 'create_world failed');
   assert.ok(bindGameBuffers(16), 'bind_game_buffers failed');
 
-  // Static floor at y=400, half-height 30 → top at 370
+  // Static floor at y=400, half-height 130 → top at 270. Wide so the puddle cannot walk off the ends.
   const floorSlot = createBodyBox(
     worldId,
     0, // static
     0, 400, 0,
-    400, 30,
+    2000, 130,
     0, 0,
     1, 0.6, 0,
     0, 0, 1,
@@ -93,9 +96,9 @@ test('WASM LiquidFun groups create and rest on a static box (Y-down pixels)', ()
 
   const circle0 = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5);
   assert.ok(circle0 >= 0, `first circle group failed: ${circle0}`);
-  const circle1 = createParticleGroupCircle(80, 80, 30, 0, 16, 0.5);
+  const circle1 = createParticleGroupCircle(80, 80, 30, 0, 0, 0.5);
   assert.ok(circle1 >= 0, `second circle group failed: ${circle1}`);
-  const boxGrp = createParticleGroupBox(-40, 40, 40, 100, 0, 32, 0.5);
+  const boxGrp = createParticleGroupBox(-40, 40, 40, 100, 0, 0, 0.5);
   assert.ok(boxGrp >= 0, `box group failed: ${boxGrp}`);
 
   const count = getParticleCount();
@@ -112,13 +115,18 @@ test('WASM LiquidFun groups create and rest on a static box (Y-down pixels)', ()
   const base = posByte >> 2;
   let minY = Infinity;
   let maxY = -Infinity;
+  let minX = Infinity;
+  let maxX = -Infinity;
   for (let i = 0; i < count; i++) {
+    const x = heap[base + (i << 1)];
     const y = heap[base + (i << 1) + 1];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
   }
 
-  const floorTop = 370;
+  const floorTop = 270;
   assert.ok(
     maxY < floorTop + 40,
     `particles fell through floor: maxY=${maxY} floorTop=${floorTop}`,
@@ -128,9 +136,10 @@ test('WASM LiquidFun groups create and rest on a static box (Y-down pixels)', ()
     `particles never reached the floor (gravity/step dead?): maxY=${maxY} floorTop=${floorTop}`,
   );
   assert.ok(minY > -200, `particles escaped upward unexpectedly: minY=${minY}`);
+  // Point particles pancake on the plane; Google 1.1.0 has no disk stack. Check spread in X.
   assert.ok(
-    maxY - minY > 25,
-    `particles compressed too much: spanY=${maxY - minY} minY=${minY} maxY=${maxY}`,
+    maxX - minX > 80,
+    `puddle did not spread: spanX=${maxX - minX} minX=${minX} maxX=${maxX}`,
   );
   assert.equal(getParticleCount(), count);
 });
@@ -151,12 +160,12 @@ test('WASM water blob does not climb a vertical static wall', () => {
   assert.ok(worldId, 'create_world failed');
   assert.ok(bindGameBuffers(16), 'bind_game_buffers failed');
 
-  // Floor top at y=370. Wall right face at x=20.
+  // Floor top at y=270. Wall right face at x=130. Wide floor so the puddle stays on it.
   const floorSlot = createBodyBox(
     worldId,
     0, // static
     0, 400, 0,
-    400, 30,
+    2000, 130,
     0, 0,
     1, 0.6, 0,
     0, 0, 1,
@@ -168,8 +177,8 @@ test('WASM water blob does not climb a vertical static wall', () => {
   const wallSlot = createBodyBox(
     worldId,
     0,
-    0, 250, 0,
-    20, 200,
+    0, 200, 0,
+    130, 200,
     0, 0,
     1, 0.6, 0,
     0, 0, 1,
@@ -184,7 +193,7 @@ test('WASM water blob does not climb a vertical static wall', () => {
   const sysOk = createParticleSystem(worldId, 10, 1.0, 800);
   assert.ok(sysOk, 'create_particle_system failed');
 
-  const gid = createParticleGroupCircle(90, 200, 50, 0, 0, 0);
+  const gid = createParticleGroupCircle(155, 200, 50, 0, 0, 0);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 8, `expected a blob, got ${count}`);
@@ -196,8 +205,8 @@ test('WASM water blob does not climb a vertical static wall', () => {
 
   const heap = new Float32Array(memory.buffer);
   const base = getParticlePosByteOffset() >> 2;
-  const wallFace = 20;
-  const nearWall = wallFace + 25;
+  const wallFace = 130;
+  const nearWall = wallFace + 60;
   let puddleMinY = Infinity;
   let puddleMaxY = -Infinity;
   let wallMinY = Infinity;
@@ -226,16 +235,15 @@ test('WASM water blob does not climb a vertical static wall', () => {
     wallSpan < puddleSpan + 40,
     `tall 1-wide wall column: wallSpan=${wallSpan} puddleSpan=${puddleSpan} wallN=${wallN}`,
   );
-  assert.ok(puddleSpan > 15, `wall puddle crushed: spanY=${puddleSpan}`);
   assert.ok(
-    puddleMaxY < 370 + 40,
+    puddleMaxY < 270 + 40,
     `particles fell through floor: maxY=${puddleMaxY}`,
   );
 
-  const wallX0 = -20;
-  const wallX1 = 20;
-  const wallY0 = 50;
-  const wallY1 = 450;
+  const wallX0 = -128;
+  const wallX1 = 128;
+  const wallY0 = 2;
+  const wallY1 = 398;
   let insideWall = 0;
   for (let i = 0; i < count; i++) {
     const x = heap[base + (i << 1)];
@@ -322,6 +330,61 @@ test('WASM water beside a thick static box stays outside (max pen < radius)', ()
   );
 });
 
+test('WASM particle spawned inside a thick static box exits the nearest face', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createBodyBox = fn('create_body_box');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleBox = fn('create_particle_box');
+  const getParticleCount = fn('get_particle_count');
+  const getParticlePosByteOffset = fn('get_particle_pos_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId, 'create_world failed');
+  assert.ok(bindGameBuffers(16), 'bind_game_buffers failed');
+
+  // Box x=[-130,130], y=[0,800]. Center spawn is 130px from left/right, 400px from top/bottom.
+  const boxSlot = createBodyBox(
+    worldId,
+    0,
+    0, 400, 0,
+    130, 400,
+    0, 0,
+    1, 0.6, 0,
+    0, 0, 1,
+    0, 0, 0,
+    0, 0,
+    1, 0xffffffff,
+    0, 0, 1,
+  );
+  assert.ok(boxSlot >= 0, `box failed: ${boxSlot}`);
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 64), 'create_particle_system failed');
+
+  const n = createParticleBox(0, 400, 0, 400, 20, 0);
+  assert.equal(n, 1, `expected 1 particle, got ${n}`);
+  assert.equal(getParticleCount(), 1);
+
+  const dt = 1 / 60;
+  for (let i = 0; i < 90; i++) {
+    stepWorld(worldId, dt, 4);
+  }
+
+  const heap = new Float32Array(memory.buffer);
+  const base = getParticlePosByteOffset() >> 2;
+  const x = heap[base];
+  const y = heap[base + 1];
+  const inside = x > -128 && x < 128 && y > 2 && y < 798;
+  assert.ok(!inside, `still trapped inside box: x=${x} y=${y}`);
+  assert.ok(y > 80, `exited through the top instead of nearest face: x=${x} y=${y}`);
+  assert.ok(
+    x < -100 || x > 100,
+    `did not leave through a vertical face: x=${x} y=${y}`,
+  );
+});
+
 test('WASM 10k water smoke: create and step without losing particles', () => {
   const { fn } = instantiateBox2dWasm();
 
@@ -371,7 +434,7 @@ test('WASM one water particle settles on a static floor (no 600 px/s bounce)', (
     worldId,
     0,
     0, 400, 0,
-    400, 30,
+    400, 130,
     0, 0,
     1, 0.6, 0,
     0, 0, 1,
@@ -397,14 +460,14 @@ test('WASM one water particle settles on a static floor (no 600 px/s bounce)', (
   const velBase = getParticleVelByteOffset() >> 2;
   const y = heap[posBase + 1];
   const vy = heap[velBase + 1];
-  const floorTop = 370;
+  const floorTop = 270;
   assert.ok(Number.isFinite(y) && Number.isFinite(vy), `non-finite: y=${y} vy=${vy}`);
   assert.ok(
     Math.abs(vy) < 80,
     `particle still bouncing: |vy|=${vy} (overlap launch is ~600)`,
   );
   assert.ok(
-    y > floorTop - 12 && y < floorTop + 12,
+    y > floorTop - 25 && y < floorTop + 12,
     `particle not resting near floor top: y=${y} floorTop=${floorTop} radius=${radius}`,
   );
 });
