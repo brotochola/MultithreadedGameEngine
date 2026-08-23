@@ -1,11 +1,21 @@
 // liquidFunDemoScene.js - LiquidFun Particle Physics Demo Scene in WeedJS
-// Capability showcase: one emit per material at create, click appends ungrouped water.
+// WASD pans. Q/E/R/F/G/T pick a liquid; LMB sprays at the cursor.
 
 import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 
-const { Mouse, ParticleEmitter } = WEED;
+const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_MATERIALS } = WEED;
+
+// Keys avoid WASD. Jelly is elastic (a group per burst) so it sprays slower.
+const LIQUID_TOOLS = [
+  { key: 'q', material: 'water', shape: 'circle', radius: 130 },
+  { key: 'e', material: 'oil', shape: 'circle', radius: 130 },
+  { key: 'r', material: 'cream', shape: 'circle', radius: 130 },
+  { key: 'f', material: 'dulceDeLeche', shape: 'circle', radius: 110 },
+  { key: 'g', material: 'jelly', shape: 'circle', radius: 70, grouped: true },
+  { key: 't', material: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80 },
+];
 
 export class LiquidFunDemoScene extends WEED.Scene {
   // ========================================
@@ -76,6 +86,9 @@ export class LiquidFunDemoScene extends WEED.Scene {
   constructor(game) {
     super(game);
     this.spawnTimer = 0;
+    this.liquidTool = 0;
+    this._mouse0WasDown = false;
+    this._hud = null;
     this.cameraFollowX = 2000;
     this.cameraFollowY = 1200;
   }
@@ -83,12 +96,19 @@ export class LiquidFunDemoScene extends WEED.Scene {
   create() {
     this.createEnvironment();
     this.spawnParticleGroups();
+    this._createHud();
+    this._refreshHud();
 
     Camera.centerOn(this.cameraFollowX, this.cameraFollowY);
     Camera.zoom = 0.3;
     Camera.setZoom(0.3);
     // Allow zooming out past world-fit min (~0.48 for 4k×3k world).
     Camera.setWorldBounds(Infinity, Infinity);
+  }
+
+  async destroy() {
+    this._removeHud();
+    await super.destroy();
   }
 
   createEnvironment() {
@@ -185,21 +205,68 @@ export class LiquidFunDemoScene extends WEED.Scene {
     Camera.follow(this.cameraFollowX, this.cameraFollowY, 0.15, dtRatio);
     Camera.setZoom(Math.max(0.01, Math.min(3.0, Camera.zoom * (1 - Mouse.wheel * 0.001))));
 
-    // Click appends ungrouped water. Do not create a new group per burst.
-    if (Mouse.isButton0Down) {
-      this.spawnTimer += deltaTime;
-      if (this.spawnTimer >= 0.05) {
-        this.spawnTimer = 0;
-        ParticleEmitter.emitLiquidFunParticles({
-          material: 'water',
-          shape: 'circle',
-          posX: Mouse.x,
-          posY: Mouse.y,
-          radius: 130,
-          texture: '_whiteCircle',
-          tint: 0x00e5ff,
-        });
+    for (let i = 0; i < LIQUID_TOOLS.length; i++) {
+      if (Keyboard.isPressed(LIQUID_TOOLS[i].key)) {
+        this.liquidTool = i;
+        this._refreshHud();
       }
     }
+
+    const tool = LIQUID_TOOLS[this.liquidTool];
+    const down = Mouse.isButton0Down;
+    const justDown = down && !this._mouse0WasDown;
+    this._mouse0WasDown = down;
+    if (!down) {
+      this.spawnTimer = 0;
+      return;
+    }
+
+    const interval = tool.grouped ? 0.25 : 0.05;
+    this.spawnTimer += deltaTime;
+    if (!justDown && this.spawnTimer < interval) return;
+    this.spawnTimer = 0;
+
+    const emit = {
+      material: tool.material,
+      shape: tool.shape,
+      posX: Mouse.x,
+      posY: Mouse.y,
+      texture: '_whiteCircle',
+    };
+    if (tool.shape === 'box') {
+      emit.halfWidth = tool.halfWidth;
+      emit.halfHeight = tool.halfHeight;
+    } else {
+      emit.radius = tool.radius;
+    }
+    ParticleEmitter.emitLiquidFunParticles(emit);
+  }
+
+  _createHud() {
+    const el = document.createElement('div');
+    el.id = 'liquidfun-demo-hud';
+    el.style.cssText =
+      'position:fixed;left:12px;bottom:12px;z-index:900;color:#fff;font:13px/1.45 sans-serif;' +
+      'background:rgba(0,0,0,0.65);padding:10px 12px;border-radius:6px;pointer-events:none;white-space:pre;';
+    document.body.appendChild(el);
+    this._hud = el;
+  }
+
+  _refreshHud() {
+    if (!this._hud) return;
+    const lines = LIQUID_TOOLS.map((t, i) => {
+      const mark = i === this.liquidTool ? '>' : ' ';
+      return `${mark} ${t.key.toUpperCase()}  ${t.material}`;
+    });
+    const tint = LIQUIDFUN_MATERIALS[LIQUID_TOOLS[this.liquidTool].material]?.tint;
+    this._hud.textContent =
+      `LiquidFun  |  ${LIQUID_TOOLS[this.liquidTool].material}` +
+      (tint != null ? `  #${tint.toString(16).padStart(6, '0')}` : '') +
+      `\n${lines.join('\n')}\nLMB spray  WASD pan  wheel zoom`;
+  }
+
+  _removeHud() {
+    if (this._hud && this._hud.parentNode) this._hud.parentNode.removeChild(this._hud);
+    this._hud = null;
   }
 }
