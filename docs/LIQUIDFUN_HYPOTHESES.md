@@ -116,6 +116,28 @@ sample set, which is suggestive but not a tight statistical claim — rerun with
 
 **Follow-up simplification (same day):** dropped the `#if defined(LF_HAS_SSE2) ... #else <scalar duplicate> #endif` branching — single compiler/toolchain (Emscripten `-msimd128 -msse2`, always on for this build), so the scalar fallback was dead code nobody would ever compile. Replaced with a single `#if !defined(__SSE2__) #error ... #endif` guard at the top of the file: if the flag is ever missing, the build fails loudly instead of silently going scalar. Pure refactor (same SIMD instructions execute either way) — rebuilt, 17/17 tests still pass, no new benchmark needed.
 
+### H3 — Cache per-particle grid cell (2026-08-23)
+
+Added `int* cellX; int* cellY;` to `lfParticleSystem` (allocated alongside `next` in
+both the pinned and growable paths, freed in `Destroy`). Filled once in `BuildGrid`
+where `GetCell` was already being called for insertion. Replaced the redundant
+`GetCell(sys, sys->position[i], ...)` recomputation in `FindParticleContacts`'s outer
+loop, the hash-collision re-check in `ForEachParticleNearShape`, and the candidate
+check in `SolveBarrier`'s inner grid walk with plain array reads. Pure scratch — no
+sync needed with `SolveZombie`'s swap-with-last, since `BuildGrid` unconditionally
+overwrites `cellX`/`cellY` for every live index before anything reads them each
+sub-step. Correctness: 17/17.
+
+| | Run 1 `BOX2D_MS` | Run 2 `BOX2D_MS` | Avg |
+|---|------------------|------------------|-----|
+| Before (H2 SIMD) | 3.123 | 3.026 | 3.075 |
+| After (H3 cell cache) | 3.018 | 2.956 | 2.987 |
+
+**Verdict: improved, ~2.9%.** Smaller than H2 as expected (saves one `floorf`+multiply
+recompute per particle per lookup site, a constant-factor trim, not an algorithmic
+change) — both samples land below both H2 samples, a consistent direction even if
+modest in absolute terms.
+
 ## Related
 
 - Feature pyramid: [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md), [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md)
