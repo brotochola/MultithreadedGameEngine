@@ -4,7 +4,7 @@ Weed fluids are **not** Google LiquidFun C++ pasted into Box2D. They are **`liqu
 
 Sibling source of truth: `d:\xampp\htdocs\box2d_3.0_wasm_sab` (`box2d+liquidfun/`, `box2d/src/wasm_wrapper.c`). Rebuild copies artifacts into [`src/box2d/`](../src/box2d/).
 
-Related: [Physics pipeline](./PHYSICS.md), [CPU particles](./PARTICLES.md), [Workers](./WORKERS_ARCHITECTURE.md), [Memory](./MEMORY_STRUCTURE.md), [`src/box2d/README.md`](../src/box2d/README.md).
+Related: [Physics pipeline](./PHYSICS.md), [CPU particles](./PARTICLES.md), [Workers](./WORKERS_ARCHITECTURE.md), [Memory](./MEMORY_STRUCTURE.md), [`src/box2d/README.md`](../src/box2d/README.md), [LiquidFun optimization campaign + benchmarks](./LIQUIDFUN_HYPOTHESES.md).
 
 ---
 
@@ -60,8 +60,13 @@ pixi_worker
 `physics.liquidFun` (merged in both `validatePhysicsConfig` copies):
 
 ```javascript
-liquidFun: { enabled: false, radius: 10, maxCount: 10000, subSteps: 1, density: 1 }
+liquidFun: { enabled: false, radius: 10, maxCount: 10000, subSteps: 1, density: 1, strictContactCheck: false }
 ```
+
+`strictContactCheck` (default `false`, matching liquidfun-c/Google) is a real config
+property threaded through the ring to `create_particle_system`'s 5th param — it used
+to be hardcoded `true` in `wasm_wrapper.c` regardless of what JS asked for. See the
+"Body collision" section below for what it actually does.
 
 Scene sets `enabled: true` to auto-create the system at physics init. Do not also call `LiquidFunSystem.createSystem` from `create()` (destroys the previous system).
 
@@ -71,14 +76,14 @@ Scene sets `enabled: true` to auto-create the system at physics init. Do not als
 
 | Export | Signature | Notes |
 |--------|-----------|--------|
-| `create_particle_system` | `(worldPacked, radius, density, maxParticles) → 0\|1` | `growable=false`; destroys any previous system |
+| `create_particle_system` | `(worldPacked, radius, density, maxParticles, strictContactCheck) → 0\|1` | `growable=false`; destroys any previous system. 5th param added — was hardcoded `true` |
 | `create_particle_group_box` | `(x0,y0,x1,y1, spacing, flags, strength) → groupId` | **AABB corners**. `-1` = fail |
 | `create_particle_group_circle` | `(cx,cy,radius, spacing, flags, strength) → groupId` | `spacing<=0` → 0.75 × diameter |
 | `create_particle_box` | `(x0,y0,x1,y1, spacing, flags) → count` | Ungrouped fill |
 | `destroy_particle_group` / `destroy_particle_system` | | |
 | `set_particle_sub_steps` | `(n)` | Independent of Box2D `subStepCount` |
 | `get_particle_count` / `capacity` / `radius` | | |
-| `get_particle_*_byte_offset` | count / pos / vel / flags | Stable HEAP pointers (`growable=false`) |
+| `get_particle_*_byte_offset` | count / pos / vel / flags / **x / y** | Stable HEAP pointers (`growable=false`). `x`/`y` are a deinterleaved copy of `pos`, filled in C each `step_world` — `syncLiquidFunParticlesToSharedBuffers` reads those instead of de-interleaving `pos` itself |
 
 Group id **0 is valid**. `-1` is `LF_NULL_PARTICLE_GROUP` (no system, inverted AABB, or capacity full).
 
@@ -109,7 +114,12 @@ Body collision is **not** a flag. Water particles hit fixtures by default.
 
 Engine cap: `physics.liquidFun.maxCount` is clamped to **65535** (uint16 indices, empty sentinel `0xFFFF`, live `0..65534`). WASM `create_particle_system` already rejects a larger cap.
 
-Skipped on purpose: NEON/SIMD, color mixing, fixture/particle contact filters.
+Skipped on purpose: NEON (ARM), color mixing, fixture/particle contact filters.
+SIMD itself is **not** skipped — `Integrate`/`SolveGravity`/`LimitVelocity` are
+explicit SSE2/wasm128 intrinsics (`<emmintrin.h>`, same technique Box2D's own
+`contact_solver.c` uses for `B2_SIMD_SSE2` on `B2_CPU_WASM`); the build fails
+(`#error`) rather than silently going scalar if that flag is ever missing. See
+[LIQUIDFUN_HYPOTHESES.md](./LIQUIDFUN_HYPOTHESES.md) H2.
 
 Material presets (`LIQUIDFUN_MATERIALS`) — flags we actually have:
 
@@ -132,22 +142,24 @@ LiquidFun `Solve` order (algorithm port, zlib notice — not pasted C++). Box2D 
 
 Each particle **sub-step** (default `subSteps=1`):
 
-1. `BuildGrid` (hash sized from **live count**, not `maxParticles`) + `FindParticleContacts`.
-2. `FindBodyContacts` — one `OverlapAABB`, then `GetClosestPoint` + `TestPoint`. Signed distance: `weight = 1 - d/diameter` (**can be > 1** inside). `contact.normal = -n` (particle toward body). Reduced `mass = 1/invMassSum`. **No axis-snap.**
-3. `RemoveSpuriousBodyContacts` only if `strictContactCheck` (default **false**). Sort by index then weight; keep ≤3; project along the inverse normal; drop if that probe is not on/in the fixture.
+1. `BuildGrid` (hash sized from **live count**, not `maxParticles`) + `FindParticleContacts`. Each particle's cell `(ix,iy)` is cached (`cellX`/`cellY`) right here and reused everywhere else that would otherwise recompute `GetCell` (`ForEachParticleNearShape`, `SolveBarrier`).
+2. **One shared `OverlapAABB`** (swept-cloud AABB — see step 7) feeds both `FindBodyContacts` and `SolveCollision`; `FindBodyContacts` itself does `GetClosestPoint` + `TestPoint` per candidate shape. Signed distance: `weight = 1 - d/diameter` (**can be > 1** inside). `contact.normal = -n` (particle toward body). Reduced `mass = 1/invMassSum`. **No axis-snap.**
+3. `RemoveSpuriousBodyContacts` only if `strictContactCheck` (config default **false**, genuinely wired through now — see Scene API). Sort by index then weight; keep ≤3; project along the inverse normal; drop if that probe is not on/in the fixture.
 4. Flagged: `SolveViscous`, `SolvePowder`, `SolveTensile` (two-pass `accumulation2`).
 5. `SolveGravity`. If `STATIC_PRESSURE`, `SolveStaticPressure` (Poisson; Google defaults: strength **0.2**, relaxation 0.2, 8 iters; `pressurePerWeight = strength * density * (diameter/dt)²`). `SolvePressure` **one** accumulate + apply using **critical pressure** `density * (diameter/dt)²` (no `|g|/10`, no pressure-iteration loop, no PBD). `SolveDamping` (linear + quadratic `1/criticalVelocity`) on body then particle contacts.
 6. Elastic / spring **late** (after damping; they read current velocities). `LimitVelocity` at `|v| <= diameter/dt`. If `BARRIER`, `SolveBarrier` (`tmax = 2.5 * dt`).
-7. **`SolveCollision`** — swept-cloud AABB, one `OverlapAABB`, `b2Shape_RayCast(shape, p, dt*v)`. Point particle. `target = lerp(p1,p2,fraction) + B2_LINEAR_SLOP * n` (Weed 100 px/m → 0.5 px). `v = inv_dt * (target - p)`. **No radius offset. Do not write position.** Do **not** `b2World_CastShape` per particle.
+7. **`SolveCollision`** — reuses step 2's shared query (same swept-cloud AABB, one `OverlapAABB` per sub-step total, not two), `b2Shape_RayCast(shape, p, dt*v)`. Point particle. `target = lerp(p1,p2,fraction) + B2_LINEAR_SLOP * n` (Weed 100 px/m → 0.5 px). `v = inv_dt * (target - p)`. **No radius offset. Do not write position.** Do **not** `b2World_CastShape` per particle. The search padding (`diameter`) is sufficient because `LimitVelocity` (step 6) already caps `dt·|v| <= diameter` for every particle — same CFL bound closes the loop, not a coincidence. Known gap: `SolveBarrier` runs after `LimitVelocity` and doesn't re-clamp, so a `BARRIER`-paired particle could in principle exceed that bound (unresolved, low-impact — opt-in flag, few particles in practice).
 8. `SolveWall` zeros wall flags. Integrate `position += dt * velocity`. No PBD after.
 
-A lone particle on a static floor can rest (body-contact damping). Neighbor pairs with `SPRING` and/or `BARRIER` are captured at box/circle create (distance < 1.5×diameter). `SolveSpring` ignores barrier-only pairs.
+A lone particle on a static floor can rest (body-contact damping). Neighbor pairs with `SPRING` and/or `BARRIER` are captured at box/circle create (distance < 1.5×diameter, `CapturePairs` — grid-accelerated over the new range, **5×5** neighborhood since 1.5×diameter exceeds one cell, not the 3×3 the per-step passes use). `SolveSpring` ignores barrier-only pairs.
 
 Create spacing `0` → **0.75 × diameter** (Google `b2_particleStride`). Discrete only: a particle that tunnels a thin shape in one sub-step is gone (sibling ROADMAP Fase 4).
 
 Skipped on purpose: NEON, colorMixing, repulsive, solid/rigid groups, fixture contact filter.
 
-`lfParticleSystem_Step` cannot run in parallel with `b2World_Step` (world locked; queries invalid). Overlay `Box2d` ms stays `step_world`. In-step parallel_for is a later lever (sibling ROADMAP Fase 6).
+`lfParticleSystem_Step` cannot run in parallel with `b2World_Step` **of the same frame** (world locked; queries invalid). Overlay `Box2d` ms stays `step_world`. In-step parallel_for is a later lever (sibling ROADMAP Fase 6).
+
+LiquidFun lagging rigid bodies by **1-2 frames is acceptable** for Weed — confirmed, not just assumed. That's the slack a future snapshot+pipeline design would need (main thread owns the live `b2WorldId` exclusively, copies what a background LiquidFun thread needs once per step, drains its impulses back in on a later step); see the sibling ROADMAP's rewritten Fase 6 for the concrete design and its one still-open problem (`FindBodyContacts`/`SolveCollision` would need their own spatial structure over a snapshot, not live Box2D queries). Not implemented — recorded so the constraint isn't rediscovered from scratch later.
 
 ---
 
@@ -172,7 +184,7 @@ Thin render SAB size is `physics.liquidFun.maxCount`, not `particle.maxParticles
 
 - `syncBodies` + `drainCommands` + `world.step` — no `new`, no `postMessage` of positions.
 - Particle SoA lives in WASM HEAP (`growable=false` so TypedArray views stay valid).
-- `syncLiquidFunParticlesToSharedBuffers` copies HEAP pos → render SAB `x/y` only. Tint/texture/scale painted on new slots of **that** SAB. Cached pos byte offset.
+- `syncLiquidFunParticlesToSharedBuffers` bulk-`.set()`s the C-side deinterleaved `x`/`y` HEAP arrays (see WASM ABI) → render SAB `x/y`. Tint/texture/scale painted on new slots of **that** SAB. Cached `x`/`y` byte offsets, not `pos`.
 
 **Render (hot, other workers):** `particle_worker` scans the CPU pool only. `pre_render_worker` collects CPU visibles then LiquidFun from the render SAB (same camera cull) into the same queue. Pixi unchanged (`rqType=1`).
 
@@ -197,7 +209,7 @@ Opcode `SET_LIQUIDFUN_EMIT` (13) is four floats: `spacing, strength, tintBits, t
 
 ```javascript
 // Scene.config.physics
-liquidFun: { enabled: true, radius: 10, maxCount: 10000, subSteps: 1 }
+liquidFun: { enabled: true, radius: 10, maxCount: 10000, subSteps: 1, strictContactCheck: false }
 
 ParticleEmitter.emitLiquidFunParticles({
   material: 'water', // or flags + strength yourself
@@ -216,6 +228,12 @@ Demo: [`demos/liquidFunDemoScene/liquidFunDemoScene.js`](../demos/liquidFunDemoS
 Pressure uses **critical pressure** `density * (diameter / dt)²`, not `|gravity|/10`. That is large in Weed pixels on purpose (replaces PBD). Sprites may look half-in the floor: 1.1.0 point rest.
 
 10k @ 60 is the goal after the step cuts, not a guarantee on a weak CPU. Next lever if still over: slightly larger particle radius (fewer particles for the same puddle) — not extra substeps to hide tunneling.
+
+Measured, not aspirational, as of the 2026-08-23 optimization campaign: a dedicated
+L2 benchmark scene (`tests/bench/stressScenes/LiquidFunStressScene.js`, ~10.2k water
++ ~2k spring/staticPressure) runs `BOX2D_MS` ≈ 5.5ms headless — comfortably inside a
+60fps frame budget on its own, before accounting for rendering/other workers. Full
+before/after numbers for every optimization: [LIQUIDFUN_HYPOTHESES.md](./LIQUIDFUN_HYPOTHESES.md).
 
 ---
 
@@ -242,4 +260,4 @@ node --test tests/node/liquidfun.test.js tests/node/liquidfun.wasm.test.js
 | File | What |
 |------|------|
 | [`tests/node/liquidfun.test.js`](../tests/node/liquidfun.test.js) | Flags (including BARRIER / STATIC_PRESSURE), materials, AABB, `SET_LIQUIDFUN_EMIT` ring, `physics.liquidFun` merge + maxCount clamp 65535 |
-| [`tests/node/liquidfun.wasm.test.js`](../tests/node/liquidfun.wasm.test.js) | Y-down floor settle + `spanY`; no wall-climb **and** no centers inside the wall; water beside a thick box (`maxPen < radius`); 10k create/step smoke; **1-particle point rest** on floor top (`|vy|` small); barrier smoke; staticPressure finite |
+| [`tests/node/liquidfun.wasm.test.js`](../tests/node/liquidfun.wasm.test.js) | Y-down floor settle + `spanY`; no wall-climb **and** no centers inside the wall; water beside a thick box (`maxPen < radius`); 10k create/step smoke; **1-particle point rest** on floor top (`|vy|` small); barrier smoke; staticPressure finite; deinterleaved `x`/`y` exactly match interleaved `pos`; `strictContactCheck` 5th-arg smoke |
