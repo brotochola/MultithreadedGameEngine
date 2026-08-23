@@ -15,6 +15,7 @@ repo, not attempted here), so this campaign is **L2 + correctness gate only**.
 | Layer | Command | Primary metric |
 |-------|---------|-----------------|
 | **Correctness** | `node --test tests/node/liquidfun.test.js tests/node/liquidfun.wasm.test.js` (then full `npm test`) | All pass — a faster `STEP_MS` that breaks physics is invalid |
+| **L1 (added for H6)** | `pnpm bench:micro:liquidfun-capturepairs` ([`tests/bench/liquidfun-capturepairs-microbench.mjs`](../tests/bench/liquidfun-capturepairs-microbench.mjs)) | Wall-clock ms for one large SPRING-group `create_particle_group_box` call — the only way to see create-time-only wins the L2 steady-state window can't |
 | **L2** | `pnpm bench:feature:liquidfun` (`LiquidFunStressScene` — 5k water + 1k `SPRING\|STATIC_PRESSURE`), **2 runs per point** | `physics.BOX2D_MS` (== `lfParticleSystem_Step` cost; `BODY_COUNT` is 3 static floors, negligible) |
 | **L3** | `demos/liquidFunDemoScene` (manual) | Visual: still stable, no explosions/tunneling |
 
@@ -39,8 +40,8 @@ Every C change: edit sibling repo → `build_for_weed.bat` (incremental, ~10-15s
 | **H2** | `Integrate`/`SolveGravity`/`LimitVelocity` are scalar loops despite `-msimd128 -msse2` already being compile flags (auto-vectorization only, no intrinsics) | Explicit SSE2/wasm128 intrinsics (`<emmintrin.h>`, same technique `contact_solver.c` uses on this target) + `memset` for zero-fill loops | Next |
 | **H3** | Every particle's grid cell `(ix,iy)` is recomputed via `floorf`+multiply in `FindParticleContacts`, `ForEachParticleNearShape`, and `SolveBarrier`'s inner loop, on top of the one computed in `BuildGrid` | Cache `cellX`/`cellY` arrays, filled once in `BuildGrid`, read everywhere else | Planned |
 | **H4** | `FindBodyContacts` and `SolveCollision` each run their own `b2World_OverlapAABB` broad-phase query per substep | Swept-cloud AABB is a proven superset of the static-cloud AABB (same padding) — one shared query feeds both passes | Planned |
-| **H5** | `RemoveSpuriousBodyContacts` uses `qsort` (indirect comparator calls) for runs capped at 3 kept contacts per particle | Insertion sort | Planned |
-| **H6** | `CapturePairs` (SPRING/BARRIER group creation) is an O(n²) double loop over the new particle range | Route through the existing grid (3×3 neighborhood scan), same technique as `FindParticleContacts` | Planned |
+| **H5** | `RemoveSpuriousBodyContacts` uses `qsort` (indirect comparator calls) for runs capped at 3 kept contacts per particle | Insertion sort | **Rejected** (see log — the "≤3" cap is post-filter, not the sorted array size) |
+| **H6** | `CapturePairs` (SPRING/BARRIER group creation) is an O(n²) double loop over the new particle range | Route through a scratch grid over just the new range | **Done** |
 | **H7** | `SolveStaticPressure`'s 8-iteration Poisson loop re-filters the *entire* `particleContacts` array every iteration by flag | Compact the qualifying-contact index list once, iterate that 8× | Planned |
 | **H8** | `syncLiquidFunParticlesToSharedBuffers` (JS) scalar-loops the interleaved→deinterleaved position copy every frame | Deinterleave in C once (tight loop over contiguous `b2Vec2`), JS does two bulk `.set()` calls | Planned |
 
@@ -137,6 +138,66 @@ sub-step. Correctness: 17/17.
 recompute per particle per lookup site, a constant-factor trim, not an algorithmic
 change) — both samples land below both H2 samples, a consistent direction even if
 modest in absolute terms.
+
+### H4 — Share one broad-phase query between FindBodyContacts/SolveCollision (2026-08-23)
+
+Hoisted `CollectOverlappingShapes(sys, ComputeSweptCloudAABB(sys, subDt, sys->diameter))`
+out of both `FindBodyContacts` and `SolveCollision` into `lfParticleSystem_Step`'s
+sub-step loop, called once between `FindParticleContacts` and `FindBodyContacts`; both
+functions now just walk the already-populated `sys->queryShapes`. Removed the now-dead
+`ComputeParticleCloudAABB` (only caller was `FindBodyContacts`'s own query). Safe:
+nothing between the hoisted call and `SolveCollision` touches `queryShapes`/`queryShapeCount`,
+and Box2D's broad-phase tree is static for the whole LiquidFun step (rebuilt only by
+`b2World_Step`, which already finished for this frame). Correctness: 17/17, including
+the wall-corner and thick-box-tunneling tests (both exercise `SolveCollision`'s raycast
+against the shared list).
+
+| | Run 1 `BOX2D_MS` | Run 2 `BOX2D_MS` | Avg |
+|---|------------------|------------------|-----|
+| Before (H3 cell cache) | 3.018 | 2.956 | 2.987 |
+| After (H4 shared query) | 2.989 | 2.894 | 2.942 |
+
+**Verdict: improved, ~1.5% — smaller than expected, likely scene-limited.** This
+benchmark scene only has 3 static shapes (floor + 2 walls), so Box2D's dynamic-tree
+`b2World_OverlapAABB` traversal was already cheap regardless of the query AABB's size —
+removing one such query per sub-step saves real work, just not much of it *here*. The
+win should scale with shape count (tree depth/traversal cost), not particle count; a
+scene with dozens/hundreds of static platform shapes would show this more clearly. Not
+re-testing that here — noting it as a known benchmark-scene limitation rather than
+inflating the claim.
+
+### H5 — Insertion sort instead of qsort — REJECTED (2026-08-23)
+
+Flawed premise, caught by measurement rather than assumed away: the doc comment
+"keep ≤3 per particle" describes `RemoveSpuriousBodyContacts`'s *output* after
+filtering, not the size of the array `qsort`/insertion-sort actually runs on —
+that's `sys->bodyContactCount`, every live body contact *before* the per-particle
+cap. For a puddle settled on a wide floor, that's not a handful of elements; it's
+roughly one entry per particle resting within `diameter` of a shape, easily in the
+hundreds-to-low-thousands for this scene. O(n²) insertion sort loses to `qsort`'s
+O(n log n) at that size.
+
+Methodology: flipped the scene's `strictContactCheck` to `true` (temporarily — it's
+`false` by default since H1, so this path doesn't run otherwise), benchmarked qsort
+as "before", swapped in insertion sort, benchmarked "after", same build/scene
+otherwise identical (H2/H3/H4 already landed under both):
+
+| | Run 1 `BOX2D_MS` | Run 2 `BOX2D_MS` | Avg |
+|---|------------------|------------------|-----|
+| Before (qsort) | 3.387 | 3.458 | 3.423 |
+| After (insertion sort) | 3.353 | 3.536 | 3.445 |
+
+**Verdict: rejected, ~0.6% worse** (not dramatic — this scene's contact count is
+apparently large enough to hurt insertion sort but not catastrophically so — but
+consistently worse across both paired samples, not just noise in one direction).
+Reverted to `qsort` + `BodyContactCompare`, exact original code. Correctness
+re-confirmed 17/17 after the revert. Scene's `strictContactCheck` set back to
+`false` (its state before this hypothesis needed it on). No `BOX2D_MS` change
+versus H4's baseline since this is a clean revert.
+
+This is the point of running a falsifiable campaign instead of assuming every
+"obviously smaller-constant-factor" swap is a win — `qsort` (`stdlib.h`) was
+already the right tool for a list whose size isn't actually bounded small.
 
 ## Related
 
