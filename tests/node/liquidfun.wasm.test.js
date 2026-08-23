@@ -567,3 +567,40 @@ test('WASM STATIC_PRESSURE create and step stays finite', () => {
     assert.ok(Number.isFinite(x) && Number.isFinite(y), `NaN at ${i}: ${x},${y}`);
   }
 });
+
+test('WASM create_particle_system strictContactCheck param reaches C (5th arg)', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupCircle = fn('create_particle_group_circle');
+  const getParticleCount = fn('get_particle_count');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId, 'create_world failed');
+  assert.ok(bindGameBuffers(16), 'bind_game_buffers failed');
+
+  // Explicit strictContactCheck=1 (5th arg). Omitting it (as every other test in
+  // this file does) coerces to 0/false via the wasm JS API (ToInt32(undefined)),
+  // matching the new liquidFun.strictContactCheck default of false.
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 200, 1), 'create_particle_system failed');
+
+  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5);
+  assert.ok(gid >= 0, `circle group failed: ${gid}`);
+  const count = getParticleCount();
+  assert.ok(count > 4, `expected a blob, got ${count}`);
+
+  const dt = 1 / 60;
+  for (let i = 0; i < 30; i++) {
+    stepWorld(worldId, dt, 4);
+  }
+  assert.equal(getParticleCount(), count, 'strictContactCheck must not drop live particles');
+
+  const heap = new Float32Array(memory.buffer);
+  const base = fn('get_particle_pos_byte_offset')() >> 2;
+  for (let i = 0; i < count; i++) {
+    assert.ok(Number.isFinite(heap[base + (i << 1)]) && Number.isFinite(heap[base + (i << 1) + 1]), `NaN at ${i}`);
+  }
+});

@@ -46,7 +46,7 @@ pnpm bench:particle:tournament
 ```
 
 Hypothesis index + fill order: [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md).
-Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`](./DECAL_HYPOTHESES.md). Particles: [`PARTICLE_HYPOTHESES.md`](./PARTICLE_HYPOTHESES.md).
+Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`](./DECAL_HYPOTHESES.md). Particles: [`PARTICLE_HYPOTHESES.md`](./PARTICLE_HYPOTHESES.md). LiquidFun: [`LIQUIDFUN_HYPOTHESES.md`](./LIQUIDFUN_HYPOTHESES.md).
 
 ## Catalog
 

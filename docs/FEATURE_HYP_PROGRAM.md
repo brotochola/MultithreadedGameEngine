@@ -33,8 +33,9 @@ Shared helpers: [`tests/bench/feature-tournament-lib.mjs`](../tests/bench/featur
 | I | Treiber / rings | Next | pop-push/s | Balls |
 | J | Bullet tick | Next | particle STEP | Predator |
 | K | TileMap queries | L1 only | ns/getTileId | — |
+| **L** | LiquidFun particle step | In progress (H1+H2 shipped) | `physics.BOX2D_MS` | `demos/liquidFunDemoScene` |
 
-Skip: full Box2D WASM step.
+Skip: full rigid-body Box2D WASM step (LiquidFun's *particle* step is in scope — see Wave L).
 
 ## Wave A — Decals hyps
 
@@ -76,8 +77,28 @@ pnpm bench:feature:particle-integrate
 pnpm bench:particle:tournament
 ```
 
+## Wave L — LiquidFun particle step (C, sibling repo)
+
+| ID | Claim |
+|----|-------|
+| H1 | `strictContactCheck` configurable, default false (shipped) |
+| H2 | Explicit SIMD for Integrate/SolveGravity/LimitVelocity |
+| H3 | Cache per-particle grid cell |
+| H4 | Share one broad-phase query (FindBodyContacts + SolveCollision) |
+| H5 | Insertion sort instead of qsort in RemoveSpuriousBodyContacts |
+| H6 | CapturePairs via grid instead of O(n^2) |
+| H7 | Compact static-pressure contact sublist |
+| H8 | JS/WASM particle position deinterleave moved into C |
+
+No L1 (hot loop is C, not JS) or tournament — single-thread sequential hyps, L2 only. Full log: [`LIQUIDFUN_HYPOTHESES.md`](./LIQUIDFUN_HYPOTHESES.md).
+
+```bash
+pnpm bench:feature:liquidfun
+```
+
 ## Related
 
 - [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md) — catalog + pyramid
 - [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) — completed Ray tournament
+- [`LIQUIDFUN_HYPOTHESES.md`](./LIQUIDFUN_HYPOTHESES.md) — LiquidFun particle-step campaign
 - [`PARTICLES.md`](./PARTICLES.md) — emit / stamp / integrate docs

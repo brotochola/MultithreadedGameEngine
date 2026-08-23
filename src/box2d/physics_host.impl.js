@@ -40,6 +40,7 @@
       maxCount: 10000,
       subSteps: 1,
       density: 1,
+      strictContactCheck: false,
     },
   };
 
@@ -229,6 +230,7 @@
       maxCount: Math.min(65535, Math.max(1, (src.maxCount != null ? src.maxCount : d.maxCount) | 0)),
       subSteps: Math.max(1, (src.subSteps != null ? src.subSteps : d.subSteps) | 0),
       density: typeof src.density === 'number' && isFinite(src.density) ? src.density : d.density,
+      strictContactCheck: !!src.strictContactCheck,
     };
   }
 

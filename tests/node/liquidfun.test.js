@@ -69,6 +69,17 @@ test('validatePhysicsConfig clamps liquidFun.maxCount to 65535', () => {
   assert.equal(merged.liquidFun.maxCount, 65535);
 });
 
+test('validatePhysicsConfig defaults strictContactCheck to false and respects override', () => {
+  const defaulted = validatePhysicsConfig(null, { liquidFun: { enabled: true } });
+  assert.equal(defaulted.liquidFun.strictContactCheck, false);
+  assert.equal(defaulted.liquidFun.strictContactCheck, PHYSICS_DEFAULTS.liquidFun.strictContactCheck);
+
+  const overridden = validatePhysicsConfig(null, {
+    liquidFun: { enabled: true, strictContactCheck: true },
+  });
+  assert.equal(overridden.liquidFun.strictContactCheck, true);
+});
+
 test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
   const sab = createCommandRingSab(64);
   bindCommandRing(sab);

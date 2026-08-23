@@ -197,6 +197,9 @@ export const PHYSICS_DEFAULTS = Object.freeze({
     maxCount: 10000,
     subSteps: 1, // particle solver only; not Box2D subStepCount
     density: 1,
+    // liquidfun-c / Google default is false. RemoveSpuriousBodyContacts (qsort,
+    // drops floor+wall corner false-positives) only runs when this is true.
+    strictContactCheck: false,
   }),
 });
 

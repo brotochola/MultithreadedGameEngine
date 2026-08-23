@@ -17,7 +17,7 @@
     SET_FIXED_ROTATION: 5, // entity, flag (0|1)
     EXPLODE: 6, // maskBits as entity, x, y, radius, impulsePerLength (falloff=0.5*radius)
     SET_SLEEP_THRESHOLD: 7, // entity, threshold
-    CREATE_PARTICLE_SYSTEM: 8, // systemId, radius, maxCount, subSteps
+    CREATE_PARTICLE_SYSTEM: 8, // systemId, radius, maxCount, subSteps, strictContactCheck (0|1)
     CREATE_PARTICLE_GROUP_BOX: 9, // flags (entity slot), posX, posY, halfWidth, halfHeight
     CREATE_PARTICLE_GROUP_CIRCLE: 10, // systemId, posX, posY, radius, flags
     DESTROY_PARTICLE_GROUP: 11, // systemId, groupId
@@ -158,8 +158,15 @@
     return enqueue(BOX2D_CMD.SET_SLEEP_THRESHOLD, entity, threshold, 0, 0, 0);
   }
 
-  function enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps) {
-    return enqueue(BOX2D_CMD.CREATE_PARTICLE_SYSTEM, systemId, radius, maxCount, subSteps > 0 ? subSteps : 1, 0);
+  function enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
+    return enqueue(
+      BOX2D_CMD.CREATE_PARTICLE_SYSTEM,
+      systemId,
+      radius,
+      maxCount,
+      subSteps > 0 ? subSteps : 1,
+      strictContactCheck ? 1 : 0,
+    );
   }
 
   function enqueueSetLiquidFunEmit(spacing, strength, tintBits, textureId) {
@@ -228,7 +235,7 @@
           if (handlers.setSleepThreshold) handlers.setSleepThreshold(entity, a);
           break;
         case BOX2D_CMD.CREATE_PARTICLE_SYSTEM:
-          if (handlers.createParticleSystem) handlers.createParticleSystem(entity, a, b, c);
+          if (handlers.createParticleSystem) handlers.createParticleSystem(entity, a, b, c, d);
           break;
         case BOX2D_CMD.CREATE_PARTICLE_GROUP_BOX:
           if (handlers.createParticleGroupBox) handlers.createParticleGroupBox(entity, a, b, c, d);

@@ -67,9 +67,11 @@ export class LiquidFunSystem {
    * @param {number} [options.maxCount=10000] - Maximum capacity of particles.
    * @param {number} [options.subSteps=1] - Particle solver sub-steps (not Box2D subStepCount).
    * @param {number} [options.systemId=0] - Particle system handle ID.
+   * @param {boolean} [options.strictContactCheck=false] - Drop spurious floor+wall corner body
+   *   contacts (qsort + reproject per substep). liquidfun-c/Google default is false.
    */
-  static createSystem({ radius = 10, maxCount = 10000, subSteps = 1, systemId = 0 } = {}) {
-    Box2dCommandRing.enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps);
+  static createSystem({ radius = 10, maxCount = 10000, subSteps = 1, systemId = 0, strictContactCheck = false } = {}) {
+    Box2dCommandRing.enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck);
   }
 
   /**

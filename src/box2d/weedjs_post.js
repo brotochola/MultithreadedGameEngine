@@ -918,10 +918,16 @@
       pendingLiquidFunEmit.textureId = textureId | 0;
       pendingLiquidFunEmit.pending = true;
     },
-    createParticleSystem(systemId, radius, maxCount, subSteps) {
+    createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
       if (!world) return;
       liquidFunPosFloatOffset = 0;
-      world.createParticleSystem(radius || 10, maxCount || 10000, 1.0, subSteps > 0 ? subSteps : 1);
+      world.createParticleSystem(
+        radius || 10,
+        maxCount || 10000,
+        1.0,
+        subSteps > 0 ? subSteps : 1,
+        !!strictContactCheck,
+      );
     },
     createParticleGroupBox(flags, posX, posY, halfWidth, halfHeight) {
       if (!world) return;
@@ -1497,6 +1503,7 @@
         lf.maxCount || 10000,
         lf.density != null ? lf.density : 1.0,
         lf.subSteps > 0 ? lf.subSteps : 1,
+        !!lf.strictContactCheck,
       );
     }
 

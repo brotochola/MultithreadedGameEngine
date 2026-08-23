@@ -38,7 +38,7 @@ export class LiquidFunStressScene extends WEED.Scene {
       noLimitFPS: false,
       gravity: { x: 0, y: 980 },
       sleeping: false,
-      liquidFun: { enabled: true, radius: 8, maxCount: 8000, subSteps: 1, strictContactCheck: true },
+      liquidFun: { enabled: true, radius: 8, maxCount: 8000, subSteps: 1, strictContactCheck: false },
     },
 
     renderer: {

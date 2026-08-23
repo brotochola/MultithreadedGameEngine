@@ -427,6 +427,7 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
   ]);
   const destroyParticleSystem = wrap("destroy_particle_system", null, []);
   const createParticleBox = wrap("create_particle_box", "number", [
@@ -1245,8 +1246,8 @@ function createPhysicsApi(Module) {
       };
     }
 
-    createParticleSystem(radius = 10, maxCount = 10000, density = 1.0, subSteps = 1) {
-      this._particleSystem = createParticleSystem(this.worldId, radius, density, maxCount);
+    createParticleSystem(radius = 10, maxCount = 10000, density = 1.0, subSteps = 1, strictContactCheck = false) {
+      this._particleSystem = createParticleSystem(this.worldId, radius, density, maxCount, strictContactCheck ? 1 : 0);
       if (subSteps > 0) setParticleSubSteps(subSteps);
       return this._particleSystem;
     }
