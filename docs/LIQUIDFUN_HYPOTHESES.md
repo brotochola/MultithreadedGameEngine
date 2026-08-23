@@ -199,6 +199,49 @@ This is the point of running a falsifiable campaign instead of assuming every
 "obviously smaller-constant-factor" swap is a win — `qsort` (`stdlib.h`) was
 already the right tool for a list whose size isn't actually bounded small.
 
+### H6 — CapturePairs via a scratch grid instead of O(n²) (2026-08-23)
+
+**Methodology problem hit first:** `CapturePairs` only runs once at SPRING/BARRIER
+group creation, which happens during a scene's `create()`/warmup — before
+`bench:feature:liquidfun`'s measured window starts. The L2 harness structurally
+cannot see this win (flagged as a known caveat before starting this campaign).
+Added a new **L1 microbench**, [`tests/bench/liquidfun-capturepairs-microbench.mjs`](../tests/bench/liquidfun-capturepairs-microbench.mjs)
+(`pnpm bench:micro:liquidfun-capturepairs`), filling the "no L1 yet" gap noted in
+this doc's intro — times one `create_particle_group_box` call (SPRING flag) in
+isolation via the raw WASM export, same instantiation pattern as
+`liquidfun.wasm.test.js`.
+
+**Change:** pre-existing particles are never pair candidates (only the new
+`[start, start+n)` range pairs with itself), so build a scratch grid over just
+that range, reusing the same `cellHead`/`next`/`cellX`/`cellY` buffers the
+per-step `BuildGrid` uses (safe to clobber — group creation always happens
+before that frame's `b2World_Step`/`lfParticleSystem_Step`, and nothing reads
+grid state until the next real `BuildGrid` rebuilds it in full). One correctness
+subtlety caught before shipping: `CapturePairs`'s capture radius is `1.5x
+diameter`, which *exceeds* one cell (`cellSize == diameter`) — a 3×3
+neighborhood (the technique `FindParticleContacts` uses, which relies on
+`searchRadius <= cellSize`) is **not** geometrically sufficient here; needed a
+5×5 (±2 cells) sweep instead. Also added an explicit `cellX[j]==ix+dx &&
+cellY[j]==iy+dy` check (mirroring `ForEachParticleNearShape`'s defensive
+pattern) to rule out hash-collision double-counting a pair, now that H3's
+`cellX`/`cellY` cache makes that check nearly free.
+
+Correctness: 17/17, including the BARRIER test (which exercises `CapturePairs`
+via the `BARRIER` flag, same `LF_PAIR_CAPTURE_FLAGS` gate as `SPRING`).
+
+L1 (SPRING group, 4066 particles, `--half-w 800 --half-h 280`, median of 11 reps):
+
+| | Median | Min | Max |
+|---|--------|-----|-----|
+| Before (O(n²)) | 10.556 ms | 10.519 ms | 10.636 ms |
+| After (grid, O(n)) | 2.639 ms | 2.066 ms | 2.693 ms |
+
+**Verdict: improved, ~75% (4x) for a 4066-particle group** — a clean, textbook
+O(n²)→O(n) win, exactly what H5's rejection was a reminder to actually verify
+rather than assume. L2 regression check (same scene, unrelated to this group,
+just confirming no steady-state cost): `BOX2D_MS` 3.054/3.122 (avg 3.088) — within
+the noise band already established for this scene, no regression.
+
 ## Related
 
 - Feature pyramid: [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md), [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md)

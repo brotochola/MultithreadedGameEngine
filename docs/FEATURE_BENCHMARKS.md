@@ -58,7 +58,7 @@ Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`]
 | Particle integrate | `particleIntegrate.js`, particle_worker | `particle-integrate-microbench.mjs` | `stressScenes/ParticleIntegrateStressScene` | zenithalParticleTest | `PARTICLE_PHYSICS_MS`, `BUILD_ACTIVE_VISIBLE_MS` — **champion P4+P5** |
 | Spatial rebuild + neighbors | `spatial_worker.js`, `Grid.js` | (todo) | `stressScenes/StationarySpatialScene` | Balls | `NEIGHBOR_MS`, `REBUILD_MS` |
 | Box2D step / sync | `weedjs_post.js` | semi (WASM) | Balls / BallsAndRectangles | Balls | `STEP_MS`, `BOX2D_MS`, `BODY_COUNT` |
-| LiquidFun particle step | `lf_particle_system.c` (sibling `box2d_3.0_wasm_sab`) | (native demos only) | `stressScenes/LiquidFunStressScene` | `demos/liquidFunDemoScene` | `STEP_MS`, `BOX2D_MS` (5k water + 1k spring/staticPressure) |
+| LiquidFun particle step | `lf_particle_system.c` (sibling `box2d_3.0_wasm_sab`) | `liquidfun-capturepairs-microbench.mjs` (CapturePairs create-time only; step itself has no L1) | `stressScenes/LiquidFunStressScene` | `demos/liquidFunDemoScene` | `STEP_MS`, `BOX2D_MS` (5k water + 1k spring/staticPressure) |
 | Box2D QueryAABB | `box2dQueryAabb.js` | semi | `demos/.../Box2dQueryAabbScene` | — | query / physics STEP |
 | NavGrid Dijkstra / A* | `NavGrid.js`, particle_worker | (todo) | (todo) `NavStressScene` | car / bichos / Predator | ms/path |
 | AngularSweep visibility | `AngularSweep.js` | (todo) | (todo) | Predator | ms/polygon |
