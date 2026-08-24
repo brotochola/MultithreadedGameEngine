@@ -350,7 +350,9 @@ export class ParticleEmitter extends SharedAtomicPool {
    * LiquidFun create via command ring only. Never `_spawn` / never the CPU pool.
    *
    * @param {Object} options
-   * @param {string} [options.material] - water | oil | cream | dulceDeLeche | jelly | sand
+   * @param {number} [options.flags] - `LIQUIDFUN_FLAGS` bits. Default WATER (0).
+   * @param {number} [options.viscousScale] - Per-particle viscous multiplier (default 1).
+   * @param {boolean} [options.trackGroup] - Keep a bookkeeping group for melt / listing.
    * @param {number|{min: number, max: number}} [options.lifespan] - Age-based destruction
    *   in ms (see LiquidFunSystem.createParticleBox). Omitted => live forever.
    * @param {boolean} [options.fadeToAlpha0=false] - Opt-in alpha lerp over lifespan.
@@ -373,11 +375,26 @@ export class ParticleEmitter extends SharedAtomicPool {
   }
 
   /**
+   * Alive LiquidFun particle groups (physics mirror SAB). See LiquidFunSystem.getParticleGroups.
+   */
+  static getLiquidFunParticleGroups() {
+    return LiquidFunSystem.getParticleGroups();
+  }
+
+  /**
+   * Stamp viscousScale on every particle in a LiquidFun group (melt / thicken).
+   */
+  static setLiquidFunGroupViscousScale(groupId, scale) {
+    LiquidFunSystem.setGroupViscousScale(groupId, scale);
+  }
+
+  /**
    * Reset all particle emitter state (extends parent reset)
    * Called when switching scenes to clear stale static state
    */
   static reset() {
     super.reset();
     this._warnedPoolExhausted = false;
+    LiquidFunSystem.bindGroupsSab(null);
   }
 }

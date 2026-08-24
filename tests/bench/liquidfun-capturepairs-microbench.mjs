@@ -86,7 +86,7 @@ function timeOneCreate(fn) {
   if (!sysOk) throw new Error('create_particle_system failed');
 
   const t0 = performance.now();
-  const gid = createParticleGroupBox(-GROUP_HALF_W, -GROUP_HALF_H, GROUP_HALF_W, GROUP_HALF_H, spacing, SPRING, 0, 0, 0);
+  const gid = createParticleGroupBox(-GROUP_HALF_W, -GROUP_HALF_H, GROUP_HALF_W, GROUP_HALF_H, spacing, SPRING, 0, 0, 0, 1, 0);
   const elapsedMs = performance.now() - t0;
   if (gid < 0) throw new Error(`create_particle_group_box failed: ${gid}`);
   const count = getParticleCount();

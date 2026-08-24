@@ -48,6 +48,8 @@ import {
 } from '../workers/workers-utils.js';
 import { ParticleEmitter } from './ParticleEmitter.js';
 import { liquidFunRenderByteSize } from './liquidFunRender.js';
+import { liquidFunGroupsByteSize, LIQUIDFUN_GROUPS_MAX } from './liquidFunGroups.js';
+import { LiquidFunSystem } from './LiquidFunSystem.js';
 import { Joint } from './Joint.js';
 import { SoundManager } from './SoundManager.js';
 import { MAX_COMPONENTS, MAX_ENTITIES, MAX_ENTITY_TYPES } from './QuerySystem.js';
@@ -196,7 +198,9 @@ function initializeLiquidFunRenderBuffer(scene) {
   const maxCount = lf.maxCount | 0;
   if (maxCount <= 0) return;
   scene.buffers.liquidFunRender = new SharedArrayBuffer(liquidFunRenderByteSize(maxCount));
+  scene.buffers.liquidFunGroups = new SharedArrayBuffer(liquidFunGroupsByteSize(LIQUIDFUN_GROUPS_MAX));
   scene.liquidFunMaxCount = maxCount;
+  LiquidFunSystem.bindGroupsSab(scene.buffers.liquidFunGroups);
 }
 
 function initializeDecorationBuffers(scene) {

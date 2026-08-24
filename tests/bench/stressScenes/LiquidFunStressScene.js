@@ -74,7 +74,8 @@ export class LiquidFunStressScene extends WEED.Scene {
     // Left edge (400) clears the left wall's right face (330) with margin;
     // right edge (2800) leaves an 860px gap before the second group.
     ParticleEmitter.emitLiquidFunParticles({
-      material: 'water',
+      flags: LIQUIDFUN_FLAGS.WATER | LIQUIDFUN_FLAGS.TENSILE,
+      tint: 0x3399ff,
       shape: 'box',
       posX: 1600,
       posY: 800,

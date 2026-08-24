@@ -153,6 +153,7 @@ function buildSceneSharedBuffers(scene) {
     bodyDirtyWords: scene.buffers.bodyDirtyWords,
     bodyGeneration: scene.buffers.bodyGeneration,
     liquidFunRender: scene.buffers.liquidFunRender || null,
+    liquidFunGroups: scene.buffers.liquidFunGroups || null,
     perTypeActiveLists: scene.buffers.perTypeActiveLists,
     entityFreeLists: scene.buffers.entityFreeLists,
     entityFreeListTops: scene.buffers.entityFreeListTops,

@@ -60,7 +60,8 @@ pixi_worker
 `physics.liquidFun` (merged in both `validatePhysicsConfig` copies):
 
 ```javascript
-liquidFun: { enabled: false, radius: 10, maxCount: 10000, subSteps: 1, density: 1, strictContactCheck: false }
+liquidFun: { enabled: false, radius: 10, maxCount: 10000, subSteps: 1, density: 1, strictContactCheck: false,
+  viscousStrength: 0.25, tensileStrength: 0.2, dampingStrength: 1, /* …see ConfigDefaults */ }
 ```
 
 `strictContactCheck` (default `false`, matching liquidfun-c/Google) is a real config
@@ -77,8 +78,10 @@ Scene sets `enabled: true` to auto-create the system at physics init. Do not als
 | Export | Signature | Notes |
 |--------|-----------|--------|
 | `create_particle_system` | `(worldPacked, radius, density, maxParticles, strictContactCheck) → 0\|1` | `growable=false`; destroys any previous system. 5th param added — was hardcoded `true` |
-| `create_particle_group_box` | `(x0,y0,x1,y1, spacing, flags, strength) → groupId` | **AABB corners**. `-1` = fail |
-| `create_particle_group_circle` | `(cx,cy,radius, spacing, flags, strength) → groupId` | `spacing<=0` → 0.75 × diameter |
+| `create_particle_group_box` | `(x0,y0,x1,y1, spacing, flags, strength, lifeMin, lifeMax, fade, viscousScale, trackGroup) → groupId` | **AABB corners**. `-1` = fail / ungrouped |
+| `create_particle_group_circle` | `(cx,cy,radius, spacing, flags, strength, lifeMin, lifeMax, fade, viscousScale, trackGroup) → groupId` | `spacing<=0` → 0.75 × diameter |
+| `set_particle_tuning` | `(9 coeffs)` | Live `lfParticleSystemDef` strengths |
+| `set_group_viscous_scale` | `(groupId, scale)` | Stamp members + group field |
 | `create_particle_box` | `(x0,y0,x1,y1, spacing, flags) → count` | Ungrouped fill |
 | `destroy_particle_group` / `destroy_particle_system` | | |
 | `set_particle_sub_steps` | `(n)` | Independent of Box2D `subStepCount` |
@@ -121,18 +124,15 @@ explicit SSE2/wasm128 intrinsics (`<emmintrin.h>`, same technique Box2D's own
 (`#error`) rather than silently going scalar if that flag is ever missing. See
 [LIQUIDFUN_HYPOTHESES.md](./LIQUIDFUN_HYPOTHESES.md) H2.
 
-Material presets (`LIQUIDFUN_MATERIALS`) — flags we actually have:
+Emit is **explicit knobs**, not a named cookbook. `LIQUIDFUN_FLAGS` + per-call `viscousScale` / `tint` / `strength` / `trackGroup`. Game recipes (oil, dulce, jelly) live in the scene, not the engine.
 
-| material | flags | strength | typical tint |
-|----------|--------|----------|----------------|
-| `water` | WATER \| TENSILE | 0 | `0x3399ff` |
-| `oil` | VISCOUS | 0 | brown |
-| `cream` | VISCOUS \| TENSILE | 0.2 | off-white |
-| `dulceDeLeche` | VISCOUS \| TENSILE | 0.4 | caramel |
-| `jelly` | ELASTIC | 0.55 | green |
-| `sand` | POWDER | 0 | gold |
+**Viscosity:** `effective = viscousStrength * 0.5 * (scale[a] + scale[b])`. System baseline via `physics.liquidFun.viscousStrength` (default `0.25`) or `LiquidFunSystem.setTuning`. Per-emit `viscousScale` stamps particles (default 1). Melt: `ParticleEmitter.setLiquidFunGroupViscousScale(id, scale)` bulk-stamps members.
 
-A **group** is only required for elastic/spring (shape-match). Water/oil/cream/powder append ungrouped. What is slow: a new group every mouse splash — `UpdateGroupStatistics` then walks every particle for every live group. Showcase: one emit per material at `create()`, click appends water only.
+**Groups:** Kept when `ELASTIC|SPRING`, or `trackGroup: true`, or `viscousScale != 1`. Shape groups set `hasShapeGroups` (stats + elastic/spring). Bookkeeping viscous groups do **not**. Ungrouped create returns **`-1`** (not `0`). List via `ParticleEmitter.getLiquidFunParticleGroups()` (thin SAB, cap 256).
+
+What is slow: a new **shape** group every mouse splash. Spray viscous blobs with `viscousScale != 1` keeps bookkeeping groups only.
+
+System tuning knobs on `physics.liquidFun` (also `LiquidFunSystem.setTuning`): `dampingStrength`, `pressureStrength`, `viscousStrength`, `tensileStrength`, `powderStrength`, `springStrength`, `staticPressureStrength`, `staticPressureRelaxation`, `staticPressureIterations`.
 
 ---
 
@@ -212,16 +212,18 @@ Opcode `SET_LIQUIDFUN_EMIT` (13) is four floats: `spacing, strength, tintBits, t
 liquidFun: { enabled: true, radius: 10, maxCount: 10000, subSteps: 1, strictContactCheck: false }
 
 ParticleEmitter.emitLiquidFunParticles({
-  material: 'water', // or flags + strength yourself
+  flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE,
+  viscousScale: 10,
+  tint: 0xc6862a,
   shape: 'circle',
   posX, posY, radius: 30,
   texture: '_whiteCircle',
-  tint: 0x00e5ff, // overrides preset
   spacing: 0,     // 0 → C rest stride
+  trackGroup: true,
 });
 ```
 
-Demo: [`demos/liquidFunDemoScene/liquidFunDemoScene.js`](../demos/liquidFunDemoScene/liquidFunDemoScene.js) — one emit per preset at `create()`, click appends ungrouped water.
+Demo: [`demos/liquidFunDemoScene/liquidFunDemoScene.js`](../demos/liquidFunDemoScene/liquidFunDemoScene.js) — recipes defined on the scene tools; LMB sprays those knobs.
 
 `radius` is the **particle** radius (world units), not the group radius. Group `radius` / `halfWidth` is the fill shape. Spacing `0` → pack at **0.75 × diameter** (Google particle stride).
 
@@ -259,5 +261,5 @@ node --test tests/node/liquidfun.test.js tests/node/liquidfun.wasm.test.js
 
 | File | What |
 |------|------|
-| [`tests/node/liquidfun.test.js`](../tests/node/liquidfun.test.js) | Flags (including BARRIER / STATIC_PRESSURE), materials, AABB, `SET_LIQUIDFUN_EMIT` ring, `physics.liquidFun` merge + maxCount clamp 65535 |
+| [`tests/node/liquidfun.test.js`](../tests/node/liquidfun.test.js) | Flags (including BARRIER / STATIC_PRESSURE), AABB, `SET_LIQUIDFUN_EMIT` ring, `physics.liquidFun` merge + maxCount clamp 65535 |
 | [`tests/node/liquidfun.wasm.test.js`](../tests/node/liquidfun.wasm.test.js) | Y-down floor settle + `spanY`; no wall-climb **and** no centers inside the wall; water beside a thick box (`maxPen < radius`); 10k create/step smoke; **1-particle point rest** on floor top (`|vy|` small); barrier smoke; staticPressure finite; deinterleaved `x`/`y` exactly match interleaved `pos`; `strictContactCheck` 5th-arg smoke |

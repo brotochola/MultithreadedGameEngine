@@ -94,11 +94,11 @@ test('WASM LiquidFun groups create and rest on a static box (Y-down pixels)', ()
   const sysOk = createParticleSystem(worldId, 10, 1.0, 500);
   assert.ok(sysOk, 'create_particle_system failed');
 
-  const circle0 = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0);
+  const circle0 = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0, 0, 1, 1);
   assert.ok(circle0 >= 0, `first circle group failed: ${circle0}`);
-  const circle1 = createParticleGroupCircle(80, 80, 30, 0, 0, 0.5, 0, 0);
+  const circle1 = createParticleGroupCircle(80, 80, 30, 0, 0, 0.5, 0, 0, 0, 1, 1);
   assert.ok(circle1 >= 0, `second circle group failed: ${circle1}`);
-  const boxGrp = createParticleGroupBox(-40, 40, 40, 100, 0, 0, 0.5, 0, 0);
+  const boxGrp = createParticleGroupBox(-40, 40, 40, 100, 0, 0, 0.5, 0, 0, 0, 1, 1);
   assert.ok(boxGrp >= 0, `box group failed: ${boxGrp}`);
 
   const count = getParticleCount();
@@ -193,7 +193,7 @@ test('WASM water blob does not climb a vertical static wall', () => {
   const sysOk = createParticleSystem(worldId, 10, 1.0, 800);
   assert.ok(sysOk, 'create_particle_system failed');
 
-  const gid = createParticleGroupCircle(155, 200, 50, 0, 0, 0, 0, 0);
+  const gid = createParticleGroupCircle(155, 200, 50, 0, 0, 0, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 8, `expected a blob, got ${count}`);
@@ -300,7 +300,7 @@ test('WASM water beside a thick static box stays outside (max pen < radius)', ()
   assert.ok(boxSlot >= 0, `box failed: ${boxSlot}`);
 
   assert.ok(createParticleSystem(worldId, radius, 1.0, 800), 'create_particle_system failed');
-  const gid = createParticleGroupCircle(400, 220, 40, 0, 0, 0, 0, 0);
+  const gid = createParticleGroupCircle(400, 220, 40, 0, 0, 0, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 8, `expected a blob, got ${count}`);
@@ -400,7 +400,7 @@ test('WASM 10k water smoke: create and step without losing particles', () => {
   assert.ok(bindGameBuffers(16), 'bind_game_buffers failed');
   assert.ok(createParticleSystem(worldId, 4, 1.0, 10000), 'create_particle_system failed');
 
-  const gid = createParticleGroupBox(-340, -340, 340, 340, 0, 0, 0, 0, 0);
+  const gid = createParticleGroupBox(-340, -340, 340, 340, 0, 0, 0, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `box group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count >= 9000, `expected ~10k water, got ${count}`);
@@ -510,7 +510,7 @@ test('WASM WALL|BARRIER segment keeps water on one side', () => {
   const dam = createParticleBox(100, 340, 100, 357, 17, WALL | BARRIER);
   assert.equal(dam, 2, `expected 2 barrier particles, got ${dam}`);
 
-  const gid = createParticleGroupCircle(40, 300, 35, 0, 0, 0, 0, 0);
+  const gid = createParticleGroupCircle(40, 300, 35, 0, 0, 0, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `water circle failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 4, `expected water + dam, got ${count}`);
@@ -548,7 +548,7 @@ test('WASM STATIC_PRESSURE create and step stays finite', () => {
   assert.ok(createParticleSystem(worldId, 10, 1.0, 200), 'create_particle_system failed');
 
   const STATIC_PRESSURE = 1 << 8;
-  const gid = createParticleGroupCircle(0, 80, 40, 0, STATIC_PRESSURE, 0, 0, 0);
+  const gid = createParticleGroupCircle(0, 80, 40, 0, STATIC_PRESSURE, 0, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `circle failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 4, `expected a blob, got ${count}`);
@@ -602,7 +602,7 @@ test('WASM particle x/y deinterleave matches the interleaved position buffer', (
   assert.ok(floorSlot >= 0, `create_body_box failed: ${floorSlot}`);
 
   assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
-  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0);
+  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 4, `expected a blob, got ${count}`);
@@ -645,7 +645,7 @@ test('WASM create_particle_system strictContactCheck param reaches C (5th arg)',
   // matching the new liquidFun.strictContactCheck default of false.
   assert.ok(createParticleSystem(worldId, 10, 1.0, 200, 1), 'create_particle_system failed');
 
-  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0);
+  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0, 0, 1, 1);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 4, `expected a blob, got ${count}`);
@@ -681,7 +681,7 @@ test('WASM particle lifespan: age-based destruction (SetParticleDestructionByAge
   // min === max: every particle in the group gets exactly the same lifetime
   // (no per-particle RNG spread), so the expiry step is deterministic.
   const lifetimeSec = 0.1;
-  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 0);
+  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 0, 1, 1);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 4, `expected a blob, got ${count}`);
@@ -715,7 +715,7 @@ test('WASM particle lifespan alpha fades toward 0 only when fadeToAlpha0=1; untr
 
   // --- Block 1: no lifespan requested (0,0) - alpha must stay 1 forever. ---
   assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
-  const untrackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0, 0);
+  const untrackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0, 0, 1, 1);
   assert.ok(untrackedGid >= 0, `circle group failed: ${untrackedGid}`);
   const untrackedCount = getParticleCount();
   assert.ok(untrackedCount > 4, `expected a blob, got ${untrackedCount}`);
@@ -734,7 +734,7 @@ test('WASM particle lifespan alpha fades toward 0 only when fadeToAlpha0=1; untr
   // --- Block 2: lifespan + fadeToAlpha0=1, sampled at midpoint → alpha ~0.5. ---
   assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
   const lifetimeSec = 1.0;
-  const trackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 1);
+  const trackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 1, 1, 1);
   assert.ok(trackedGid >= 0, `circle group failed: ${trackedGid}`);
   const trackedCount = getParticleCount();
   assert.ok(trackedCount > 4, `expected a blob, got ${trackedCount}`);
@@ -760,7 +760,7 @@ test('WASM particle lifespan alpha fades toward 0 only when fadeToAlpha0=1; untr
 
   // --- Block 3: lifespan + fadeToAlpha0=0 → alpha stays 1 until destroy. ---
   assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
-  const opaqueGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 0);
+  const opaqueGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 0, 1, 1);
   assert.ok(opaqueGid >= 0, `circle group failed: ${opaqueGid}`);
   const opaqueCount = getParticleCount();
   assert.ok(opaqueCount > 4, `expected a blob, got ${opaqueCount}`);

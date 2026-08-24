@@ -75,7 +75,7 @@ async function sampleMode(browser, baseUrl, mode) {
         const lfViews = LiquidFunRenderModule.bindLiquidFunRender(scene.buffers.liquidFunRender, scene.liquidFunMaxCount);
 
         ParticleEmitter.emitLiquidFunParticles({
-          material: 'water',
+          flags: 0,
           shape: 'circle',
           posX: 2000,
           posY: 800,
@@ -213,11 +213,11 @@ async function verifyReorderMitigation(browser, baseUrl) {
       const lfViews = LiquidFunRenderModule.bindLiquidFunRender(scene.buffers.liquidFunRender, scene.liquidFunMaxCount);
 
       // Never-expiring blob first, so there's always a survivor to reseed.
-      ParticleEmitter.emitLiquidFunParticles({ material: 'water', shape: 'circle', posX: 2000, posY: 700, radius: 40 });
+      ParticleEmitter.emitLiquidFunParticles({ flags: 0, shape: 'circle', posX: 2000, posY: 700, radius: 40 });
       // Independently-randomized short lifespans -> particles expire (and
       // trigger SolveZombie compaction) at scattered times, not all at once.
       ParticleEmitter.emitLiquidFunParticles({
-        material: 'water',
+        flags: 0,
         shape: 'circle',
         posX: 2200,
         posY: 700,

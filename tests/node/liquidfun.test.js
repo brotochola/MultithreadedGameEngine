@@ -6,11 +6,12 @@ import {
   drainCommandRing,
   BOX2D_CMD,
 } from '../../src/box2d/box2dCommandRing.js';
-import { LiquidFunSystem, LIQUIDFUN_FLAGS, LIQUIDFUN_MATERIALS } from '../../src/core/LiquidFunSystem.js';
+import { LiquidFunSystem, LIQUIDFUN_FLAGS } from '../../src/core/LiquidFunSystem.js';
 import { ParticleEmitter } from '../../src/core/ParticleEmitter.js';
 import { PHYSICS_DEFAULTS } from '../../src/core/ConfigDefaults.js';
 import { validatePhysicsConfig } from '../../src/core/utils.js';
 import { bindLiquidFunRender, liquidFunRenderByteSize } from '../../src/core/liquidFunRender.js';
+import { bindLiquidFunGroups, liquidFunGroupsByteSize, LIQUIDFUN_GROUPS_MAX } from '../../src/core/liquidFunGroups.js';
 
 test('LIQUIDFUN_FLAGS match liquidfun-c lfParticleFlag', () => {
   assert.equal(LIQUIDFUN_FLAGS.WATER, 0);
@@ -23,15 +24,6 @@ test('LIQUIDFUN_FLAGS match liquidfun-c lfParticleFlag', () => {
   assert.equal(LIQUIDFUN_FLAGS.SPRING, 1 << 6);
   assert.equal(LIQUIDFUN_FLAGS.BARRIER, 1 << 7);
   assert.equal(LIQUIDFUN_FLAGS.STATIC_PRESSURE, 1 << 8);
-});
-
-test('LIQUIDFUN_MATERIALS use flags we actually have', () => {
-  assert.equal(LIQUIDFUN_MATERIALS.water.flags, LIQUIDFUN_FLAGS.WATER | LIQUIDFUN_FLAGS.TENSILE);
-  assert.equal(LIQUIDFUN_MATERIALS.oil.flags, LIQUIDFUN_FLAGS.VISCOUS);
-  assert.equal(LIQUIDFUN_MATERIALS.cream.flags, LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE);
-  assert.equal(LIQUIDFUN_MATERIALS.dulceDeLeche.strength, 0.4);
-  assert.equal(LIQUIDFUN_MATERIALS.jelly.flags, LIQUIDFUN_FLAGS.ELASTIC);
-  assert.equal(LIQUIDFUN_MATERIALS.sand.flags, LIQUIDFUN_FLAGS.POWDER);
 });
 
 test('center+half box converts to a non-inverted AABB for WASM', () => {
@@ -60,6 +52,15 @@ test('validatePhysicsConfig shallow-merges liquidFun defaults', () => {
   assert.equal(merged.liquidFun.maxCount, 1);
   assert.equal(merged.liquidFun.subSteps, 1);
   assert.equal(merged.liquidFun.density, PHYSICS_DEFAULTS.liquidFun.density);
+  assert.equal(merged.liquidFun.viscousStrength, PHYSICS_DEFAULTS.liquidFun.viscousStrength);
+});
+
+test('validatePhysicsConfig merges viscousStrength override', () => {
+  const merged = validatePhysicsConfig(null, {
+    liquidFun: { enabled: true, viscousStrength: 2.5 },
+  });
+  assert.equal(merged.liquidFun.viscousStrength, 2.5);
+  assert.equal(merged.liquidFun.tensileStrength, PHYSICS_DEFAULTS.liquidFun.tensileStrength);
 });
 
 test('validatePhysicsConfig clamps liquidFun.maxCount to 65535', () => {
@@ -109,7 +110,10 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
     textureId: 4,
   });
   ParticleEmitter.emitLiquidFunParticles({
-    material: 'jelly',
+    flags: LIQUIDFUN_FLAGS.ELASTIC,
+    strength: 0.55,
+    tint: 0x33ff66,
+    viscousScale: 1,
     shape: 'circle',
     posX: 150,
     posY: 250,
@@ -123,13 +127,15 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
     createParticleSystem(systemId, radius, maxCount, subSteps) {
       received.push({ type: 'createParticleSystem', systemId, radius, maxCount, subSteps });
     },
-    setLiquidFunEmit(spacing, strength, tintBits, textureId) {
+    setLiquidFunEmit(packed, spacing, strength, tintBits, viscousScale) {
       received.push({
         type: 'setLiquidFunEmit',
         spacing,
         strength,
         tintBits: tintBits >>> 0,
-        textureId: textureId | 0,
+        textureId: packed & 0xffff,
+        trackGroup: (packed >>> 16) & 1,
+        viscousScale,
       });
     },
     createParticleGroupBox(flags, posX, posY, halfWidth, halfHeight) {
@@ -155,6 +161,8 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
     strength: 0.25,
     tintBits: 0xffcc00,
     textureId: 4,
+    trackGroup: 0,
+    viscousScale: 1,
   });
   assert.deepEqual(received[2], {
     type: 'createParticleGroupBox',
@@ -166,9 +174,10 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
   });
   assert.equal(received[3].type, 'setLiquidFunEmit');
   assert.equal(received[3].spacing, 0);
-  assert.ok(Math.abs(received[3].strength - LIQUIDFUN_MATERIALS.jelly.strength) < 1e-6);
-  assert.equal(received[3].tintBits, LIQUIDFUN_MATERIALS.jelly.tint);
+  assert.ok(Math.abs(received[3].strength - 0.55) < 1e-6);
+  assert.equal(received[3].tintBits, 0x33ff66);
   assert.equal(received[3].textureId, 0);
+  assert.equal(received[3].viscousScale, 1);
   assert.deepEqual(received[4], {
     type: 'createParticleGroupCircle',
     systemId: 0,
@@ -179,6 +188,54 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
   });
   assert.deepEqual(received[5], { type: 'destroyParticleGroup', systemId: 0, groupId: 1 });
   assert.deepEqual(received[6], { type: 'destroyParticleSystem', systemId: 0 });
+});
+
+test('thick viscous emit packs viscousScale 10', () => {
+  const sab = createCommandRingSab(32);
+  bindCommandRing(sab);
+  const i32 = new Int32Array(sab);
+  const f32 = new Float32Array(sab);
+  ParticleEmitter.emitLiquidFunParticles({
+    flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE,
+    viscousScale: 10,
+    tint: 0xc6862a,
+    shape: 'circle',
+    posX: 0,
+    posY: 0,
+    radius: 10,
+  });
+  const received = [];
+  drainCommandRing(i32, f32, {
+    setLiquidFunEmit(packed, spacing, strength, tintBits, viscousScale) {
+      received.push({ viscousScale, trackGroup: (packed >>> 16) & 1 });
+    },
+    createParticleGroupCircle() {},
+  });
+  assert.equal(received[0].viscousScale, 10);
+  assert.equal(received[0].trackGroup, 0);
+});
+
+test('setGroupViscousScale and setTuning enqueue', () => {
+  const sab = createCommandRingSab(32);
+  bindCommandRing(sab);
+  const i32 = new Int32Array(sab);
+  const f32 = new Float32Array(sab);
+  LiquidFunSystem.setGroupViscousScale(3, 2.5);
+  LiquidFunSystem.setTuning({ viscousStrength: 1.5 });
+  const received = [];
+  drainCommandRing(i32, f32, {
+    setGroupViscousScale(groupId, scale) {
+      received.push({ type: 'setGroupViscousScale', groupId, scale });
+    },
+    setParticleTuning(phase, a, b, c, d) {
+      received.push({ type: 'setParticleTuning', phase, a, b, c, d });
+    },
+  });
+  assert.deepEqual(received[0], { type: 'setGroupViscousScale', groupId: 3, scale: 2.5 });
+  assert.equal(received[1].type, 'setParticleTuning');
+  assert.equal(received[1].phase, 0);
+  assert.equal(received[1].c, 1.5);
+  assert.equal(received.length, 4); // 1 setGroup + 3 tuning phases
 });
 
 test('LiquidFunSystem enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when options.lifespan is set', () => {
@@ -362,4 +419,25 @@ test('liquidFun render SAB is not ParticleComponent', () => {
   assert.ok(!('vy' in views));
   assert.ok(!('lifespan' in views));
   assert.ok(!('flat' in views));
+});
+
+test('liquidFun groups SAB fits bindLiquidFunGroups (all 9 columns)', () => {
+  const n = LIQUIDFUN_GROUPS_MAX;
+  const sab = new SharedArrayBuffer(liquidFunGroupsByteSize(n));
+  const views = bindLiquidFunGroups(sab, n);
+  assert.equal(views.count.length, 1);
+  assert.equal(views.id.length, n);
+  assert.equal(views.particleCount.length, n);
+  assert.equal(views.viscousScale.length, n);
+  assert.equal(views.x.length, n);
+  assert.equal(views.y.length, n);
+  assert.equal(views.vx.length, n);
+  assert.equal(views.vy.length, n);
+  assert.equal(views.angularVelocity.length, n);
+  assert.equal(views.angle.length, n);
+  views.count[0] = 1;
+  views.id[n - 1] = 7;
+  views.angle[n - 1] = 1.5;
+  assert.equal(views.id[n - 1], 7);
+  assert.equal(views.angle[n - 1], 1.5);
 });

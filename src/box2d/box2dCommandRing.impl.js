@@ -22,9 +22,11 @@
     CREATE_PARTICLE_GROUP_CIRCLE: 10, // systemId, posX, posY, radius, flags
     DESTROY_PARTICLE_GROUP: 11, // systemId, groupId
     DESTROY_PARTICLE_SYSTEM: 12, // systemId
-    SET_LIQUIDFUN_EMIT: 13, // spacing, strength, tintBits, textureId (next create consumes)
+    SET_LIQUIDFUN_EMIT: 13, // entity=textureId|(trackGroup<<16); spacing, strength, tintBits, viscousScale
     SET_LIQUIDFUN_LIFESPAN: 14, // lifetimeMinSec, lifetimeMaxSec, fadeToAlpha0 (0|1); next create consumes; 0,0 = no lifespan
     SET_LIQUIDFUN_SCALE: 15, // entity=layerId; scaleMin, scaleMax, alphaMin, alphaMax (next create)
+    SET_PARTICLE_TUNING: 16, // entity=phase 0|1|2; four floats per phase (see enqueueSetParticleTuning)
+    SET_GROUP_VISCOUS_SCALE: 17, // entity=groupId, a=viscousScale
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -171,14 +173,16 @@
     );
   }
 
-  function enqueueSetLiquidFunEmit(spacing, strength, tintBits, textureId) {
+  function enqueueSetLiquidFunEmit(spacing, strength, tintBits, textureId, viscousScale, trackGroup) {
+    var packed = (textureId | 0) & 0xffff;
+    if (trackGroup) packed |= 1 << 16;
     return enqueue(
       BOX2D_CMD.SET_LIQUIDFUN_EMIT,
-      0,
+      packed,
       spacing || 0,
       strength || 0,
       tintBits || 0,
-      textureId || 0,
+      viscousScale != null && viscousScale > 0 ? viscousScale : 1,
     );
   }
 
@@ -202,6 +206,42 @@
       alphaMin,
       alphaMax,
     );
+  }
+
+  /** Apply system def coeffs. Three ring slots (phase 0/1/2). */
+  function enqueueSetParticleTuning(t) {
+    var o = t || {};
+    var ok = enqueue(
+      BOX2D_CMD.SET_PARTICLE_TUNING,
+      0,
+      o.dampingStrength != null ? o.dampingStrength : 1,
+      o.pressureStrength != null ? o.pressureStrength : 0.05,
+      o.viscousStrength != null ? o.viscousStrength : 0.25,
+      o.tensileStrength != null ? o.tensileStrength : 0.2,
+    );
+    ok =
+      enqueue(
+        BOX2D_CMD.SET_PARTICLE_TUNING,
+        1,
+        o.powderStrength != null ? o.powderStrength : 0.5,
+        o.springStrength != null ? o.springStrength : 0.25,
+        o.staticPressureStrength != null ? o.staticPressureStrength : 0.2,
+        o.staticPressureRelaxation != null ? o.staticPressureRelaxation : 0.2,
+      ) && ok;
+    ok =
+      enqueue(
+        BOX2D_CMD.SET_PARTICLE_TUNING,
+        2,
+        o.staticPressureIterations != null ? o.staticPressureIterations : 8,
+        0,
+        0,
+        0,
+      ) && ok;
+    return ok;
+  }
+
+  function enqueueSetGroupViscousScale(groupId, scale) {
+    return enqueue(BOX2D_CMD.SET_GROUP_VISCOUS_SCALE, groupId | 0, scale > 0 ? scale : 1, 0, 0, 0);
   }
 
   function enqueueCreateParticleGroupBox(systemId, posX, posY, halfWidth, halfHeight, flags) {
@@ -274,13 +314,19 @@
           if (handlers.destroyParticleSystem) handlers.destroyParticleSystem(entity);
           break;
         case BOX2D_CMD.SET_LIQUIDFUN_EMIT:
-          if (handlers.setLiquidFunEmit) handlers.setLiquidFunEmit(a, b, c, d);
+          if (handlers.setLiquidFunEmit) handlers.setLiquidFunEmit(entity, a, b, c, d);
           break;
         case BOX2D_CMD.SET_LIQUIDFUN_LIFESPAN:
           if (handlers.setLiquidFunLifespan) handlers.setLiquidFunLifespan(a, b, c);
           break;
         case BOX2D_CMD.SET_LIQUIDFUN_SCALE:
           if (handlers.setLiquidFunScale) handlers.setLiquidFunScale(entity, a, b, c, d);
+          break;
+        case BOX2D_CMD.SET_PARTICLE_TUNING:
+          if (handlers.setParticleTuning) handlers.setParticleTuning(entity, a, b, c, d);
+          break;
+        case BOX2D_CMD.SET_GROUP_VISCOUS_SCALE:
+          if (handlers.setGroupViscousScale) handlers.setGroupViscousScale(entity, a);
           break;
         default:
           break;
@@ -312,6 +358,8 @@
     enqueueSetLiquidFunEmit: enqueueSetLiquidFunEmit,
     enqueueSetLiquidFunLifespan: enqueueSetLiquidFunLifespan,
     enqueueSetLiquidFunScale: enqueueSetLiquidFunScale,
+    enqueueSetParticleTuning: enqueueSetParticleTuning,
+    enqueueSetGroupViscousScale: enqueueSetGroupViscousScale,
     enqueueCreateParticleGroupBox: enqueueCreateParticleGroupBox,
     enqueueCreateParticleGroupCircle: enqueueCreateParticleGroupCircle,
     enqueueDestroyParticleGroup: enqueueDestroyParticleGroup,

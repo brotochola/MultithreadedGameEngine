@@ -41,6 +41,15 @@
       subSteps: 1,
       density: 1,
       strictContactCheck: false,
+      dampingStrength: 1.0,
+      pressureStrength: 0.05,
+      viscousStrength: 0.25,
+      tensileStrength: 0.2,
+      powderStrength: 0.5,
+      springStrength: 0.25,
+      staticPressureStrength: 0.2,
+      staticPressureRelaxation: 0.2,
+      staticPressureIterations: 8,
     },
   };
 
@@ -153,6 +162,44 @@
     };
   }
 
+  // Mirrors src/core/liquidFunGroups.js bindLiquidFunGroups.
+  function bindLiquidFunGroupsViews(sab, maxGroups) {
+    var n = maxGroups | 0;
+    var off = 0;
+    var count = new Int32Array(sab, off, 1);
+    off += 4;
+    var id = new Int32Array(sab, off, n);
+    off += n * 4;
+    var particleCount = new Int32Array(sab, off, n);
+    off += n * 4;
+    var viscousScale = new Float32Array(sab, off, n);
+    off += n * 4;
+    var x = new Float32Array(sab, off, n);
+    off += n * 4;
+    var y = new Float32Array(sab, off, n);
+    off += n * 4;
+    var vx = new Float32Array(sab, off, n);
+    off += n * 4;
+    var vy = new Float32Array(sab, off, n);
+    off += n * 4;
+    var angularVelocity = new Float32Array(sab, off, n);
+    off += n * 4;
+    var angle = new Float32Array(sab, off, n);
+    return {
+      count: count,
+      id: id,
+      particleCount: particleCount,
+      viscousScale: viscousScale,
+      x: x,
+      y: y,
+      vx: vx,
+      vy: vy,
+      angularVelocity: angularVelocity,
+      angle: angle,
+      maxGroups: n,
+    };
+  }
+
   function schemaEntry(typeOrSpec) {
     if (typeOrSpec && typeof typeOrSpec === 'object' && typeOrSpec.type) {
       return { type: typeOrSpec.type, length: typeOrSpec.length | 0 || 1 };
@@ -257,6 +304,42 @@
       subSteps: Math.max(1, (src.subSteps != null ? src.subSteps : d.subSteps) | 0),
       density: typeof src.density === 'number' && isFinite(src.density) ? src.density : d.density,
       strictContactCheck: !!src.strictContactCheck,
+      dampingStrength:
+        typeof src.dampingStrength === 'number' && isFinite(src.dampingStrength)
+          ? src.dampingStrength
+          : d.dampingStrength,
+      pressureStrength:
+        typeof src.pressureStrength === 'number' && isFinite(src.pressureStrength)
+          ? src.pressureStrength
+          : d.pressureStrength,
+      viscousStrength:
+        typeof src.viscousStrength === 'number' && isFinite(src.viscousStrength)
+          ? src.viscousStrength
+          : d.viscousStrength,
+      tensileStrength:
+        typeof src.tensileStrength === 'number' && isFinite(src.tensileStrength)
+          ? src.tensileStrength
+          : d.tensileStrength,
+      powderStrength:
+        typeof src.powderStrength === 'number' && isFinite(src.powderStrength)
+          ? src.powderStrength
+          : d.powderStrength,
+      springStrength:
+        typeof src.springStrength === 'number' && isFinite(src.springStrength)
+          ? src.springStrength
+          : d.springStrength,
+      staticPressureStrength:
+        typeof src.staticPressureStrength === 'number' && isFinite(src.staticPressureStrength)
+          ? src.staticPressureStrength
+          : d.staticPressureStrength,
+      staticPressureRelaxation:
+        typeof src.staticPressureRelaxation === 'number' && isFinite(src.staticPressureRelaxation)
+          ? src.staticPressureRelaxation
+          : d.staticPressureRelaxation,
+      staticPressureIterations: Math.max(
+        1,
+        (src.staticPressureIterations != null ? src.staticPressureIterations : d.staticPressureIterations) | 0,
+      ),
     };
   }
 
@@ -603,6 +686,23 @@
       };
     }
 
+    if (state.liquidFunGroups) {
+      var G = state.liquidFunGroups;
+      initPayload.liquidFunGroupsMax = G.maxGroups;
+      initPayload.liquidFunGroupsViews = {
+        count: packView(G.count),
+        id: packView(G.id),
+        particleCount: packView(G.particleCount),
+        viscousScale: packView(G.viscousScale),
+        x: packView(G.x),
+        y: packView(G.y),
+        vx: packView(G.vx),
+        vy: packView(G.vy),
+        angularVelocity: packView(G.angularVelocity),
+        angle: packView(G.angle),
+      };
+    }
+
     global.weedjsOnReady = function (ready) {
       state.box2dReady = true;
       fanoutBox2dReady(ready);
@@ -709,6 +809,9 @@
     if (buffers.liquidFunRender && lfMax > 0) {
       state.liquidFun = bindLiquidFunRenderViews(buffers.liquidFunRender, lfMax);
       state.liquidFunMaxCount = lfMax;
+    }
+    if (buffers.liquidFunGroups) {
+      state.liquidFunGroups = bindLiquidFunGroupsViews(buffers.liquidFunGroups, 256);
     }
 
     if (buffers.bodyDirtyFlags && buffers.bodyDirtyWords && buffers.bodyGeneration) {

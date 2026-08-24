@@ -2,6 +2,7 @@
 
 import { Box2dCommandRing } from '../box2d/box2dCommandRing.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
+import { bindLiquidFunGroups, LIQUIDFUN_GROUPS_MAX } from './liquidFunGroups.js';
 
 // Bits match liquidfun-c lfParticleFlag (not Google LiquidFun's extra listener bits).
 export const LIQUIDFUN_FLAGS = Object.freeze({
@@ -15,16 +16,6 @@ export const LIQUIDFUN_FLAGS = Object.freeze({
   SPRING: 1 << 6,
   BARRIER: 1 << 7,
   STATIC_PRESSURE: 1 << 8,
-});
-
-/** Presets use flags we actually have. Tint is 0xRRGGBB. */
-export const LIQUIDFUN_MATERIALS = Object.freeze({
-  water: Object.freeze({ flags: LIQUIDFUN_FLAGS.WATER | LIQUIDFUN_FLAGS.TENSILE, strength: 0, tint: 0x3399ff }),
-  oil: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS, strength: 0, tint: 0x6b3a1f }),
-  cream: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE, strength: 0.2, tint: 0xf5f0e1 }),
-  dulceDeLeche: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE, strength: 1422, tint: 0xc6862a }),
-  jelly: Object.freeze({ flags: LIQUIDFUN_FLAGS.ELASTIC, strength: 0.55, tint: 0x33ff66 }),
-  sand: Object.freeze({ flags: LIQUIDFUN_FLAGS.POWDER, strength: 0, tint: 0xffcc00 }),
 });
 
 function resolveLifespanSec(lifespan) {
@@ -54,12 +45,12 @@ function resolveRange(value, defaultVal = 1) {
 
 function resolveEmit(options) {
   const o = options || {};
-  const preset = o.material ? LIQUIDFUN_MATERIALS[o.material] : null;
   let textureId = o.textureId | 0;
   if (!textureId && o.texture) {
     textureId = SpriteSheetRegistry.getTextureId(o.texture) | 0;
   }
   const life = resolveLifespanSec(o.lifespan);
+  const viscousScale = o.viscousScale != null ? o.viscousScale : 1;
   return {
     posX: o.posX,
     posY: o.posY,
@@ -67,10 +58,12 @@ function resolveEmit(options) {
     halfHeight: o.halfHeight,
     radius: o.radius,
     systemId: o.systemId || 0,
-    flags: o.flags != null ? o.flags : preset ? preset.flags : LIQUIDFUN_FLAGS.WATER,
+    flags: o.flags != null ? o.flags : LIQUIDFUN_FLAGS.WATER,
     spacing: o.spacing != null ? o.spacing : 0,
-    strength: o.strength != null ? o.strength : preset ? preset.strength : 0,
-    tint: o.tint != null ? o.tint : preset ? preset.tint : 0,
+    strength: o.strength != null ? o.strength : 0,
+    viscousScale: viscousScale > 0 ? viscousScale : 1,
+    trackGroup: !!o.trackGroup,
+    tint: o.tint != null ? o.tint : 0,
     textureId,
     lifetimeMinSec: life.minSec,
     lifetimeMaxSec: life.maxSec,
@@ -88,6 +81,8 @@ function enqueueEmitParams(resolved) {
     resolved.strength,
     resolved.tint,
     resolved.textureId,
+    resolved.viscousScale,
+    resolved.trackGroup,
   );
   if (resolved.lifetimeMaxSec > 0) {
     Box2dCommandRing.enqueueSetLiquidFunLifespan(
@@ -109,7 +104,15 @@ function enqueueEmitParams(resolved) {
   }
 }
 
+let _groupsViews = null;
+const _groupsScratch = [];
+
 export class LiquidFunSystem {
+  /** Called when scene allocates the groups SAB. */
+  static bindGroupsSab(sab) {
+    _groupsViews = sab ? bindLiquidFunGroups(sab, LIQUIDFUN_GROUPS_MAX) : null;
+  }
+
   /**
    * Initializes or configures a LiquidFun particle system in the Box2D physics engine.
    * Prefer `physics.liquidFun.enabled` at scene boot; this is the manual / late-create path.
@@ -126,12 +129,72 @@ export class LiquidFunSystem {
   }
 
   /**
+   * Live-update system def coeffs (viscousStrength, tensileStrength, …).
+   * Applied on the physics worker after the next drain.
+   */
+  static setTuning(tuning) {
+    Box2dCommandRing.enqueueSetParticleTuning(tuning || {});
+  }
+
+  /**
+   * Stamp viscousScale onto every particle in a live group (melt / thicken).
+   */
+  static setGroupViscousScale(groupId, scale) {
+    Box2dCommandRing.enqueueSetGroupViscousScale(groupId, scale);
+  }
+
+  /**
+   * Alive LiquidFun groups mirrored from the physics worker (≤1 step stale).
+   * Reuses a scratch array — do not hold references across frames without copying.
+   */
+  static getParticleGroups() {
+    const v = _groupsViews;
+    if (!v || !v.count) {
+      _groupsScratch.length = 0;
+      return _groupsScratch;
+    }
+    const n = v.count[0] | 0;
+    const out = _groupsScratch;
+    out.length = n;
+    for (let i = 0; i < n; i++) {
+      let g = out[i];
+      if (!g) {
+        g = {
+          id: 0,
+          particleCount: 0,
+          viscousScale: 1,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          angularVelocity: 0,
+          angle: 0,
+        };
+        out[i] = g;
+      }
+      g.id = v.id[i] | 0;
+      g.particleCount = v.particleCount[i] | 0;
+      g.viscousScale = v.viscousScale[i];
+      g.x = v.x[i];
+      g.y = v.y[i];
+      g.vx = v.vx[i];
+      g.vy = v.vy[i];
+      g.angularVelocity = v.angularVelocity[i];
+      g.angle = v.angle[i];
+    }
+    return out;
+  }
+
+  /**
    * Spawns a rectangular group of LiquidFun particles.
-   * Elastic/spring allocate a group; water/oil/cream/powder append ungrouped.
+   * Elastic/spring allocate a shape group; viscousScale!=1 or trackGroup keeps a
+   * bookkeeping group (no UpdateGroupStatistics). Else ungrouped (-1).
    * @param {Object} options
-   * @param {string} [options.material] - Preset key in LIQUIDFUN_MATERIALS.
+   * @param {number} [options.flags] - `LIQUIDFUN_FLAGS` bits. Default WATER (0).
    * @param {number} [options.spacing=0] - 0 → C rest stride (0.75 × diameter).
-   * @param {number} [options.strength]
+   * @param {number} [options.strength] - Elastic/spring group cohesion (~0..1).
+   * @param {number} [options.viscousScale] - Per-particle viscous multiplier (default 1).
+   * @param {boolean} [options.trackGroup] - Keep a bookkeeping group even at scale 1.
    * @param {number} [options.tint]
    * @param {number} [options.textureId]
    * @param {string} [options.texture] - Resolved via SpriteSheetRegistry if textureId omitted.

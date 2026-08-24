@@ -64,7 +64,9 @@
   let seenBodyGeneration = null;
   let jointViews = null;
   let liquidFunViews = null;
+  let liquidFunGroupsViews = null;
   let liquidFunMaxCount = 0;
+  let liquidFunDensity = 1.0;
   let liquidFunXFloatOffset = 0;
   let liquidFunYFloatOffset = 0;
   let liquidFunAlphaFloatOffset = 0;
@@ -78,6 +80,8 @@
     strength: 0.5,
     tintBits: 0,
     textureId: 0,
+    viscousScale: 1,
+    trackGroup: 0,
     lifetimeMin: 0,
     lifetimeMax: 0, // <= 0 = no age-based destruction (default)
     fadeToAlpha0: 0, // 0 = opaque until destroy; 1 = lerp alpha over life
@@ -88,6 +92,17 @@
     alphaMax: 1,
     layerId: 0,
     pending: false,
+  };
+  let pendingParticleTuning = {
+    dampingStrength: 1,
+    pressureStrength: 0.05,
+    viscousStrength: 0.25,
+    tensileStrength: 0.2,
+    powderStrength: 0.5,
+    springStrength: 0.25,
+    staticPressureStrength: 0.2,
+    staticPressureRelaxation: 0.2,
+    staticPressureIterations: 8,
   };
   let jointHandle = null; // Int32Array, -1 = none, -2 = fail this revision
   let jointSeenRev = null; // Uint32Array — last synced Joint.revision
@@ -928,11 +943,13 @@
       if (!hasBody[entity]) return;
       bodySetSleepThresholdFn(entity, threshold);
     },
-    setLiquidFunEmit(spacing, strength, tintBits, textureId) {
+    setLiquidFunEmit(packed, spacing, strength, tintBits, viscousScale) {
+      pendingLiquidFunEmit.textureId = packed & 0xffff;
+      pendingLiquidFunEmit.trackGroup = (packed >>> 16) & 1;
       pendingLiquidFunEmit.spacing = spacing || 0;
       pendingLiquidFunEmit.strength = strength || 0;
       pendingLiquidFunEmit.tintBits = tintBits >>> 0;
-      pendingLiquidFunEmit.textureId = textureId | 0;
+      pendingLiquidFunEmit.viscousScale = viscousScale > 0 ? viscousScale : 1;
       pendingLiquidFunEmit.pending = true;
     },
     setLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec, fadeToAlpha0) {
@@ -950,6 +967,29 @@
       pendingLiquidFunEmit.alphaMax = alphaMax;
       pendingLiquidFunEmit.pending = true;
     },
+    setParticleTuning(phase, a, b, c, d) {
+      const p = phase | 0;
+      if (p === 0) {
+        pendingParticleTuning.dampingStrength = a;
+        pendingParticleTuning.pressureStrength = b;
+        pendingParticleTuning.viscousStrength = c;
+        pendingParticleTuning.tensileStrength = d;
+      } else if (p === 1) {
+        pendingParticleTuning.powderStrength = a;
+        pendingParticleTuning.springStrength = b;
+        pendingParticleTuning.staticPressureStrength = c;
+        pendingParticleTuning.staticPressureRelaxation = d;
+      } else if (p === 2) {
+        pendingParticleTuning.staticPressureIterations = a | 0;
+        if (world && typeof world.setParticleTuning === 'function') {
+          world.setParticleTuning(pendingParticleTuning);
+        }
+      }
+    },
+    setGroupViscousScale(groupId, scale) {
+      if (!world || typeof world.setGroupViscousScale !== 'function') return;
+      world.setGroupViscousScale(groupId, scale);
+    },
     createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
       if (!world) return;
       liquidFunXFloatOffset = 0;
@@ -959,10 +999,13 @@
       world.createParticleSystem(
         radius || 10,
         maxCount || 10000,
-        1.0,
+        liquidFunDensity,
         subSteps > 0 ? subSteps : 1,
         !!strictContactCheck,
       );
+      if (typeof world.setParticleTuning === 'function') {
+        world.setParticleTuning(pendingParticleTuning);
+      }
     },
     createParticleGroupBox(flags, posX, posY, halfWidth, halfHeight) {
       if (!world) return;
@@ -979,6 +1022,8 @@
         emit.lifetimeMin,
         emit.lifetimeMax,
         emit.fadeToAlpha0,
+        emit.viscousScale,
+        emit.trackGroup,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -996,6 +1041,8 @@
         emit.lifetimeMin,
         emit.lifetimeMax,
         emit.fadeToAlpha0,
+        emit.viscousScale,
+        emit.trackGroup,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -1146,6 +1193,8 @@
       strength: 0.5,
       tintBits: 0,
       textureId: 0,
+      viscousScale: 1,
+      trackGroup: 0,
       lifetimeMin: 0,
       lifetimeMax: 0,
       fadeToAlpha0: 0,
@@ -1162,6 +1211,8 @@
       emit.strength = 0.5;
       emit.tintBits = 0;
       emit.textureId = 0;
+      emit.viscousScale = 1;
+      emit.trackGroup = 0;
       emit.lifetimeMin = 0;
       emit.lifetimeMax = 0;
       emit.fadeToAlpha0 = 0;
@@ -1283,12 +1334,64 @@
     if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
 
+  function syncLiquidFunGroupsToSharedBuffers() {
+    if (!world || !liquidFunGroupsViews || typeof world.getParticleGroupSlotCount !== 'function') {
+      return;
+    }
+    const slots = world.getParticleGroupSlotCount() | 0;
+    const maxG = liquidFunGroupsViews.maxGroups | 0;
+    let w = 0;
+    for (let gid = 0; gid < slots && w < maxG; gid++) {
+      if (!(world.getParticleGroupAlive(gid) | 0)) continue;
+      liquidFunGroupsViews.id[w] = gid;
+      liquidFunGroupsViews.particleCount[w] = world.getParticleGroupParticleCount(gid) | 0;
+      liquidFunGroupsViews.viscousScale[w] = world.getParticleGroupViscousScale(gid);
+      liquidFunGroupsViews.x[w] = world.getParticleGroupCenterX(gid);
+      liquidFunGroupsViews.y[w] = world.getParticleGroupCenterY(gid);
+      liquidFunGroupsViews.vx[w] = world.getParticleGroupVx(gid);
+      liquidFunGroupsViews.vy[w] = world.getParticleGroupVy(gid);
+      liquidFunGroupsViews.angularVelocity[w] = world.getParticleGroupAngularVelocity(gid);
+      liquidFunGroupsViews.angle[w] = world.getParticleGroupAngle(gid);
+      w++;
+    }
+    liquidFunGroupsViews.count[0] = w;
+  }
+
+  function applyLiquidFunTuningFromConfig(lf) {
+    if (!lf) return;
+    pendingParticleTuning.dampingStrength =
+      lf.dampingStrength != null ? lf.dampingStrength : pendingParticleTuning.dampingStrength;
+    pendingParticleTuning.pressureStrength =
+      lf.pressureStrength != null ? lf.pressureStrength : pendingParticleTuning.pressureStrength;
+    pendingParticleTuning.viscousStrength =
+      lf.viscousStrength != null ? lf.viscousStrength : pendingParticleTuning.viscousStrength;
+    pendingParticleTuning.tensileStrength =
+      lf.tensileStrength != null ? lf.tensileStrength : pendingParticleTuning.tensileStrength;
+    pendingParticleTuning.powderStrength =
+      lf.powderStrength != null ? lf.powderStrength : pendingParticleTuning.powderStrength;
+    pendingParticleTuning.springStrength =
+      lf.springStrength != null ? lf.springStrength : pendingParticleTuning.springStrength;
+    pendingParticleTuning.staticPressureStrength =
+      lf.staticPressureStrength != null
+        ? lf.staticPressureStrength
+        : pendingParticleTuning.staticPressureStrength;
+    pendingParticleTuning.staticPressureRelaxation =
+      lf.staticPressureRelaxation != null
+        ? lf.staticPressureRelaxation
+        : pendingParticleTuning.staticPressureRelaxation;
+    pendingParticleTuning.staticPressureIterations =
+      lf.staticPressureIterations != null
+        ? lf.staticPressureIterations | 0
+        : pendingParticleTuning.staticPressureIterations;
+  }
+
   function afterStep() {
     publishContactRingFromWasm();
     publishHitsFromWasm();
     publishJointBreaksFromWasm();
     publishMovedSabFromStep();
     syncLiquidFunParticlesToSharedBuffers();
+    syncLiquidFunGroupsToSharedBuffers();
   }
 
   function publishMovedSabFromStep() {
@@ -1613,13 +1716,18 @@
     }
     if (data.liquidFun && data.liquidFun.enabled) {
       const lf = data.liquidFun;
+      liquidFunDensity = lf.density != null ? lf.density : 1.0;
+      applyLiquidFunTuningFromConfig(lf);
       world.createParticleSystem(
         lf.radius || 10,
         lf.maxCount || 10000,
-        lf.density != null ? lf.density : 1.0,
+        liquidFunDensity,
         lf.subSteps > 0 ? lf.subSteps : 1,
         !!lf.strictContactCheck,
       );
+      if (typeof world.setParticleTuning === 'function') {
+        world.setParticleTuning(pendingParticleTuning);
+      }
     }
 
     bindWeedViews(data.views);
@@ -1665,6 +1773,25 @@
       liquidFunYFloatOffset = 0;
       liquidFunAlphaFloatOffset = 0;
       liquidFunPrevSyncedCount = 0;
+    }
+    if (data.liquidFunGroupsViews) {
+      liquidFunGroupsViews = {
+        count: data.liquidFunGroupsViews.count
+          ? viewFromDesc(data.liquidFunGroupsViews.count, Int32Array)
+          : null,
+        id: viewFromDesc(data.liquidFunGroupsViews.id, Int32Array),
+        particleCount: viewFromDesc(data.liquidFunGroupsViews.particleCount, Int32Array),
+        viscousScale: viewFromDesc(data.liquidFunGroupsViews.viscousScale, Float32Array),
+        x: viewFromDesc(data.liquidFunGroupsViews.x, Float32Array),
+        y: viewFromDesc(data.liquidFunGroupsViews.y, Float32Array),
+        vx: viewFromDesc(data.liquidFunGroupsViews.vx, Float32Array),
+        vy: viewFromDesc(data.liquidFunGroupsViews.vy, Float32Array),
+        angularVelocity: viewFromDesc(data.liquidFunGroupsViews.angularVelocity, Float32Array),
+        angle: viewFromDesc(data.liquidFunGroupsViews.angle, Float32Array),
+        maxGroups: data.liquidFunGroupsMax | 0,
+      };
+    } else {
+      liquidFunGroupsViews = null;
     }
     if (data.stats) {
       statsF32 = viewFromDesc(data.stats, Float32Array);

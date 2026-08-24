@@ -6,16 +6,18 @@ import { Camera } from '/src/core/Camera.js';
 import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
 
-const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_MATERIALS, Layer } = WEED;
+const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_FLAGS, Layer } = WEED;
+
+const F = LIQUIDFUN_FLAGS;
 
 // Keys avoid WASD. Jelly is elastic (a group per burst) so it sprays slower.
 const LIQUID_TOOLS = [
-  { key: 'q', material: 'water', shape: 'circle', radius: 100 },
-  { key: 'e', material: 'oil', shape: 'circle', radius: 130 },
-  { key: 'r', material: 'cream', shape: 'circle', radius: 130 },
-  { key: 'f', material: 'dulceDeLeche', shape: 'circle', radius: 110 },
-  { key: 'g', material: 'jelly', shape: 'circle', radius: 70, grouped: true },
-  { key: 't', material: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80 },
+  { key: 'q', name: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
+  { key: 'e', name: 'oil', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
+  { key: 'r', name: 'cream', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
+  { key: 'f', name: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 10, tint: 0xc6862a },
+  { key: 'g', name: 'jelly', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
+  { key: 't', name: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
 ];
 
 export class LiquidFunDemoScene extends WEED.Scene {
@@ -54,6 +56,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
         radius: 16,
         maxCount: 65534,
         subSteps: 1,
+        viscousStrength: 0.25,
       },
     },
 
@@ -84,7 +87,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
           fragment: 'liquid',
           containerBlend: BLEND_MODES.ADD,
           uniforms: {
-            uCutoff: { value: 0.2, type: 'f32' },
+            uCutoff: { value: 0.3, type: 'f32' },
             uFoam: { value: 0.42, type: 'f32' },
             uDepth: { value: 0.35, type: 'f32' },
             uBodyAlpha: { value: 0.1, type: 'f32' },
@@ -127,6 +130,8 @@ export class LiquidFunDemoScene extends WEED.Scene {
     this.liquidTool = 0;
     this._mouse0WasDown = false;
     this._hud = null;
+    this._meltGroupId = -1;
+    this._meltScale = 8;
   }
 
   create() {
@@ -179,55 +184,30 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   spawnParticleGroups() {
-    // ParticleEmitter.emitLiquidFunParticles({
-    //   material: 'water',
-    //   shape: 'circle',
-    //   posX: 1300,
-    //   posY: 400,
-    //   radius: 90,
-    //   texture: '_whiteCircle',
-    // });
-    // ParticleEmitter.emitLiquidFunParticles({
-    //   material: 'oil',
-    //   shape: 'circle',
-    //   posX: 1600,
-    //   posY: 400,
-    //   radius: 90,
-    //   texture: '_whiteCircle',
-    // });
-    // ParticleEmitter.emitLiquidFunParticles({
-    //   material: 'cream',
-    //   shape: 'circle',
-    //   posX: 1900,
-    //   posY: 400,
-    //   radius: 170,
-    //   texture: '_whiteCircle',
-    // });
-    // ParticleEmitter.emitLiquidFunParticles({
-    //   material: 'dulceDeLeche',
-    //   shape: 'circle',
-    //   posX: 2200,
-    //   posY: 400,
-    //   radius: 70,
-    //   texture: '_whiteCircle',
-    // });
-    // ParticleEmitter.emitLiquidFunParticles({
-    //   material: 'jelly',
-    //   shape: 'circle',
-    //   posX: 2500,
-    //   posY: 350,
-    //   radius: 70,
-    //   texture: '_whiteCircle',
-    // });
-    // ParticleEmitter.emitLiquidFunParticles({
-    //   material: 'sand',
-    //   shape: 'box',
-    //   posX: 2000,
-    //   posY: 100,
-    //   halfWidth: 50,
-    //   halfHeight: 50,
-    //   texture: '_whiteCircle',
-    // });
+    const sprite = { texture: '_lightGradient', layerId: Layer.getId('water'), scale: 5, alpha: 0.25 };
+    // Side-by-side oil (thin, viscousScale 1) vs dulce (thick, viscousScale 10).
+    // Dulce auto-keeps a bookkeeping group for melt (M key).
+    ParticleEmitter.emitLiquidFunParticles({
+      flags: F.VISCOUS,
+      viscousScale: 1,
+      tint: 0x6b3a1f,
+      shape: 'circle',
+      posX: 1600,
+      posY: 500,
+      radius: 120,
+      ...sprite,
+    });
+    ParticleEmitter.emitLiquidFunParticles({
+      flags: F.VISCOUS | F.TENSILE,
+      viscousScale: 10,
+      tint: 0xc6862a,
+      shape: 'circle',
+      posX: 2400,
+      posY: 500,
+      radius: 400,
+      trackGroup: true,
+      ...sprite,
+    });
   }
 
   update(dtRatio, deltaTime) {
@@ -236,6 +216,35 @@ export class LiquidFunDemoScene extends WEED.Scene {
         this.liquidTool = i;
         this._refreshHud();
       }
+    }
+
+    // M = melt tracked dulce groups (lower viscousScale toward 1).
+    if (Keyboard.isPressed('m')) {
+      const groups = ParticleEmitter.getLiquidFunParticleGroups();
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (g.viscousScale > 1.05) {
+          const next = Math.max(1, g.viscousScale - deltaTime * 3);
+          ParticleEmitter.setLiquidFunGroupViscousScale(g.id, next);
+          this._meltGroupId = g.id;
+          this._meltScale = next;
+        }
+      }
+      this._refreshHud();
+    }
+
+    if (Keyboard.isPressed('n')) {
+      const groups = ParticleEmitter.getLiquidFunParticleGroups();
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        // if (g.viscousScale > 1.05) {
+        const next = g.viscousScale * 1.1
+        ParticleEmitter.setLiquidFunGroupViscousScale(g.id, next);
+        this._meltGroupId = g.id;
+        this._meltScale = next;
+        // }
+      }
+      this._refreshHud();
     }
 
     const tool = LIQUID_TOOLS[this.liquidTool];
@@ -253,7 +262,10 @@ export class LiquidFunDemoScene extends WEED.Scene {
     this.spawnTimer = 0;
 
     const emit = {
-      material: tool.material,
+      flags: tool.flags,
+      viscousScale: tool.viscousScale,
+      strength: tool.strength,
+      tint: tool.tint,
       shape: tool.shape,
       posX: Mouse.x,
       posY: Mouse.y,
@@ -261,7 +273,6 @@ export class LiquidFunDemoScene extends WEED.Scene {
       layerId: Layer.getId('water'),
       scale: 5,
       alpha: 0.25,
-      // lifespan: { min: 800, max: 1200 },
     };
     if (tool.shape === 'box') {
       emit.halfWidth = tool.halfWidth;
@@ -286,13 +297,18 @@ export class LiquidFunDemoScene extends WEED.Scene {
     if (!this._hud) return;
     const lines = LIQUID_TOOLS.map((t, i) => {
       const mark = i === this.liquidTool ? '>' : ' ';
-      return `${mark} ${t.key.toUpperCase()}  ${t.material}`;
+      const vs = t.viscousScale != null ? t.viscousScale : 1;
+      return `${mark} ${t.key.toUpperCase()}  ${t.name}  vScale=${vs}`;
     });
-    const tint = LIQUIDFUN_MATERIALS[LIQUID_TOOLS[this.liquidTool].material]?.tint;
+    const tint = LIQUID_TOOLS[this.liquidTool].tint;
+    const groups = ParticleEmitter.getLiquidFunParticleGroups();
     this._hud.textContent =
-      `LiquidFun  |  ${LIQUID_TOOLS[this.liquidTool].material}` +
+      `LiquidFun  |  ${LIQUID_TOOLS[this.liquidTool].name}` +
       (tint != null ? `  #${tint.toString(16).padStart(6, '0')}` : '') +
-      `\n${lines.join('\n')}\nLMB spray  WASD pan  wheel zoom`;
+      `\n${lines.join('\n')}` +
+      `\ngroups=${groups.length}` +
+      (this._meltGroupId >= 0 ? `  melt#${this._meltGroupId}=${this._meltScale.toFixed(2)}` : '') +
+      `\nLMB spray  M melt dulce  WASD pan  wheel zoom`;
   }
 
   _removeHud() {

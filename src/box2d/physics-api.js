@@ -449,8 +449,12 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
+    "number",
   ]);
   const createParticleGroupCircle = wrap("create_particle_group_circle", "number", [
+    "number",
+    "number",
     "number",
     "number",
     "number",
@@ -465,6 +469,37 @@ function createPhysicsApi(Module) {
     "number",
   ]);
   const setParticleSubSteps = wrap("set_particle_sub_steps", null, [
+    "number",
+  ]);
+  const setParticleTuning = wrap("set_particle_tuning", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const setGroupViscousScale = wrap("set_group_viscous_scale", null, [
+    "number",
+    "number",
+  ]);
+  const getParticleGroupSlotCount = wrap("get_particle_group_slot_count", "number", []);
+  const getParticleGroupAlive = wrap("get_particle_group_alive", "number", ["number"]);
+  const getParticleGroupParticleCount = wrap("get_particle_group_particle_count", "number", [
+    "number",
+  ]);
+  const getParticleGroupCenterX = wrap("get_particle_group_center_x", "number", ["number"]);
+  const getParticleGroupCenterY = wrap("get_particle_group_center_y", "number", ["number"]);
+  const getParticleGroupVx = wrap("get_particle_group_vx", "number", ["number"]);
+  const getParticleGroupVy = wrap("get_particle_group_vy", "number", ["number"]);
+  const getParticleGroupAngularVelocity = wrap("get_particle_group_angular_velocity", "number", [
+    "number",
+  ]);
+  const getParticleGroupAngle = wrap("get_particle_group_angle", "number", ["number"]);
+  const getParticleGroupViscousScale = wrap("get_particle_group_viscous_scale", "number", [
     "number",
   ]);
   const getParticleCount = wrap("get_particle_count", "number", []);
@@ -1277,7 +1312,20 @@ function createPhysicsApi(Module) {
       );
     }
 
-    createParticleGroupBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0, fadeToAlpha0 = 0) {
+    createParticleGroupBox(
+      posX,
+      posY,
+      halfWidth,
+      halfHeight,
+      spacing = 0,
+      flags = 0,
+      strength = 0.5,
+      lifetimeMin = 0,
+      lifetimeMax = 0,
+      fadeToAlpha0 = 0,
+      viscousScale = 1,
+      trackGroup = 0,
+    ) {
       if (!this._particleSystem) this.createParticleSystem();
       return createParticleGroupBox(
         posX - halfWidth,
@@ -1290,10 +1338,24 @@ function createPhysicsApi(Module) {
         lifetimeMin,
         lifetimeMax,
         fadeToAlpha0 ? 1 : 0,
+        viscousScale > 0 ? viscousScale : 1,
+        trackGroup ? 1 : 0,
       );
     }
 
-    createParticleGroupCircle(posX, posY, radius, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0, fadeToAlpha0 = 0) {
+    createParticleGroupCircle(
+      posX,
+      posY,
+      radius,
+      spacing = 0,
+      flags = 0,
+      strength = 0.5,
+      lifetimeMin = 0,
+      lifetimeMax = 0,
+      fadeToAlpha0 = 0,
+      viscousScale = 1,
+      trackGroup = 0,
+    ) {
       if (!this._particleSystem) this.createParticleSystem();
       return createParticleGroupCircle(
         posX,
@@ -1305,6 +1367,8 @@ function createPhysicsApi(Module) {
         lifetimeMin,
         lifetimeMax,
         fadeToAlpha0 ? 1 : 0,
+        viscousScale > 0 ? viscousScale : 1,
+        trackGroup ? 1 : 0,
       );
     }
 
@@ -1314,6 +1378,65 @@ function createPhysicsApi(Module) {
 
     setParticleSubSteps(steps) {
       setParticleSubSteps(steps);
+    }
+
+    setParticleTuning(tuning) {
+      const t = tuning || {};
+      setParticleTuning(
+        t.dampingStrength != null ? t.dampingStrength : 1,
+        t.pressureStrength != null ? t.pressureStrength : 0.05,
+        t.viscousStrength != null ? t.viscousStrength : 0.25,
+        t.tensileStrength != null ? t.tensileStrength : 0.2,
+        t.powderStrength != null ? t.powderStrength : 0.5,
+        t.springStrength != null ? t.springStrength : 0.25,
+        t.staticPressureStrength != null ? t.staticPressureStrength : 0.2,
+        t.staticPressureRelaxation != null ? t.staticPressureRelaxation : 0.2,
+        t.staticPressureIterations != null ? t.staticPressureIterations | 0 : 8,
+      );
+    }
+
+    setGroupViscousScale(groupId, scale) {
+      setGroupViscousScale(groupId | 0, scale > 0 ? scale : 1);
+    }
+
+    getParticleGroupSlotCount() {
+      return getParticleGroupSlotCount();
+    }
+
+    getParticleGroupAlive(groupId) {
+      return getParticleGroupAlive(groupId | 0) | 0;
+    }
+
+    getParticleGroupParticleCount(groupId) {
+      return getParticleGroupParticleCount(groupId | 0) | 0;
+    }
+
+    getParticleGroupCenterX(groupId) {
+      return getParticleGroupCenterX(groupId | 0);
+    }
+
+    getParticleGroupCenterY(groupId) {
+      return getParticleGroupCenterY(groupId | 0);
+    }
+
+    getParticleGroupVx(groupId) {
+      return getParticleGroupVx(groupId | 0);
+    }
+
+    getParticleGroupVy(groupId) {
+      return getParticleGroupVy(groupId | 0);
+    }
+
+    getParticleGroupAngularVelocity(groupId) {
+      return getParticleGroupAngularVelocity(groupId | 0);
+    }
+
+    getParticleGroupAngle(groupId) {
+      return getParticleGroupAngle(groupId | 0);
+    }
+
+    getParticleGroupViscousScale(groupId) {
+      return getParticleGroupViscousScale(groupId | 0);
     }
 
     getParticleCount() {

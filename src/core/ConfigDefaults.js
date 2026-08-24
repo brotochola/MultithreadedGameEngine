@@ -200,6 +200,16 @@ export const PHYSICS_DEFAULTS = Object.freeze({
     // liquidfun-c / Google default is false. RemoveSpuriousBodyContacts (qsort,
     // drops floor+wall corner false-positives) only runs when this is true.
     strictContactCheck: false,
+    // System def coeffs (lfParticleSystemDef). Solvers read these each step.
+    dampingStrength: 1.0,
+    pressureStrength: 0.05,
+    viscousStrength: 0.25,
+    tensileStrength: 0.2,
+    powderStrength: 0.5,
+    springStrength: 0.25,
+    staticPressureStrength: 0.2,
+    staticPressureRelaxation: 0.2,
+    staticPressureIterations: 8,
   }),
 });
 
