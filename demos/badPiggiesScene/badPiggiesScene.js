@@ -88,10 +88,12 @@ export class BadPiggiesScene extends Scene {
       sleeping: false,
       liquidFun: {
         // strictContactCheck: true,
+        // pressureStrength: 0,
+        // density: 0.01,
         enabled: true,
         radius: 16,
         maxCount: 65534,
-        subSteps: 1,
+        subSteps: 2,
       },
     },
 
