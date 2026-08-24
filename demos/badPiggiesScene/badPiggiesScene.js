@@ -22,7 +22,11 @@ import {
   snapWorld,
 } from './utils/badPiggiesGrid.js';
 
-const { Scene, Mouse, Keyboard, Transform, RigidBody, Joint, Noise2D } = WEED;
+const { Scene, Mouse, Keyboard, Transform, RigidBody, Joint, Noise2D, LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } =
+  WEED;
+
+const F = LIQUIDFUN_FLAGS;
+const GF = LIQUIDFUN_GROUP_FLAGS;
 
 const WALL = 150;
 const TERRAIN_DX = 160;
@@ -33,6 +37,28 @@ const MOTOR_SPEED = 1000;
 const MOTOR_TORQUE = 80e8;
 const MODE_EDITOR = 'editor';
 const MODE_PLAY = 'play';
+
+// Cream uses 'c' (not 'r') — R returns to editor in PLAY.
+const LIQUID_TOOLS = [
+  { key: 'q', name: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
+  { key: 'e', name: 'oil', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
+  { key: 'c', name: 'cream', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
+  { key: 'f', name: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 6, tint: 0xc6862a },
+  { key: 'g', name: 'jelly', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
+  { key: 't', name: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
+  {
+    key: 'y',
+    name: 'ice',
+    shape: 'box',
+    halfWidth: 290,
+    halfHeight: 60,
+    flags: F.WATER,
+    groupFlags: GF.SOLID | GF.RIGID,
+    viscousScale: 1,
+    tint: 0xaadfff,
+    grouped: true,
+  },
+];
 
 export class BadPiggiesScene extends Scene {
   static config = {
@@ -60,9 +86,24 @@ export class BadPiggiesScene extends Scene {
       commandRingCapacity: 32768,
       gravity: { x: 0, y: 1800 },
       sleeping: false,
+      liquidFun: {
+        enabled: true,
+        radius: 16,
+        maxCount: 65534,
+        subSteps: 1,
+      },
     },
 
-    renderer: { noLimitFPS: false },
+    renderer: {
+      noLimitFPS: false,
+      maxVisibleRenderables: 120000,
+    },
+
+    preRender: {
+      // interpolation: {
+      //   mode: 'interpolate',
+      // },
+    },
 
     lighting: { enabled: false },
   };
@@ -96,9 +137,13 @@ export class BadPiggiesScene extends Scene {
     this.ghostRocketIdx = -1;
     this._hud = null;
     this._paletteBar = null;
+    this._fluidBar = null;
     this._wheelJoints = [];
     this._padSurfaceY = 0;
     this._placeAngle = DEFAULT_ROCKET_ANGLE;
+    this.liquidTool = 0;
+    this.spawnTimer = 0;
+    this._mouse0WasDown = false;
   }
 
   create() {
@@ -123,17 +168,19 @@ export class BadPiggiesScene extends Scene {
     this.ghostRocketIdx = ghostRocket ? ghostRocket.index : -1;
 
     this._createPalette();
+    this._createFluidBar();
     this._createHud();
     this._refreshHud();
   }
 
   async destroy() {
     this._removePalette();
+    this._removeFluidBar();
     this._removeHud();
     await super.destroy();
   }
 
-  update(_dtRatio, _deltaTime) {
+  update(_dtRatio, deltaTime) {
     if (this.mode === MODE_PLAY) this._driveMotors();
     this._panCamera();
 
@@ -154,6 +201,7 @@ export class BadPiggiesScene extends Scene {
       this._updateGhost();
     } else {
       this._hideGhosts();
+      this._playFluidInput(deltaTime);
     }
 
     this._refreshHud();
@@ -364,6 +412,9 @@ export class BadPiggiesScene extends Scene {
   _enterPlay() {
     if (this.occupancy.size === 0) return;
     this.mode = MODE_PLAY;
+    this.spawnTimer = 0;
+    this._mouse0WasDown = false;
+    this._setFluidBarVisible(true);
 
     for (const [key] of this.occupancy) this._snapPartsToKey(key);
 
@@ -400,6 +451,8 @@ export class BadPiggiesScene extends Scene {
   _enterEditor() {
     this.mode = MODE_EDITOR;
     this._wheelJoints.length = 0;
+    this._setFluidBarVisible(false);
+    this._clearLiquidFun();
 
     for (const rec of this.occupancy.values()) {
       Joint.removeAllForEntity(rec.boxIndex);
@@ -413,6 +466,60 @@ export class BadPiggiesScene extends Scene {
       if (rec.rocketIndex >= 0) this._setStatic(rec.rocketIndex, true);
       this._snapPartsToKey(key);
     }
+  }
+
+  _clearLiquidFun() {
+    const lf = this.config.physics.liquidFun;
+    LiquidFun.destroySystem(0);
+    LiquidFun.createSystem({
+      radius: lf.radius,
+      maxCount: lf.maxCount,
+      subSteps: lf.subSteps,
+    });
+  }
+
+  _playFluidInput(deltaTime) {
+    for (let i = 0; i < LIQUID_TOOLS.length; i++) {
+      if (Keyboard.isPressed(LIQUID_TOOLS[i].key)) {
+        this.liquidTool = i;
+        this._refreshFluidBar();
+      }
+    }
+
+    const tool = LIQUID_TOOLS[this.liquidTool];
+    const down = Mouse.isButton0Down;
+    const justDown = down && !this._mouse0WasDown;
+    this._mouse0WasDown = down;
+    if (!down) {
+      this.spawnTimer = 0;
+      return;
+    }
+
+    const interval = tool.grouped ? 0.25 : 0.05;
+    this.spawnTimer += deltaTime;
+    if (!justDown && this.spawnTimer < interval) return;
+    this.spawnTimer = 0;
+
+    const emit = {
+      flags: tool.flags,
+      viscousScale: tool.viscousScale,
+      strength: tool.strength,
+      groupFlags: tool.groupFlags || 0,
+      tint: tool.tint,
+      shape: tool.shape,
+      posX: Mouse.x,
+      posY: Mouse.y,
+      texture: '_whiteCircle',
+      scale: 1,
+      alpha: 0.85,
+    };
+    if (tool.shape === 'box') {
+      emit.halfWidth = tool.halfWidth;
+      emit.halfHeight = tool.halfHeight;
+    } else {
+      emit.radius = tool.radius;
+    }
+    LiquidFun.emit(emit);
   }
 
   _updateGhost() {
@@ -485,13 +592,16 @@ export class BadPiggiesScene extends Scene {
     if (!this._hud) return;
     const part =
       this.palette === PALETTE_BOX ? 'box' : this.palette === PALETTE_WHEEL ? 'wheel' : 'rocket';
+    const fluid = LIQUID_TOOLS[this.liquidTool].name;
     this._hud.textContent =
-      `Bad Piggies  |  ${this.mode === MODE_EDITOR ? 'EDITOR' : 'PLAY'}  |  part: ${part}\n` +
-      `1 box  2 wheel  3 rocket  LMB paint  RMB/Del erase  Space play/edit\n` +
+      `Bad Piggies  |  ${this.mode === MODE_EDITOR ? 'EDITOR' : 'PLAY'}  |  part: ${part}` +
+      (this.mode === MODE_PLAY ? `  |  fluid: ${fluid}` : '') +
+      `\n1 box  2 wheel  3 rocket  LMB paint  RMB/Del erase  Space play/edit\n` +
       (this.mode === MODE_PLAY
-        ? `← → drive  ↑ thrust  WASD camera  R editor`
+        ? `LMB spray fluid  bar picks type  ← → drive  ↑ thrust  WASD camera  R/Space editor`
         : `R rotate rocket 90°  hover rocket + wheel aim  WASD camera`);
     this._refreshPalette();
+    this._refreshFluidBar();
   }
 
   _removeHud() {
@@ -540,6 +650,53 @@ export class BadPiggiesScene extends Scene {
   _removePalette() {
     if (this._paletteBar && this._paletteBar.parentNode) this._paletteBar.parentNode.removeChild(this._paletteBar);
     this._paletteBar = null;
+  }
+
+  _createFluidBar() {
+    const bar = document.createElement('div');
+    bar.id = 'bad-piggies-fluids';
+    bar.style.cssText =
+      'position:fixed;left:12px;top:128px;z-index:901;display:none;flex-wrap:wrap;gap:8px;max-width:520px;font:13px/1 sans-serif;';
+    for (let i = 0; i < LIQUID_TOOLS.length; i++) {
+      const tool = LIQUID_TOOLS[i];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.fluid = String(i);
+      btn.textContent = tool.name;
+      const hex = `#${tool.tint.toString(16).padStart(6, '0')}`;
+      btn.style.cssText =
+        'padding:8px 10px;border:1px solid #888;border-radius:6px;background:#222;color:#fff;cursor:pointer;' +
+        `box-shadow:inset 0 -3px 0 ${hex};`;
+      btn.addEventListener('click', () => {
+        this.liquidTool = i;
+        this._refreshFluidBar();
+      });
+      bar.appendChild(btn);
+    }
+    document.body.appendChild(bar);
+    this._fluidBar = bar;
+    this._setFluidBarVisible(false);
+    this._refreshFluidBar();
+  }
+
+  _setFluidBarVisible(visible) {
+    if (!this._fluidBar) return;
+    this._fluidBar.style.display = visible ? 'flex' : 'none';
+  }
+
+  _refreshFluidBar() {
+    if (!this._fluidBar) return;
+    const buttons = this._fluidBar.querySelectorAll('button');
+    for (let i = 0; i < buttons.length; i++) {
+      const on = (buttons[i].dataset.fluid | 0) === this.liquidTool;
+      buttons[i].style.background = on ? '#1a5a8a' : '#222';
+      buttons[i].style.borderColor = on ? '#7ec8ff' : '#888';
+    }
+  }
+
+  _removeFluidBar() {
+    if (this._fluidBar && this._fluidBar.parentNode) this._fluidBar.parentNode.removeChild(this._fluidBar);
+    this._fluidBar = null;
   }
 
   spawnFloorAndWalls() {
