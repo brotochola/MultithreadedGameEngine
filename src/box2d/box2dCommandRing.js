@@ -34,6 +34,7 @@ export const enqueueCreateParticleGroupBox = R.enqueueCreateParticleGroupBox;
 export const enqueueCreateParticleGroupCircle = R.enqueueCreateParticleGroupCircle;
 export const enqueueDestroyParticleGroup = R.enqueueDestroyParticleGroup;
 export const enqueueDestroyParticleSystem = R.enqueueDestroyParticleSystem;
+export const enqueueClearLiquidFunParticles = R.enqueueClearLiquidFunParticles;
 export const drainCommandRing = R.drainCommandRing;
 export const Box2dCommandRing = R;
 export default R;

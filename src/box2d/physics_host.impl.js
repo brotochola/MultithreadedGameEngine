@@ -726,6 +726,14 @@
       );
     };
 
+    global.weedjsOnLiquidFunHeap = function (heap) {
+      self.postMessage({ msg: 'liquidFunHeap', liquidFunHeap: heap || null });
+    };
+
+    global.weedjsOnLiquidFunCleared = function () {
+      self.postMessage({ msg: 'liquidFunCleared' });
+    };
+
     weedjsHandleInit(initPayload);
   }
 

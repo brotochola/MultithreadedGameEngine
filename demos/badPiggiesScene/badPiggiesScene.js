@@ -40,12 +40,12 @@ const MODE_PLAY = 'play';
 
 // Cream uses 'c' (not 'r') — R returns to editor in PLAY.
 const LIQUID_TOOLS = [
-  { key: 'q', name: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
-  { key: 'e', name: 'oil', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
-  { key: 'c', name: 'cream', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
-  { key: 'f', name: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 6, tint: 0xc6862a },
-  { key: 'g', name: 'jelly', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
-  { key: 't', name: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
+  { key: 'q', name: 'water', shape: 'circle', radius: 60, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
+  { key: 'e', name: 'oil', shape: 'circle', radius: 60, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
+  { key: 'c', name: 'cream', shape: 'circle', radius: 60, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
+  { key: 'f', name: 'dulceDeLeche', shape: 'circle', radius: 60, flags: F.VISCOUS | F.TENSILE, viscousScale: 8, tint: 0xc6862a },
+  { key: 'g', name: 'jelly', shape: 'circle', radius: 170, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
+  { key: 't', name: 'sand', shape: 'box', halfWidth: 20, halfHeight: 20, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
   {
     key: 'y',
     name: 'ice',
@@ -87,6 +87,7 @@ export class BadPiggiesScene extends Scene {
       gravity: { x: 0, y: 1800 },
       sleeping: false,
       liquidFun: {
+        // strictContactCheck: true,
         enabled: true,
         radius: 16,
         maxCount: 65534,
@@ -469,13 +470,7 @@ export class BadPiggiesScene extends Scene {
   }
 
   _clearLiquidFun() {
-    const lf = this.config.physics.liquidFun;
-    LiquidFun.destroySystem(0);
-    LiquidFun.createSystem({
-      radius: lf.radius,
-      maxCount: lf.maxCount,
-      subSteps: lf.subSteps,
-    });
+    LiquidFun.clear();
   }
 
   _playFluidInput(deltaTime) {

@@ -33,6 +33,7 @@
     PARTICLE_APPLY_IMPULSE: 21, // entity=index, a=ix, b=iy
     GROUP_APPLY_FORCE: 22, // entity=groupId, a=fx, b=fy
     GROUP_APPLY_IMPULSE: 23, // entity=groupId, a=ix, b=iy
+    CLEAR_LIQUIDFUN_PARTICLES: 24, // systemId — destroy groups + zombie rest; keep system
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -292,6 +293,10 @@
     return enqueue(BOX2D_CMD.DESTROY_PARTICLE_SYSTEM, systemId, 0, 0, 0, 0);
   }
 
+  function enqueueClearLiquidFunParticles(systemId) {
+    return enqueue(BOX2D_CMD.CLEAR_LIQUIDFUN_PARTICLES, systemId, 0, 0, 0, 0);
+  }
+
   function drainCommandRing(i32, f32, handlers) {
     if (!i32 || !f32 || !handlers) return 0;
     var cap = i32[HDR_CAP] | 0;
@@ -343,6 +348,9 @@
           break;
         case BOX2D_CMD.DESTROY_PARTICLE_SYSTEM:
           if (handlers.destroyParticleSystem) handlers.destroyParticleSystem(entity);
+          break;
+        case BOX2D_CMD.CLEAR_LIQUIDFUN_PARTICLES:
+          if (handlers.clearLiquidFunParticles) handlers.clearLiquidFunParticles(entity);
           break;
         case BOX2D_CMD.SET_LIQUIDFUN_EMIT:
           if (handlers.setLiquidFunEmit) handlers.setLiquidFunEmit(entity, a, b, c, d);
@@ -419,6 +427,7 @@
     enqueueCreateParticleGroupCircle: enqueueCreateParticleGroupCircle,
     enqueueDestroyParticleGroup: enqueueDestroyParticleGroup,
     enqueueDestroyParticleSystem: enqueueDestroyParticleSystem,
+    enqueueClearLiquidFunParticles: enqueueClearLiquidFunParticles,
     drainCommandRing: drainCommandRing,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

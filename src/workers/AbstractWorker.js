@@ -1292,6 +1292,8 @@ export class AbstractWorker {
       if (data.liquidFunHeap) {
         LiquidFun.bindHeapPose(data.liquidFunHeap);
       }
+    } else if (data?.msg === 'liquidFunHeap' && data.liquidFunHeap) {
+      LiquidFun.bindHeapPose(data.liquidFunHeap);
     }
   }
 }

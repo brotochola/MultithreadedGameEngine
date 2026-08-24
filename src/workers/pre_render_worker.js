@@ -1513,7 +1513,11 @@ class PreRenderWorker extends AbstractWorker {
 
     handleCustomMessage(data) {
         super.handleCustomMessage(data);
-        if (data?.msg === 'box2dReady' && data.liquidFunHeap && this.liquidFun) {
+        if (
+            (data?.msg === 'box2dReady' || data?.msg === 'liquidFunHeap') &&
+            data.liquidFunHeap &&
+            this.liquidFun
+        ) {
             const v = LiquidFun.getViews();
             if (v?.x) {
                 this.liquidFun.count = v.count;
@@ -1521,6 +1525,15 @@ class PreRenderWorker extends AbstractWorker {
                 this.liquidFun.y = v.y;
                 if (v.alpha) this.liquidFun.alpha = v.alpha;
             }
+            if (data.msg === 'liquidFunHeap') {
+                this._lfSnapValid = false;
+                this._lfSnapCount = 0;
+                this._prevLfCount = 0;
+            }
+        } else if (data?.msg === 'liquidFunCleared') {
+            this._lfSnapValid = false;
+            this._lfSnapCount = 0;
+            this._prevLfCount = 0;
         }
     }
 

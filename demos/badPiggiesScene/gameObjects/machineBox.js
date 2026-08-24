@@ -25,8 +25,8 @@ export class MachineBox extends GameObject {
     this.rotation = 0;
 
     this.collider.shapeType = ShapeType.Box;
-    this.collider.width = size;
-    this.collider.height = size;
+    this.collider.width = size * 1.1;
+    this.collider.height = size * 1.1;
     this.collider.radius = 0;
     this.collider.isTrigger = ghost ? 1 : 0;
     this.collider.friction = 0.6;
@@ -46,5 +46,5 @@ export class MachineBox extends GameObject {
     this.setAlpha(ghost ? 0.4 : 1);
   }
 
-  tick() {}
+  tick() { }
 }

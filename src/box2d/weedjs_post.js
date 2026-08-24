@@ -76,6 +76,11 @@
   // below. Reset to 0 whenever the particle system (re)creates, same sites
   // as the X/Y offsets.
   let liquidFunPrevSyncedCount = 0;
+  /** High-water of painted thin-SAB emit slots; wipe only this range on clear. */
+  let liquidFunPaintedHighWater = 0;
+  const LF_ZOMBIE = 1 << 0;
+  /** Off-screen pose written into HEAP x/y on clear so mid-step readers never see old puddles. */
+  const LF_CLEARED_XY = -1e8;
   let pendingLiquidFunEmit = {
     spacing: 0,
     strength: 0.5,
@@ -1020,6 +1025,7 @@
     },
     createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
       if (!world) return;
+      clearLiquidFunRenderState();
       liquidFunXFloatOffset = 0;
       liquidFunYFloatOffset = 0;
       liquidFunAlphaFloatOffset = 0;
@@ -1034,6 +1040,7 @@
       if (typeof world.setParticleTuning === 'function') {
         world.setParticleTuning(pendingParticleTuning);
       }
+      publishLiquidFunHeap();
     },
     createParticleGroupBox(flags, posX, posY, halfWidth, halfHeight) {
       if (!world) return;
@@ -1082,7 +1089,14 @@
     },
     destroyParticleSystem(systemId) {
       if (!world) return;
+      clearLiquidFunRenderState();
+      liquidFunXFloatOffset = 0;
+      liquidFunYFloatOffset = 0;
+      liquidFunAlphaFloatOffset = 0;
       world.destroyParticleSystem();
+    },
+    clearLiquidFunParticles(systemId) {
+      clearAllLiquidFunParticles();
     },
   };
 
@@ -1281,35 +1295,194 @@
   }
 
   function paintNewLiquidFunParticles(oldCount, emit) {
-    if (!world || !liquidFunViews) return;
+    if (!world) return;
     const count = world.getParticleCount();
     const maxP = Math.min(count, liquidFunMaxCount || 0);
-    const tint = liquidFunViews.tint;
-    const textureId = liquidFunViews.textureId;
-    const scaleX = liquidFunViews.scaleX;
-    const scaleY = liquidFunViews.scaleY;
-    const rotC = liquidFunViews.rotC;
-    const rotS = liquidFunViews.rotS;
-    const baseAlpha = liquidFunViews.baseAlpha;
-    const layerId = liquidFunViews.layerId;
-    const scaleLo = emit.scaleSet ? emit.scaleMin : 1;
-    const scaleHi = emit.scaleSet ? emit.scaleMax : 1;
-    const alphaLo = emit.scaleSet ? emit.alphaMin : 1;
-    const alphaHi = emit.scaleSet ? emit.alphaMax : 1;
-    const lid = emit.scaleSet ? emit.layerId | 0 : 0;
-    for (let i = oldCount; i < maxP; i++) {
-      tint[i] = emit.tintBits ? emit.tintBits >>> 0 : 0x3399ff;
-      textureId[i] = emit.textureId | 0;
-      const s = scaleHi === scaleLo ? scaleLo : scaleLo + Math.random() * (scaleHi - scaleLo);
-      scaleX[i] = s;
-      scaleY[i] = s;
-      if (rotC) rotC[i] = 1.0;
-      if (rotS) rotS[i] = 0.0;
-      if (baseAlpha) {
-        baseAlpha[i] =
-          alphaHi === alphaLo ? alphaLo : alphaLo + Math.random() * (alphaHi - alphaLo);
+    if (liquidFunViews) {
+      const tint = liquidFunViews.tint;
+      const textureId = liquidFunViews.textureId;
+      const scaleX = liquidFunViews.scaleX;
+      const scaleY = liquidFunViews.scaleY;
+      const rotC = liquidFunViews.rotC;
+      const rotS = liquidFunViews.rotS;
+      const baseAlpha = liquidFunViews.baseAlpha;
+      const layerId = liquidFunViews.layerId;
+      const scaleLo = emit.scaleSet ? emit.scaleMin : 1;
+      const scaleHi = emit.scaleSet ? emit.scaleMax : 1;
+      const alphaLo = emit.scaleSet ? emit.alphaMin : 1;
+      const alphaHi = emit.scaleSet ? emit.alphaMax : 1;
+      const lid = emit.scaleSet ? emit.layerId | 0 : 0;
+      for (let i = oldCount; i < maxP; i++) {
+        tint[i] = emit.tintBits ? emit.tintBits >>> 0 : 0x3399ff;
+        textureId[i] = emit.textureId | 0;
+        const s = scaleHi === scaleLo ? scaleLo : scaleLo + Math.random() * (scaleHi - scaleLo);
+        scaleX[i] = s;
+        scaleY[i] = s;
+        if (rotC) rotC[i] = 1.0;
+        if (rotS) rotS[i] = 0.0;
+        if (baseAlpha) {
+          baseAlpha[i] =
+            alphaHi === alphaLo ? alphaLo : alphaLo + Math.random() * (alphaHi - alphaLo);
+        }
+        if (layerId) layerId[i] = lid;
       }
-      if (layerId) layerId[i] = lid;
+    }
+    if (maxP > liquidFunPaintedHighWater) liquidFunPaintedHighWater = maxP;
+    seedLiquidFunHeapPoseFromPos(oldCount, maxP);
+  }
+
+  function resolveLiquidFunHeapPoseOffsets() {
+    if (!world || typeof world.getParticleXByteOffset !== 'function') return false;
+    if (!liquidFunXFloatOffset || !liquidFunYFloatOffset) {
+      const xByteOffset = world.getParticleXByteOffset() | 0;
+      const yByteOffset = world.getParticleYByteOffset() | 0;
+      if (!xByteOffset || !yByteOffset) return false;
+      liquidFunXFloatOffset = xByteOffset >> 2;
+      liquidFunYFloatOffset = yByteOffset >> 2;
+    }
+    if (!liquidFunAlphaFloatOffset && typeof world.getParticleAlphaByteOffset === 'function') {
+      const alphaByteOffset = world.getParticleAlphaByteOffset() | 0;
+      if (alphaByteOffset) liquidFunAlphaFloatOffset = alphaByteOffset >> 2;
+    }
+    return !!(liquidFunXFloatOffset && liquidFunYFloatOffset);
+  }
+
+  /** Copy interleaved WASM pos → deinterleaved x/y for [start, end) so count/pose match before step. */
+  function seedLiquidFunHeapPoseFromPos(start, end) {
+    if (end <= start) return;
+    if (!resolveLiquidFunHeapPoseOffsets()) return;
+    if (typeof Module === 'undefined' || !Module.HEAPF32) return;
+    if (typeof world.getParticlePosByteOffset !== 'function') return;
+    const posOff = world.getParticlePosByteOffset() | 0;
+    if (!posOff) return;
+    const heap = Module.HEAPF32;
+    const posBase = posOff >> 2;
+    const xBase = liquidFunXFloatOffset;
+    const yBase = liquidFunYFloatOffset;
+    const aBase = liquidFunAlphaFloatOffset;
+    for (let i = start; i < end; i++) {
+      const p = posBase + (i << 1);
+      heap[xBase + i] = heap[p];
+      heap[yBase + i] = heap[p + 1];
+      if (aBase) heap[aBase + i] = 1;
+    }
+  }
+
+  /** Park cleared HEAP pose slots far off-screen (and alpha 0). */
+  function wipeLiquidFunHeapPose(hi) {
+    const n = hi | 0;
+    if (n <= 0) return;
+    if (!resolveLiquidFunHeapPoseOffsets()) return;
+    if (typeof Module === 'undefined' || !Module.HEAPF32) return;
+    const heap = Module.HEAPF32;
+    const xBase = liquidFunXFloatOffset;
+    const yBase = liquidFunYFloatOffset;
+    const aBase = liquidFunAlphaFloatOffset;
+    for (let i = 0; i < n; i++) {
+      heap[xBase + i] = LF_CLEARED_XY;
+      heap[yBase + i] = LF_CLEARED_XY;
+      if (aBase) heap[aBase + i] = 0;
+    }
+  }
+
+  function fillLiquidFunRange(arr, start, end, value) {
+    if (!arr || end <= start) return;
+    if (typeof arr.fill === 'function') {
+      arr.fill(value, start, end);
+      return;
+    }
+    for (let i = start; i < end; i++) arr[i] = value;
+  }
+
+  function clearLiquidFunRenderState() {
+    const hi = liquidFunPaintedHighWater | 0;
+    wipeLiquidFunHeapPose(hi);
+    if (liquidFunViews) {
+      if (liquidFunViews.count) liquidFunViews.count[0] = 0;
+      if (hi > 0) {
+        fillLiquidFunRange(liquidFunViews.tint, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.textureId, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.scaleX, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.scaleY, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.rotC, 0, hi, 1);
+        fillLiquidFunRange(liquidFunViews.rotS, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.baseAlpha, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.layerId, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.x, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.y, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.alpha, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.px, 0, hi, 0);
+        fillLiquidFunRange(liquidFunViews.py, 0, hi, 0);
+      }
+    }
+    if (liquidFunGroupsViews?.count) liquidFunGroupsViews.count[0] = 0;
+    liquidFunPaintedHighWater = 0;
+    liquidFunPrevSyncedCount = 0;
+  }
+
+  function publishLiquidFunCleared() {
+    if (typeof globalThis.weedjsOnLiquidFunCleared === 'function') {
+      globalThis.weedjsOnLiquidFunCleared();
+    } else if (typeof postMessage === 'function') {
+      postMessage({ type: 'LIQUIDFUN_CLEARED' });
+    }
+  }
+
+  function clearAllLiquidFunParticles() {
+    if (!world || typeof world.getParticleCount !== 'function') {
+      clearLiquidFunRenderState();
+      publishLiquidFunCleared();
+      return;
+    }
+    // Prefer live count for HEAP wipe if paint high-water lagged (e.g. no thin SAB).
+    const live = world.getParticleCount() | 0;
+    if (live > liquidFunPaintedHighWater) liquidFunPaintedHighWater = live;
+    if (typeof world.getParticleGroupSlotCount === 'function') {
+      const slots = world.getParticleGroupSlotCount() | 0;
+      for (let gid = 0; gid < slots; gid++) {
+        if (!(world.getParticleGroupAlive(gid) | 0)) continue;
+        world.destroyParticleGroup(gid);
+      }
+    }
+    const left = world.getParticleCount() | 0;
+    if (
+      left > 0 &&
+      typeof world.getParticleFlagsByteOffset === 'function' &&
+      typeof Module !== 'undefined' &&
+      Module.HEAPF32
+    ) {
+      const flagsOff = world.getParticleFlagsByteOffset() | 0;
+      if (flagsOff > 0) {
+        const flags = new Uint32Array(Module.HEAPF32.buffer, flagsOff, left);
+        for (let i = 0; i < left; i++) flags[i] = (flags[i] | LF_ZOMBIE) >>> 0;
+      }
+    } else if (left > 0) {
+      console.warn('[weedjs] clearLiquidFunParticles: cannot mark zombies (no HEAP)');
+    }
+    clearLiquidFunRenderState();
+    publishLiquidFunCleared();
+  }
+
+  function publishLiquidFunHeap() {
+    if (!world || !(liquidFunMaxCount > 0)) return;
+    if (typeof world.getParticleXByteOffset !== 'function') return;
+    const xByteOffset = world.getParticleXByteOffset() | 0;
+    if (!xByteOffset) return;
+    const heap = {
+      sab: typeof world.getSharedBuffer === 'function' ? world.getSharedBuffer() : Module.HEAPF32.buffer,
+      countByteOffset: world.getParticleCountByteOffset() | 0,
+      xByteOffset,
+      yByteOffset: world.getParticleYByteOffset() | 0,
+      alphaByteOffset:
+        (world.getParticleAlphaByteOffset && world.getParticleAlphaByteOffset()) || 0,
+      weightByteOffset:
+        (world.getParticleWeightByteOffset && world.getParticleWeightByteOffset()) || 0,
+      maxCount: liquidFunMaxCount | 0,
+    };
+    if (typeof globalThis.weedjsOnLiquidFunHeap === 'function') {
+      globalThis.weedjsOnLiquidFunHeap(heap);
+    } else if (typeof postMessage === 'function') {
+      postMessage({ type: 'LIQUIDFUN_HEAP', liquidFunHeap: heap });
     }
   }
 
@@ -1319,19 +1492,11 @@
     // fields (scale/tint/texture/layer). Interpolation prev pose is latched in
     // pre_render (_prevLfX), not copied here.
     if (!world || typeof world.getParticleCount !== 'function') return;
-    // Resolve HEAP offsets once so paintNewLiquidFunParticles / debug can use them.
-    if (!liquidFunXFloatOffset || !liquidFunYFloatOffset) {
-      if (typeof world.getParticleXByteOffset !== 'function') return;
-      const xByteOffset = world.getParticleXByteOffset();
-      const yByteOffset = world.getParticleYByteOffset();
-      if (!xByteOffset || !yByteOffset) return;
-      liquidFunXFloatOffset = xByteOffset >> 2;
-      liquidFunYFloatOffset = yByteOffset >> 2;
+    const live = world.getParticleCount() | 0;
+    if (live <= 0 && liquidFunViews?.count) {
+      liquidFunViews.count[0] = 0;
     }
-    if (!liquidFunAlphaFloatOffset && typeof world.getParticleAlphaByteOffset === 'function') {
-      const alphaByteOffset = world.getParticleAlphaByteOffset();
-      if (alphaByteOffset) liquidFunAlphaFloatOffset = alphaByteOffset >> 2;
-    }
+    resolveLiquidFunHeapPoseOffsets();
   }
 
   function syncLiquidFunGroupsToSharedBuffers() {
@@ -1793,6 +1958,7 @@
       liquidFunYFloatOffset = 0;
       liquidFunAlphaFloatOffset = 0;
       liquidFunPrevSyncedCount = 0;
+      liquidFunPaintedHighWater = 0;
     }
     if (data.liquidFunGroupsViews) {
       liquidFunGroupsViews = {

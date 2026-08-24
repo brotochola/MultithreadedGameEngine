@@ -372,6 +372,11 @@ export class LiquidFun {
     Box2dCommandRing.enqueueDestroyParticleSystem(systemId);
   }
 
+  /** Remove all particles; keep the particle system (no remalloc / heap rebind). */
+  static clear(systemId = 0) {
+    Box2dCommandRing.enqueueClearLiquidFunParticles(systemId);
+  }
+
   /** Sync QueryAABB (logic workers). Returns full hit count; fills `out` with particle indices. */
   static queryAABB(x0, y0, x1, y1, out) {
     return liquidFunQueryAABB(x0, y0, x1, y1, out);

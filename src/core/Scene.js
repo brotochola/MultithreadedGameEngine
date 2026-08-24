@@ -1652,6 +1652,22 @@ class Scene {
           worker.postMessage(payload);
         }
       }
+    } else if (e.data.msg === 'liquidFunHeap') {
+      const heap = e.data.liquidFunHeap || null;
+      if (heap) LiquidFun.bindHeapPose(heap);
+      const payload = { msg: 'liquidFunHeap', liquidFunHeap: heap };
+      for (const worker of this.getAllWorkers()) {
+        if (worker && worker !== e.currentTarget) {
+          worker.postMessage(payload);
+        }
+      }
+    } else if (e.data.msg === 'liquidFunCleared') {
+      const payload = { msg: 'liquidFunCleared' };
+      for (const worker of this.getAllWorkers()) {
+        if (worker && worker !== e.currentTarget) {
+          worker.postMessage(payload);
+        }
+      }
     } else if (e.data.msg === 'backgroundReady') {
       Layer.resolveBackgroundReady(e.data.layerId, e.data.requestId);
     } else if (e.data.msg === 'restoreSaveComplete') {

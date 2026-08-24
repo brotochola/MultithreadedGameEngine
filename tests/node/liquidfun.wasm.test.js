@@ -1104,3 +1104,123 @@ test('WASM get_liquidfun_step_ms > 0 after particle step; 0 with no system', () 
   assert.equal(getLfMs(), 0, 'after destroy → 0 ms');
 });
 
+test('WASM clear-without-recreate: destroy groups + zombie rest → count 0; system reusable', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const createParticleBox = fn('create_particle_box');
+  const destroyParticleGroup = fn('destroy_particle_group');
+  const getParticleCount = fn('get_particle_count');
+  const getParticleGroupSlotCount = fn('get_particle_group_slot_count');
+  const getParticleGroupAlive = fn('get_particle_group_alive');
+  const getFlagsOff = fn('get_particle_flags_byte_offset');
+  const getXOff = fn('get_particle_x_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 2000));
+
+  // Grouped blob + ungrouped fill (clear must wipe both).
+  const gid = createParticleGroupBox(-40, -40, 40, 40, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  const ungrouped = createParticleBox(80, 80, 120, 120, 0, 0);
+  assert.ok(ungrouped > 0, `ungrouped fill failed: ${ungrouped}`);
+  const n0 = getParticleCount();
+  assert.ok(n0 > 10, `expected particles, got ${n0}`);
+  const xOff0 = getXOff();
+
+  const slots = getParticleGroupSlotCount() | 0;
+  for (let g = 0; g < slots; g++) {
+    if (getParticleGroupAlive(g) | 0) destroyParticleGroup(g);
+  }
+  let left = getParticleCount() | 0;
+  if (left > 0) {
+    const flags = new Uint32Array(memory.buffer, getFlagsOff(), left);
+    for (let i = 0; i < left; i++) flags[i] = flags[i] | LF_ZOMBIE;
+  }
+  stepWorld(worldId, 1 / 60, 1);
+  assert.equal(getParticleCount(), 0, 'clear path must empty live count');
+  assert.equal(getXOff(), xOff0, 'system kept — x buffer offset unchanged');
+
+  const gid2 = createParticleGroupBox(-20, -20, 20, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid2 >= 0);
+  const n1 = getParticleCount();
+  assert.ok(n1 > 0, 're-emit after clear must work on same system');
+  assert.ok(n1 < n0, 're-emit smaller than pre-clear puddle');
+});
+
+test('WASM clear wipe parks HEAP x/y far; emit seed matches pos before step', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const destroyParticleGroup = fn('destroy_particle_group');
+  const getParticleCount = fn('get_particle_count');
+  const getParticleGroupSlotCount = fn('get_particle_group_slot_count');
+  const getParticleGroupAlive = fn('get_particle_group_alive');
+  const getFlagsOff = fn('get_particle_flags_byte_offset');
+  const getXOff = fn('get_particle_x_byte_offset');
+  const getYOff = fn('get_particle_y_byte_offset');
+  const getPosOff = fn('get_particle_pos_byte_offset');
+  const stepWorld = fn('step_world');
+  const LF_CLEARED_XY = -1e8;
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 2000));
+
+  const gid = createParticleGroupBox(400, 500, 460, 560, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  stepWorld(worldId, 1 / 60, 1);
+  const n0 = getParticleCount();
+  assert.ok(n0 > 4);
+  const heap = new Float32Array(memory.buffer);
+  const xBase = getXOff() >> 2;
+  const yBase = getYOff() >> 2;
+  const oldX0 = heap[xBase];
+  assert.ok(Math.abs(oldX0 - LF_CLEARED_XY) > 1e3, 'pre-clear x should be near puddle, not far sentinel');
+
+  // Simulate weedjs clear HEAP wipe (high-water = n0) then zombie compact.
+  for (let i = 0; i < n0; i++) {
+    heap[xBase + i] = LF_CLEARED_XY;
+    heap[yBase + i] = LF_CLEARED_XY;
+  }
+  assert.equal(heap[xBase], LF_CLEARED_XY);
+  assert.equal(heap[yBase], LF_CLEARED_XY);
+
+  const slots = getParticleGroupSlotCount() | 0;
+  for (let g = 0; g < slots; g++) {
+    if (getParticleGroupAlive(g) | 0) destroyParticleGroup(g);
+  }
+  const left = getParticleCount() | 0;
+  if (left > 0) {
+    const flags = new Uint32Array(memory.buffer, getFlagsOff(), left);
+    for (let i = 0; i < left; i++) flags[i] = flags[i] | LF_ZOMBIE;
+  }
+  stepWorld(worldId, 1 / 60, 1);
+  assert.equal(getParticleCount(), 0);
+
+  // Re-emit without stepping — simulate paintNew seed from interleaved pos.
+  const gid2 = createParticleGroupBox(-30, -30, 30, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid2 >= 0);
+  const n1 = getParticleCount();
+  assert.ok(n1 > 0);
+  const posBase = getPosOff() >> 2;
+  for (let i = 0; i < n1; i++) {
+    heap[xBase + i] = heap[posBase + (i << 1)];
+    heap[yBase + i] = heap[posBase + (i << 1) + 1];
+  }
+  for (let i = 0; i < n1; i++) {
+    assert.equal(heap[xBase + i], heap[posBase + (i << 1)], `seeded x[${i}]`);
+    assert.equal(heap[yBase + i], heap[posBase + (i << 1) + 1], `seeded y[${i}]`);
+    assert.notEqual(heap[xBase + i], LF_CLEARED_XY, `x[${i}] must not stay cleared sentinel`);
+    assert.ok(Math.abs(heap[xBase + i] - oldX0) > 50 || Math.abs(heap[yBase + i]) < 80, 'new pose away from old puddle');
+  }
+});
+

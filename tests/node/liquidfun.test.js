@@ -454,6 +454,25 @@ test('LiquidFun enqueues join/split/force ring commands', () => {
   assert.equal(received.length, 6);
 });
 
+test('LiquidFun.clear enqueues CLEAR_LIQUIDFUN_PARTICLES', () => {
+  const sab = createCommandRingSab(64);
+  bindCommandRing(sab);
+  const i32 = new Int32Array(sab);
+  const f32 = new Float32Array(sab);
+
+  LiquidFun.clear(0);
+
+  const received = [];
+  drainCommandRing(i32, f32, {
+    clearLiquidFunParticles(systemId) {
+      received.push({ type: 'clearLiquidFunParticles', systemId });
+    },
+  });
+
+  assert.equal(BOX2D_CMD.CLEAR_LIQUIDFUN_PARTICLES, 24);
+  assert.deepEqual(received, [{ type: 'clearLiquidFunParticles', systemId: 0 }]);
+});
+
 test('liquidFun render SAB is not ParticleComponent', () => {
   const n = 16;
   const sab = new SharedArrayBuffer(liquidFunRenderByteSize(n));
