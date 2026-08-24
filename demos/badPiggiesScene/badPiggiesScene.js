@@ -147,6 +147,8 @@ export class BadPiggiesScene extends Scene {
     this.liquidTool = 0;
     this.spawnTimer = 0;
     this._mouse0WasDown = false;
+    this.followMachine = false;
+    this._followToggle = null;
   }
 
   create() {

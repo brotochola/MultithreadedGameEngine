@@ -367,15 +367,27 @@ export class Camera {
     let newZoom = currentZoom;
     const tgtZoom = this._data[5];
     if (tgtZoom > 0 && Math.abs(tgtZoom - currentZoom) > 0.0001) {
-      newZoom = currentZoom + (tgtZoom - currentZoom) * es;
+      // smoothstep(es): softer zoom approach than linear blend
+      const esZoom = es * es * (3 - 2 * es);
+      newZoom = currentZoom + (tgtZoom - currentZoom) * esZoom;
       newZoom = Math.max(this.minZoom, Math.min(this._maxZoom, newZoom));
     }
 
-    const targetCameraX = targetX - this._canvasWidth / (2 * newZoom);
-    const targetCameraY = targetY - this._canvasHeight / (2 * newZoom);
+    // Keep world point under screen center fixed across the zoom change, then
+    // lerp only the remaining pan error toward the follow target.
+    const halfW0 = this._canvasWidth / (2 * currentZoom);
+    const halfH0 = this._canvasHeight / (2 * currentZoom);
+    const halfW1 = this._canvasWidth / (2 * newZoom);
+    const halfH1 = this._canvasHeight / (2 * newZoom);
+    const cx = this._data[1] + halfW0;
+    const cy = this._data[2] + halfH0;
+    const keepCenterX = cx - halfW1;
+    const keepCenterY = cy - halfH1;
+    const followX = targetX - halfW1;
+    const followY = targetY - halfH1;
 
-    const newX = this._data[1] + (targetCameraX - this._data[1]) * es;
-    const newY = this._data[2] + (targetCameraY - this._data[2]) * es;
+    const newX = keepCenterX + (followX - keepCenterX) * es;
+    const newY = keepCenterY + (followY - keepCenterY) * es;
 
     // Clamp using the LOWER of old/new zoom so the position is valid for
     // whichever zoom a cross-thread reader might observe (SAB race window).
@@ -536,15 +548,16 @@ export class Camera {
       this._freeFollowY = Math.max(0, Math.min(this._freeFollowY, this._worldHeight));
     }
 
-    this.follow(this._freeFollowX, this._freeFollowY, this._freeSmoothing, dtRatio);
-
-    if (!this._freeZoomPaused) {
-      let z = this.zoom * (1 - Mouse.wheel * this._freeZoomSensitivity);
+    // Wheel updates targetZoom only; follow() lerps display zoom (no setZoom snap).
+    if (!this._freeZoomPaused && Mouse.wheel) {
+      let z = this.targetZoom * (1 - Mouse.wheel * this._freeZoomSensitivity);
       const maxZ = this._freeMaxZoom != null ? this._freeMaxZoom : this._maxZoom;
       z = Math.max(this.minZoom, Math.min(maxZ, z));
-      this.setZoom(z);
+      this._data[this.IDX_TARGET_ZOOM] = z;
     }
     this._freeZoomPaused = false;
+
+    this.follow(this._freeFollowX, this._freeFollowY, this._freeSmoothing, dtRatio);
   }
 
   /**

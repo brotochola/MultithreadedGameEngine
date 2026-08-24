@@ -81,7 +81,7 @@ export class MachineRocket extends GameObject {
       count: { min: 1, max: 3 },
       x: tailX,
       y: tailY,
-      spread: { min: 0, max: 360 },
+      spread: { min: 100, max: 360 },
       // angleXY: { min: exhaustDeg - 18, max: exhaustDeg + 18 },
       speed: { min: 1, max: 5 },
       gravity: -0.33,
