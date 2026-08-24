@@ -156,7 +156,7 @@ export class BadPiggiesScene extends Scene {
 
     const cx = this.originX;
     const cy = this.originY - CELL * 4;
-    Camera.setFree(true, { panSpeed: 12, maxZoom: 3, arrows: true });
+    Camera.setFree(true, { panSpeed: 12, zoomSensitivity: 0.001, maxZoom: 3, arrows: true });
     Camera.setFreeTarget(cx, cy);
     Camera.centerOn(cx, cy);
     Camera.setZoom(0.7);
@@ -222,27 +222,9 @@ export class BadPiggiesScene extends Scene {
     }
   }
 
-  _followMachine() {
-    let sx = 0;
-    let sy = 0;
-    let n = 0;
-    for (const rec of this.occupancy.values()) {
-      const i = rec.boxIndex;
-      sx += Transform.x[i];
-      sy += Transform.y[i];
-      n++;
-    }
-    if (!n) return false;
-    Camera.setFreeTarget(sx / n, sy / n);
-    return true;
-  }
-
   _panCamera() {
+    // Play uses arrows for motors/thrust; WASD+wheel stay free-cam in both modes.
     Camera.freeArrows = this.mode === MODE_EDITOR;
-
-    if (this.mode === MODE_PLAY && this.occupancy.size && !Camera.isFreePanning) {
-      this._followMachine();
-    }
 
     if (this.mode === MODE_EDITOR && this._aimHoveredRocket()) {
       Camera.pauseFreeZoom();
