@@ -38,6 +38,8 @@ Groups are contiguous `[firstIndex, lastIndex)`. `SolveZombie` is **order-preser
 
 Emit: `groupFlags` packed in `SET_LIQUIDFUN_EMIT` (bits 17–20). Demo: **Y** ice = solid\|rigid box group + dynamic `Box` bodies.
 
+`QueryAABB` / `RayCast` walk the particle spatial hash (cell = diameter), not a full O(N) scan. Grid rebuilt at query time (same cells as last contact step if called right after physics).
+
 ---
 
 ## What this is

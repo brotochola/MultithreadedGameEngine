@@ -10,7 +10,7 @@ import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 
-const { ParticleEmitter, LIQUIDFUN_FLAGS } = WEED;
+const { ParticleEmitter, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } = WEED;
 
 export class LiquidFunStressScene extends WEED.Scene {
   static config = {
@@ -96,6 +96,20 @@ export class LiquidFunStressScene extends WEED.Scene {
       halfHeight: 145,
       flags: LIQUIDFUN_FLAGS.SPRING | LIQUIDFUN_FLAGS.STATIC_PRESSURE,
       tint: 0xff33aa,
+      texture: '_whiteCircle',
+    });
+
+    // Rigid+solid ice slab: exercises SolveRigid / ComputeDepth / SolveSolid on the
+    // steady-state path (plain water stress alone never touches these).
+    ParticleEmitter.emitLiquidFunParticles({
+      shape: 'box',
+      posX: 3200,
+      posY: 400,
+      halfWidth: 180,
+      halfHeight: 100,
+      flags: LIQUIDFUN_FLAGS.WATER,
+      groupFlags: LIQUIDFUN_GROUP_FLAGS.SOLID | LIQUIDFUN_GROUP_FLAGS.RIGID,
+      tint: 0xaadfff,
       texture: '_whiteCircle',
     });
 

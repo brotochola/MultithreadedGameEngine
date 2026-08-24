@@ -775,3 +775,296 @@ test('WASM particle lifespan alpha fades toward 0 only when fadeToAlpha0=1; untr
     }
   }
 });
+
+// ----------------------------------------------------------------------
+// New LiquidFun 1.1 slab / join / solid / rigid / query / apply features
+// ----------------------------------------------------------------------
+
+const LF_ZOMBIE = 1 << 0;
+const LF_SOLID_GROUP = 1 << 0;
+const LF_RIGID_GROUP = 1 << 1;
+
+test('WASM group slab stays contiguous after mid-group zombie compact', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getParticleCount = fn('get_particle_count');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getAlive = fn('get_particle_group_alive');
+  const getCount = fn('get_particle_group_particle_count');
+  const getFlagsOff = fn('get_particle_flags_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+
+  // trackGroup=1, groupFlags=0 — bookkeeping group, contiguous box fill
+  const gid = createParticleGroupBox(-60, -40, 60, 40, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0, `group create failed: ${gid}`);
+  const n0 = getParticleCount();
+  const first0 = getFirst(gid);
+  const last0 = getLast(gid);
+  assert.equal(last0 - first0, n0);
+  assert.equal(getCount(gid), n0);
+  assert.ok(n0 >= 9, `need enough particles to kill middle, got ${n0}`);
+
+  const flags = new Uint32Array(memory.buffer, getFlagsOff(), n0);
+  const mid = (first0 + last0) >> 1;
+  flags[mid] = flags[mid] | LF_ZOMBIE;
+  flags[mid + 1] = flags[mid + 1] | LF_ZOMBIE;
+  flags[mid + 2] = flags[mid + 2] | LF_ZOMBIE;
+
+  stepWorld(worldId, 1 / 60, 1);
+
+  assert.ok(getAlive(gid), 'group must stay alive');
+  const first1 = getFirst(gid);
+  const last1 = getLast(gid);
+  const n1 = getParticleCount();
+  assert.equal(n1, n0 - 3, 'three zombies removed');
+  assert.equal(last1 - first1, n1, 'slab length must equal live count');
+  assert.equal(getCount(gid), n1);
+  assert.equal(first1, 0, 'sole group should pack to start after compact');
+});
+
+test('WASM JoinParticleGroups merges two slabs into one contiguous range', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const joinGroups = fn('join_particle_groups');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getAlive = fn('get_particle_group_alive');
+  const getCount = fn('get_particle_group_particle_count');
+  const getParticleCount = fn('get_particle_count');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+
+  const a = createParticleGroupBox(-80, -20, -20, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  const b = createParticleGroupBox(20, -20, 80, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(a >= 0 && b >= 0 && a !== b);
+  const nA = getCount(a);
+  const nB = getCount(b);
+  assert.ok(nA > 0 && nB > 0);
+
+  joinGroups(a, b);
+
+  assert.ok(getAlive(a), 'group A keeps the merged slab');
+  assert.equal(getAlive(b), 0, 'group B destroyed');
+  assert.equal(getCount(a), nA + nB);
+  assert.equal(getLast(a) - getFirst(a), nA + nB);
+  assert.equal(getParticleCount(), nA + nB);
+});
+
+test('WASM rigid group ApplyLinearImpulse moves every member with same delta-v', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const groupImpulse = fn('particle_group_apply_linear_impulse');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getVelOff = fn('get_particle_vel_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+
+  // groupFlags = RIGID
+  const gid = createParticleGroupBox(-40, -40, 40, 40, 0, 0, 0.5, 0, 0, 0, 1, 1, LF_RIGID_GROUP);
+  assert.ok(gid >= 0);
+  const first = getFirst(gid);
+  const last = getLast(gid);
+  assert.ok(last - first >= 4);
+
+  groupImpulse(gid, 1000, 0);
+  const vel = new Float32Array(memory.buffer, getVelOff());
+  // interleaved b2Vec2: vx,vy per particle
+  const vx0 = vel[first * 2];
+  for (let i = first; i < last; i++) {
+    assert.ok(Math.abs(vel[i * 2] - vx0) < 1e-3, `member ${i} vx should match group impulse`);
+    assert.ok(Math.abs(vel[i * 2 + 1]) < 1e-3, `member ${i} vy should stay ~0`);
+  }
+
+  // One rigid solve step should keep coherent motion (no NaNs)
+  stepWorld(worldId, 1 / 60, 1);
+  for (let i = first; i < last; i++) {
+    assert.ok(Number.isFinite(vel[i * 2]) && Number.isFinite(vel[i * 2 + 1]));
+  }
+});
+
+test('WASM solid+rigid group creates and steps finite; QueryAABB finds members', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const queryAabb = fn('particle_query_aabb');
+  const getHit = fn('get_particle_query_hit');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getParticleCount = fn('get_particle_count');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+
+  const gid = createParticleGroupBox(
+    -50,
+    0,
+    50,
+    80,
+    0,
+    0,
+    0.5,
+    0,
+    0,
+    0,
+    1,
+    1,
+    LF_SOLID_GROUP | LF_RIGID_GROUP,
+  );
+  assert.ok(gid >= 0);
+  const n = getParticleCount();
+  assert.ok(n > 4);
+  assert.equal(fn('get_particle_group_flags')(gid), LF_SOLID_GROUP | LF_RIGID_GROUP);
+
+  for (let i = 0; i < 30; i++) {
+    stepWorld(worldId, 1 / 60, 1);
+  }
+  assert.equal(getParticleCount(), n, 'solid/rigid must not lose particles');
+
+  const hits = queryAabb(-60, -10, 60, 200);
+  assert.ok(hits > 0, 'QueryAABB should hit ice slab');
+  const first = getFirst(gid);
+  const last = getLast(gid);
+  let inSlab = 0;
+  for (let i = 0; i < hits; i++) {
+    const idx = getHit(i);
+    if (idx >= first && idx < last) inSlab++;
+  }
+  assert.ok(inSlab > 0, 'at least one hit must be inside the group slab');
+});
+
+test('WASM particle_apply_force accumulates into velocity after step', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const applyForce = fn('particle_apply_force');
+  const getFirst = fn('get_particle_group_first_index');
+  const getVelOff = fn('get_particle_vel_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 200));
+
+  const gid = createParticleGroupBox(-20, -20, 20, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  const i = getFirst(gid);
+  applyForce(i, 5000, 0);
+  stepWorld(worldId, 1 / 60, 1);
+  const vel = new Float32Array(memory.buffer, getVelOff());
+  assert.ok(vel[i * 2] > 0.1, `expected +vx after ApplyForce, got ${vel[i * 2]}`);
+});
+
+test('WASM SplitParticleGroup peels disconnected Join components', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const joinGroups = fn('join_particle_groups');
+  const splitGroup = fn('split_particle_group');
+  const getAlive = fn('get_particle_group_alive');
+  const getSlotCount = fn('get_particle_group_slot_count');
+  const getCount = fn('get_particle_group_particle_count');
+  const getParticleCount = fn('get_particle_count');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 800));
+
+  // Two spatially separated blobs; Join makes one index-slab group.
+  const a = createParticleGroupBox(-200, -20, -120, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  const b = createParticleGroupBox(120, -20, 200, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(a >= 0 && b >= 0);
+  const nA = getCount(a);
+  const nB = getCount(b);
+  joinGroups(a, b);
+  assert.equal(getCount(a), nA + nB);
+  assert.equal(getAlive(b), 0);
+
+  // Build contacts then split: disconnected components become separate groups.
+  stepWorld(worldId, 1 / 60, 1);
+  splitGroup(a);
+  stepWorld(worldId, 1 / 60, 1); // SolveZombie cleans cloned originals
+
+  let alive = 0;
+  let particlesInGroups = 0;
+  const slots = getSlotCount();
+  for (let g = 0; g < slots; g++) {
+    if (getAlive(g)) {
+      alive++;
+      particlesInGroups += getCount(g);
+    }
+  }
+  assert.ok(alive >= 2, `expected >=2 live groups after Split, got ${alive}`);
+  assert.equal(particlesInGroups, getParticleCount(), 'every live particle belongs to a group');
+  assert.ok(getAlive(a), 'longest component keeps original group id');
+});
+
+test('WASM RayCast hits a particle disc along a segment', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const rayCast = fn('particle_ray_cast');
+  const getHit = fn('get_particle_query_hit');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 200));
+
+  const gid = createParticleGroupBox(-30, -30, 30, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  const first = getFirst(gid);
+  const last = getLast(gid);
+
+  // Ray from left of the blob through its center.
+  const hits = rayCast(-200, 0, 200, 0);
+  assert.ok(hits > 0, 'RayCast should hit the blob');
+  let inSlab = 0;
+  for (let i = 0; i < hits; i++) {
+    const idx = getHit(i);
+    if (idx >= first && idx < last) inSlab++;
+  }
+  assert.ok(inSlab > 0, 'hit index must land in the group slab');
+
+  // Miss far above.
+  assert.equal(rayCast(-200, 500, 200, 500), 0, 'ray far from blob should miss');
+});
+

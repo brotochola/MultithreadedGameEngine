@@ -245,7 +245,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       for (let i = 0; i < groups.length; i++) {
         const g = groups[i];
         if (g.viscousScale > 1.05) {
-          const next = Math.max(1, g.viscousScale - deltaTime * 3);
+          const next = g.viscousScale - deltaTime * 3
           ParticleEmitter.setLiquidFunGroupViscousScale(g.id, next);
           this._meltGroupId = g.id;
           this._meltScale = next;
