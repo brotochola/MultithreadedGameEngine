@@ -174,6 +174,7 @@ export class BadPiggiesScene extends Scene {
 
     this._createPalette();
     this._createFluidBar();
+    this._createFollowToggle();
     this._createHud();
     this._refreshHud();
   }
@@ -181,6 +182,7 @@ export class BadPiggiesScene extends Scene {
   async destroy() {
     this._removePalette();
     this._removeFluidBar();
+    this._removeFollowToggle();
     this._removeHud();
     await super.destroy();
   }
@@ -226,9 +228,33 @@ export class BadPiggiesScene extends Scene {
     }
   }
 
+  _followMachine() {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const rec of this.occupancy.values()) {
+      const i = rec.boxIndex;
+      sx += Transform.x[i];
+      sy += Transform.y[i];
+      n++;
+    }
+    if (!n) return false;
+    Camera.setFreeTarget(sx / n, sy / n);
+    return true;
+  }
+
   _panCamera() {
     // Play uses arrows for motors/thrust; WASD+wheel stay free-cam in both modes.
     Camera.freeArrows = this.mode === MODE_EDITOR;
+
+    if (
+      this.followMachine &&
+      this.mode === MODE_PLAY &&
+      this.occupancy.size &&
+      !Camera.isFreePanning
+    ) {
+      this._followMachine();
+    }
 
     if (this.mode === MODE_EDITOR && this._aimHoveredRocket()) {
       Camera.pauseFreeZoom();
@@ -631,6 +657,31 @@ export class BadPiggiesScene extends Scene {
   _removePalette() {
     if (this._paletteBar && this._paletteBar.parentNode) this._paletteBar.parentNode.removeChild(this._paletteBar);
     this._paletteBar = null;
+  }
+
+  _createFollowToggle() {
+    const label = document.createElement('label');
+    label.id = 'bad-piggies-follow';
+    label.style.cssText =
+      'position:fixed;left:12px;top:48px;z-index:901;display:flex;align-items:center;gap:8px;' +
+      'color:#fff;font:14px/1 sans-serif;background:rgba(0,0,0,0.65);padding:8px 12px;border-radius:6px;cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = this.followMachine;
+    cb.addEventListener('change', () => {
+      this.followMachine = cb.checked;
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode('Follow machine'));
+    document.body.appendChild(label);
+    this._followToggle = label;
+  }
+
+  _removeFollowToggle() {
+    if (this._followToggle && this._followToggle.parentNode) {
+      this._followToggle.parentNode.removeChild(this._followToggle);
+    }
+    this._followToggle = null;
   }
 
   _createFluidBar() {
