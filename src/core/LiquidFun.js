@@ -201,6 +201,10 @@ export class LiquidFun {
     };
   }
 
+  static getParticleCount() {
+    return _particleViews.count[0]
+  }
+
   /**
    * Zero-alloc particle views (HEAP pose + thin emit fields). Same object every call.
    * Live count = views.count[0]. Null until bindSabs (and ideally bindHeapPose) ran.
