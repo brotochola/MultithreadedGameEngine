@@ -6,8 +6,10 @@ import {
   drainCommandRing,
   BOX2D_CMD,
 } from '../../src/box2d/box2dCommandRing.js';
-import { LiquidFunSystem, LIQUIDFUN_FLAGS } from '../../src/core/LiquidFunSystem.js';
+import { LiquidFun, LIQUIDFUN_FLAGS } from '../../src/core/LiquidFun.js';
 import { ParticleEmitter } from '../../src/core/ParticleEmitter.js';
+import { GameObject } from '../../src/core/gameObject.js';
+import { Scene } from '../../src/core/Scene.js';
 import { PHYSICS_DEFAULTS } from '../../src/core/ConfigDefaults.js';
 import { validatePhysicsConfig } from '../../src/core/utils.js';
 import { bindLiquidFunRender, liquidFunRenderByteSize } from '../../src/core/liquidFunRender.js';
@@ -24,6 +26,21 @@ test('LIQUIDFUN_FLAGS match liquidfun-c lfParticleFlag', () => {
   assert.equal(LIQUIDFUN_FLAGS.SPRING, 1 << 6);
   assert.equal(LIQUIDFUN_FLAGS.BARRIER, 1 << 7);
   assert.equal(LIQUIDFUN_FLAGS.STATIC_PRESSURE, 1 << 8);
+});
+
+test('ParticleEmitter has no LiquidFun API (use LiquidFun class)', () => {
+  assert.equal(typeof ParticleEmitter.emitLiquidFunParticles, 'undefined');
+  assert.equal(typeof ParticleEmitter.getLiquidFunParticleGroups, 'undefined');
+  assert.equal(typeof ParticleEmitter.setLiquidFunGroupViscousScale, 'undefined');
+  assert.equal(typeof LiquidFun.emit, 'function');
+  assert.equal(typeof LiquidFun.queryAABB, 'function');
+  assert.equal(typeof LiquidFun.rayCast, 'function');
+  assert.equal(typeof LiquidFun.queryAABBAsync, 'function');
+  assert.equal(typeof LiquidFun.rayCastAsync, 'function');
+  assert.equal(typeof GameObject.prototype.liquidFunQueryAABB, 'undefined');
+  assert.equal(typeof GameObject.prototype.liquidFunRayCast, 'undefined');
+  assert.equal(typeof Scene.prototype.liquidFunQueryAABB, 'undefined');
+  assert.equal(typeof Scene.prototype.liquidFunRayCast, 'undefined');
 });
 
 test('center+half box converts to a non-inverted AABB for WASM', () => {
@@ -90,14 +107,14 @@ test('validatePhysicsConfig defaults strictContactCheck to false and respects ov
   assert.equal(overridden.liquidFun.strictContactCheck, true);
 });
 
-test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
+test('LiquidFun enqueues SET_LIQUIDFUN_EMIT then create', () => {
   const sab = createCommandRingSab(64);
   bindCommandRing(sab);
   const i32 = new Int32Array(sab);
   const f32 = new Float32Array(sab);
 
-  LiquidFunSystem.createSystem({ radius: 12, maxCount: 2000, subSteps: 3 });
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.createSystem({ radius: 12, maxCount: 2000, subSteps: 3 });
+  LiquidFun.emit({
     shape: 'box',
     posX: 100,
     posY: 200,
@@ -109,7 +126,7 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
     tint: 0xffcc00,
     textureId: 4,
   });
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.emit({
     flags: LIQUIDFUN_FLAGS.ELASTIC,
     strength: 0.55,
     tint: 0x33ff66,
@@ -119,8 +136,8 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
     posY: 250,
     radius: 25,
   });
-  LiquidFunSystem.destroyGroup(1);
-  LiquidFunSystem.destroySystem(0);
+  LiquidFun.destroyGroup(1);
+  LiquidFun.destroySystem(0);
 
   const received = [];
   drainCommandRing(i32, f32, {
@@ -195,7 +212,7 @@ test('thick viscous emit packs viscousScale 10', () => {
   bindCommandRing(sab);
   const i32 = new Int32Array(sab);
   const f32 = new Float32Array(sab);
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.emit({
     flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE,
     viscousScale: 10,
     tint: 0xc6862a,
@@ -220,8 +237,8 @@ test('setGroupViscousScale and setTuning enqueue', () => {
   bindCommandRing(sab);
   const i32 = new Int32Array(sab);
   const f32 = new Float32Array(sab);
-  LiquidFunSystem.setGroupViscousScale(3, 2.5);
-  LiquidFunSystem.setTuning({ viscousStrength: 1.5 });
+  LiquidFun.setGroupViscousScale(3, 2.5);
+  LiquidFun.setTuning({ viscousStrength: 1.5 });
   const received = [];
   drainCommandRing(i32, f32, {
     setGroupViscousScale(groupId, scale) {
@@ -238,17 +255,17 @@ test('setGroupViscousScale and setTuning enqueue', () => {
   assert.equal(received.length, 4); // 1 setGroup + 3 tuning phases
 });
 
-test('LiquidFunSystem enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when options.lifespan is set', () => {
+test('LiquidFun enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when options.lifespan is set', () => {
   const sab = createCommandRingSab(64);
   bindCommandRing(sab);
   const i32 = new Int32Array(sab);
   const f32 = new Float32Array(sab);
 
-  LiquidFunSystem.createSystem();
+  LiquidFun.createSystem();
   // No lifespan option - must not enqueue SET_LIQUIDFUN_LIFESPAN at all.
-  ParticleEmitter.emitLiquidFunParticles({ shape: 'circle', posX: 0, posY: 0, radius: 20 });
+  LiquidFun.emit({ shape: 'circle', posX: 0, posY: 0, radius: 20 });
   // lifespan in ms, per ParticleComponent.lifespan's convention.
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.emit({
     shape: 'circle',
     posX: 10,
     posY: 20,
@@ -256,7 +273,7 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when opti
     lifespan: { min: 100, max: 1000 },
   });
   // Bare number = fixed life (min === max); fadeToAlpha0 defaults off.
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.emit({
     shape: 'circle',
     posX: 0,
     posY: 0,
@@ -264,7 +281,7 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when opti
     lifespan: 500,
   });
   // Explicit fade opt-in.
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.emit({
     shape: 'circle',
     posX: 0,
     posY: 0,
@@ -325,22 +342,22 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when opti
   assert.equal(fadeCmd.fadeToAlpha0, 1, 'fadeToAlpha0: true -> 1');
 });
 
-test('LiquidFunSystem enqueues SET_LIQUIDFUN_SCALE for scale/alpha/layerId', () => {
+test('LiquidFun enqueues SET_LIQUIDFUN_SCALE for scale/alpha/layerId', () => {
   const sab = createCommandRingSab(64);
   bindCommandRing(sab);
   const i32 = new Int32Array(sab);
   const f32 = new Float32Array(sab);
 
-  LiquidFunSystem.createSystem();
-  ParticleEmitter.emitLiquidFunParticles({ shape: 'circle', posX: 0, posY: 0, radius: 20 });
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.createSystem();
+  LiquidFun.emit({ shape: 'circle', posX: 0, posY: 0, radius: 20 });
+  LiquidFun.emit({
     shape: 'circle',
     posX: 0,
     posY: 0,
     radius: 20,
     scale: 0.2,
   });
-  ParticleEmitter.emitLiquidFunParticles({
+  LiquidFun.emit({
     shape: 'circle',
     posX: 0,
     posY: 0,
@@ -388,6 +405,53 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_SCALE for scale/alpha/layerId', () 
   assert.ok(Math.abs(received[6].scaleMax - 0.3) < 1e-6);
   assert.ok(Math.abs(received[6].alphaMin - 0.5) < 1e-6);
   assert.ok(Math.abs(received[6].alphaMax - 0.5) < 1e-6);
+});
+
+test('LiquidFun enqueues join/split/force ring commands', () => {
+  const sab = createCommandRingSab(32);
+  bindCommandRing(sab);
+  const i32 = new Int32Array(sab);
+  const f32 = new Float32Array(sab);
+
+  LiquidFun.joinParticleGroups(2, 5);
+  LiquidFun.splitParticleGroup(7);
+  LiquidFun.applyForce(3, 10, -4);
+  LiquidFun.applyLinearImpulse(4, 1.5, 2.5);
+  LiquidFun.groupApplyForce(8, 100, 50);
+  LiquidFun.groupApplyLinearImpulse(9, -3, 6);
+
+  const received = [];
+  drainCommandRing(i32, f32, {
+    joinParticleGroups(groupA, groupB) {
+      received.push({ type: 'joinParticleGroups', groupA, groupB });
+    },
+    splitParticleGroup(groupId) {
+      received.push({ type: 'splitParticleGroup', groupId });
+    },
+    particleApplyForce(index, fx, fy) {
+      received.push({ type: 'particleApplyForce', index, fx, fy });
+    },
+    particleApplyImpulse(index, ix, iy) {
+      received.push({ type: 'particleApplyImpulse', index, ix, iy });
+    },
+    groupApplyForce(groupId, fx, fy) {
+      received.push({ type: 'groupApplyForce', groupId, fx, fy });
+    },
+    groupApplyImpulse(groupId, ix, iy) {
+      received.push({ type: 'groupApplyImpulse', groupId, ix, iy });
+    },
+  });
+
+  assert.equal(BOX2D_CMD.JOIN_PARTICLE_GROUPS, 18);
+  assert.equal(BOX2D_CMD.SPLIT_PARTICLE_GROUP, 19);
+  assert.equal(BOX2D_CMD.PARTICLE_APPLY_FORCE, 20);
+  assert.deepEqual(received[0], { type: 'joinParticleGroups', groupA: 2, groupB: 5 });
+  assert.deepEqual(received[1], { type: 'splitParticleGroup', groupId: 7 });
+  assert.deepEqual(received[2], { type: 'particleApplyForce', index: 3, fx: 10, fy: -4 });
+  assert.deepEqual(received[3], { type: 'particleApplyImpulse', index: 4, ix: 1.5, iy: 2.5 });
+  assert.deepEqual(received[4], { type: 'groupApplyForce', groupId: 8, fx: 100, fy: 50 });
+  assert.deepEqual(received[5], { type: 'groupApplyImpulse', groupId: 9, ix: -3, iy: 6 });
+  assert.equal(received.length, 6);
 });
 
 test('liquidFun render SAB is not ParticleComponent', () => {

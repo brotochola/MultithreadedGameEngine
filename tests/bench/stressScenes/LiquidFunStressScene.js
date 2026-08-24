@@ -10,7 +10,7 @@ import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
 
-const { ParticleEmitter, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } = WEED;
+const { LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } = WEED;
 
 export class LiquidFunStressScene extends WEED.Scene {
   static config = {
@@ -73,7 +73,7 @@ export class LiquidFunStressScene extends WEED.Scene {
     // ~10.2k water: radius 8 -> diameter 16 -> default spacing 12 (0.75x). 201x51 grid.
     // Left edge (400) clears the left wall's right face (330) with margin;
     // right edge (2800) leaves an 860px gap before the second group.
-    ParticleEmitter.emitLiquidFunParticles({
+    LiquidFun.emit({
       flags: LIQUIDFUN_FLAGS.WATER | LIQUIDFUN_FLAGS.TENSILE,
       tint: 0x3399ff,
       shape: 'box',
@@ -88,7 +88,7 @@ export class LiquidFunStressScene extends WEED.Scene {
     // SolveStaticPressure's 8-iteration Poisson loop (steady-state), neither
     // of which plain water touches. No named material preset uses these flags.
     // Right edge (4600) clears the right wall's left face (4670) with margin.
-    ParticleEmitter.emitLiquidFunParticles({
+    LiquidFun.emit({
       shape: 'box',
       posX: 4130,
       posY: 800,
@@ -101,7 +101,7 @@ export class LiquidFunStressScene extends WEED.Scene {
 
     // Rigid+solid ice slab: exercises SolveRigid / ComputeDepth / SolveSolid on the
     // steady-state path (plain water stress alone never touches these).
-    ParticleEmitter.emitLiquidFunParticles({
+    LiquidFun.emit({
       shape: 'box',
       posX: 3200,
       posY: 400,

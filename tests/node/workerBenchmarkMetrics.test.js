@@ -10,6 +10,7 @@ import {
   SPATIAL_STATS,
   LOGIC_STATS,
   PRE_RENDER_STATS,
+  WORKER_DISPLAY_CONFIG,
 } from '../../src/workers/workers-utils.js';
 import {
   getWorkerFrameRateLayout,
@@ -128,6 +129,17 @@ test('readWorkerStatsFields skips schema stride metadata keys', () => {
   assert.equal(fields.BOX2D_MS, 6.25);
   assert.equal(fields.CONTACT_DROPPED, 7);
   assert.equal('STRIDE_FLOATS' in fields, false);
+});
+
+test('PHYSICS_STATS.LIQUIDFUN_MS slot + display row', () => {
+  assert.equal(PHYSICS_STATS.LIQUIDFUN_MS, 36);
+  const buf = new SharedArrayBuffer(PHYSICS_STATS.BUFFER_SIZE);
+  const view = createStatsWriter(buf, PHYSICS_STATS);
+  view[PHYSICS_STATS.LIQUIDFUN_MS] = 4.5;
+  const fields = readWorkerStatsFields(view, PHYSICS_STATS);
+  assert.equal(fields.LIQUIDFUN_MS, 4.5);
+  const physicsRows = WORKER_DISPLAY_CONFIG.physics.stats;
+  assert.ok(physicsRows.some((r) => r.key === 'LIQUIDFUN_MS'));
 });
 
 test('summarizeWorkerBenchmarkWindow averages stats fields across samples', () => {

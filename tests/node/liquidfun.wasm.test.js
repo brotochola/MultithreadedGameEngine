@@ -37,7 +37,13 @@ function instantiateBox2dWasm() {
     } else if (imp.kind === 'table') {
       imports[imp.module][imp.name] = new WebAssembly.Table({ initial: 1024, element: 'anyfunc' });
     } else if (imp.kind === 'function') {
-      imports[imp.module][imp.name] = () => 0;
+      // box2d_wasm.js wasmImports: a.b = _emscripten_get_now (LTO minified).
+      // Stubbed 0 makes LF step timer always report 0 ms.
+      if (imp.module === 'a' && imp.name === 'b') {
+        imports[imp.module][imp.name] = () => performance.now();
+      } else {
+        imports[imp.module][imp.name] = () => 0;
+      }
     } else if (imp.kind === 'global') {
       imports[imp.module][imp.name] = 0;
     }
@@ -1066,5 +1072,35 @@ test('WASM RayCast hits a particle disc along a segment', () => {
 
   // Miss far above.
   assert.equal(rayCast(-200, 500, 200, 500), 0, 'ray far from blob should miss');
+});
+
+test('WASM get_liquidfun_step_ms > 0 after particle step; 0 with no system', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const destroyParticleSystem = fn('destroy_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const stepWorld = fn('step_world');
+  const getLfMs = fn('get_liquidfun_step_ms');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+
+  stepWorld(worldId, 1 / 60, 1);
+  assert.equal(getLfMs(), 0, 'no particle system → 0 ms');
+
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+  assert.ok(
+    createParticleGroupBox(-80, -80, 80, 80, 0, 0, 0.5, 0, 0, 0, 1, 1, 0) >= 0,
+  );
+  stepWorld(worldId, 1 / 60, 1);
+  const ms = getLfMs();
+  assert.ok(ms > 0, `expected liquidfun step ms > 0, got ${ms}`);
+
+  destroyParticleSystem();
+  stepWorld(worldId, 1 / 60, 1);
+  assert.equal(getLfMs(), 0, 'after destroy → 0 ms');
 });
 

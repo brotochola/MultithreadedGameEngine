@@ -32,7 +32,7 @@ import { Sun } from '../core/Sun.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { Ray } from '../core/Ray.js';
-import { LiquidFunSystem } from '../core/LiquidFunSystem.js';
+import { LiquidFun } from '../core/LiquidFun.js';
 import { setAssertRotCSUnit } from '../box2d/box2dCommandRing.js';
 import { SceneBridge } from '../core/SceneBridge.js';
 import { DebugDraw } from '../core/debug/DebugDraw.js';
@@ -46,6 +46,7 @@ import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
+import { bindLiquidFunQuerySab } from '../box2d/liquidFunQuery.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
 import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
 
@@ -570,7 +571,7 @@ export class AbstractWorker {
 
     // LiquidFun groups + thin emit SAB (HEAP pose bound later on box2dReady).
     if (data.buffers?.liquidFunGroups || data.buffers?.liquidFunRender) {
-      LiquidFunSystem.bindSabs({
+      LiquidFun.bindSabs({
         groups: data.buffers.liquidFunGroups || null,
         render: data.buffers.liquidFunRender || null,
         maxCount: data.liquidFunMaxCount | 0,
@@ -1282,11 +1283,14 @@ export class AbstractWorker {
       if (data.queryAabbSab) {
         bindQueryAabbSab(data.queryAabbSab);
       }
+      if (data.liquidFunQuerySab) {
+        bindLiquidFunQuerySab(data.liquidFunQuerySab);
+      }
       if (data.movedSab) {
         bindMovedBodies(data.movedSab);
       }
       if (data.liquidFunHeap) {
-        LiquidFunSystem.bindHeapPose(data.liquidFunHeap);
+        LiquidFun.bindHeapPose(data.liquidFunHeap);
       }
     }
   }

@@ -45,7 +45,7 @@ import {
 import { Layer } from '../core/Layer.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
 import { bindLiquidFunRender } from '../core/liquidFunRender.js';
-import { LiquidFunSystem } from '../core/LiquidFunSystem.js';
+import { LiquidFun } from '../core/LiquidFun.js';
 import { DECORATION_NO_PARENT } from '../core/DecorationPool.js';
 import { AdobeAnimRegistry } from '../core/AdobeAnimRegistry.js';
 const INVALID_TEXTURE_ID = 0xFFFF;
@@ -1514,7 +1514,7 @@ class PreRenderWorker extends AbstractWorker {
     handleCustomMessage(data) {
         super.handleCustomMessage(data);
         if (data?.msg === 'box2dReady' && data.liquidFunHeap && this.liquidFun) {
-            const v = LiquidFunSystem.getParticleViews();
+            const v = LiquidFun.getViews();
             if (v?.x) {
                 this.liquidFun.count = v.count;
                 this.liquidFun.x = v.x;

@@ -1,6 +1,6 @@
 /**
  * Thin LiquidFun group mirror SAB. Physics worker writes alive groups each
- * afterStep; main/logic reads via ParticleEmitter.getLiquidFunParticleGroups().
+ * afterStep; main/logic reads via LiquidFun.getGroups().
  * Cap 256 — intentional blobs / melt handles, not every spray.
  */
 

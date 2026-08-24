@@ -26,6 +26,7 @@ function formatWorkerConsoleLine(worker) {
     ` | FPS ${worker.averageFPS.toFixed(2)} (inst ${worker.instantaneousFPS.toFixed(2)})`;
   if (worker.type === 'physics' || worker.id === 'physics') {
     if (avg.BOX2D_MS != null) line += ` | BOX2D_MS ${Number(avg.BOX2D_MS).toFixed(3)}`;
+    if (avg.LIQUIDFUN_MS != null) line += ` | LIQUIDFUN_MS ${Number(avg.LIQUIDFUN_MS).toFixed(3)}`;
     if (avg.BODY_MOVED_COUNT != null) line += ` | Moved ${Number(avg.BODY_MOVED_COUNT).toFixed(0)}`;
     if (avg.AWAKE_COUNT != null) line += ` | Awake ${Number(avg.AWAKE_COUNT).toFixed(0)}`;
     if (avg.BODY_COUNT != null) line += ` | BODY_COUNT ${Number(avg.BODY_COUNT).toFixed(0)}`;

@@ -122,6 +122,19 @@ On-demand Box2D broadphase query for entity ids (parallel to spatial `neighborDa
 - Optional `filter`: `{ categoryBits, maskBits }` (defaults match `physics-api` overlap filters).
 - Demo self-check: [`demos/box2dQueryAabbScene/box2dQueryAabbScene.js`](../demos/box2dQueryAabbScene/box2dQueryAabbScene.js).
 
+### LiquidFun QueryAABB / RayCast
+
+Same single-flight SAB pattern for particle indices (`liquidFunQuerySab`).
+
+| Caller | API | Blocking |
+|--------|-----|----------|
+| Logic | `LiquidFun.queryAABB` / `rayCast` | Sync (`Atomics.wait`) |
+| Main | `LiquidFun.queryAABBAsync` / `rayCastAsync` | Async (`Atomics.waitAsync`) |
+
+See [LiquidFun](./LIQUIDFUN.md). Demo: [`demos/liquidFunQueryScene`](../demos/liquidFunQueryScene/liquidFunQueryScene.js).
+
+With `debug.collectDetailedStats`, physics stats include `LIQUIDFUN_MS` (fluid solve inside `step_world`). `BOX2D_MS` is still the full `world.step` wall time.
+
 ---
 
 ## Dense collider list (`buildDenseColliders`)

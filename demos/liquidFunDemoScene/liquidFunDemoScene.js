@@ -8,7 +8,7 @@ import { Camera } from '/src/core/Camera.js';
 import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
 
-const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS, Layer } = WEED;
+const { Mouse, Keyboard, LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS, Layer } = WEED;
 
 const F = LIQUIDFUN_FLAGS;
 const GF = LIQUIDFUN_GROUP_FLAGS;
@@ -199,7 +199,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
 
   spawnParticleGroups() {
     const sprite = { texture: '_lightGradient', layerId: Layer.getId('water'), scale: 5, alpha: 0.25 };
-    ParticleEmitter.emitLiquidFunParticles({
+    LiquidFun.emit({
       flags: F.VISCOUS,
       viscousScale: 1,
       tint: 0x6b3a1f,
@@ -209,7 +209,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       radius: 120,
       ...sprite,
     });
-    ParticleEmitter.emitLiquidFunParticles({
+    LiquidFun.emit({
       flags: F.VISCOUS | F.TENSILE,
       viscousScale: 10,
       tint: 0xc6862a,
@@ -220,7 +220,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       trackGroup: true,
       ...sprite,
     });
-    ParticleEmitter.emitLiquidFunParticles({
+    LiquidFun.emit({
       flags: F.WATER,
       groupFlags: GF.SOLID | GF.RIGID,
       tint: 0xaadfff,
@@ -241,12 +241,12 @@ export class LiquidFunDemoScene extends WEED.Scene {
     }
 
     if (Keyboard.isPressed('m')) {
-      const groups = ParticleEmitter.getLiquidFunParticleGroups();
+      const groups = LiquidFun.getGroups();
       for (let i = 0; i < groups.length; i++) {
         const g = groups[i];
         if (g.viscousScale > 1.05) {
           const next = g.viscousScale - deltaTime * 3
-          ParticleEmitter.setLiquidFunGroupViscousScale(g.id, next);
+          LiquidFun.setGroupViscousScale(g.id, next);
           this._meltGroupId = g.id;
           this._meltScale = next;
         }
@@ -254,11 +254,11 @@ export class LiquidFunDemoScene extends WEED.Scene {
     }
 
     if (Keyboard.isPressed('n')) {
-      const groups = ParticleEmitter.getLiquidFunParticleGroups();
+      const groups = LiquidFun.getGroups();
       for (let i = 0; i < groups.length; i++) {
         const g = groups[i];
         const next = g.viscousScale * 1.1;
-        ParticleEmitter.setLiquidFunGroupViscousScale(g.id, next);
+        LiquidFun.setGroupViscousScale(g.id, next);
         this._meltGroupId = g.id;
         this._meltScale = next;
       }
@@ -300,7 +300,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
     } else {
       emit.radius = tool.radius;
     }
-    ParticleEmitter.emitLiquidFunParticles(emit);
+    LiquidFun.emit(emit);
   }
 
   _createHud() {
@@ -321,8 +321,8 @@ export class LiquidFunDemoScene extends WEED.Scene {
       return `${mark} ${t.key.toUpperCase()}  ${t.name}  vScale=${vs}`;
     });
     const tint = LIQUID_TOOLS[this.liquidTool].tint;
-    const groups = ParticleEmitter.getLiquidFunParticleGroups();
-    const views = ParticleEmitter.getLiquidFunParticleViews();
+    const groups = LiquidFun.getGroups();
+    const views = LiquidFun.getViews();
     const pCount = views?.count ? views.count[0] | 0 : 0;
     this._hud.textContent =
       `LiquidFun  |  ${LIQUID_TOOLS[this.liquidTool].name}` +

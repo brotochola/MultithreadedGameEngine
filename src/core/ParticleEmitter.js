@@ -45,8 +45,6 @@ import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { SharedAtomicPool } from './SharedAtomicPool.js';
 import { CAMERA_TYPES } from './ConfigDefaults.js';
 import { randomRange, randomColor, rng } from './utils.js';
-import { LiquidFunSystem } from './LiquidFunSystem.js';
-
 export const DECAL_STAMPS_BLEND_MODE = Object.freeze({
   normal: 0,
   multiply: 1,
@@ -347,61 +345,11 @@ export class ParticleEmitter extends SharedAtomicPool {
   }
 
   /**
-   * LiquidFun create via command ring only. Never `_spawn` / never the CPU pool.
-   *
-   * @param {Object} options
-   * @param {number} [options.flags] - `LIQUIDFUN_FLAGS` bits. Default WATER (0).
-   * @param {number} [options.viscousScale] - Per-particle viscous multiplier (default 1).
-   * @param {boolean} [options.trackGroup] - Keep a bookkeeping group for melt / listing.
-   * @param {number|{min: number, max: number}} [options.lifespan] - Age-based destruction
-   *   in ms (see LiquidFunSystem.createParticleBox). Omitted => live forever.
-   * @param {boolean} [options.fadeToAlpha0=false] - Opt-in alpha lerp over lifespan.
-   * @param {number|{min: number, max: number}} [options.scale] - Sprite scale (same as emit()).
-   * @param {number|{min: number, max: number}} [options.alpha] - Emit opacity (same as emit()).
-   * @param {number} [options.layerId=0] - Custom layer (Layer.getId), 0 = ENTITIES.
-   */
-  static emitLiquidFunParticles(options) {
-    const o = options || {};
-    let textureId = o.textureId | 0;
-    if (!textureId && o.texture) {
-      textureId = SpriteSheetRegistry.getTextureId(o.texture) | 0;
-    }
-    const resolved = textureId ? { ...o, textureId } : o;
-    if (resolved.shape === 'box') {
-      LiquidFunSystem.createParticleBox(resolved);
-    } else {
-      LiquidFunSystem.createParticleCircle(resolved);
-    }
-  }
-
-  /**
-   * Alive LiquidFun particle groups (physics mirror SAB). See LiquidFunSystem.getParticleGroups.
-   */
-  static getLiquidFunParticleGroups() {
-    return LiquidFunSystem.getParticleGroups();
-  }
-
-  /**
-   * Zero-alloc LiquidFun particle views (HEAP pose + thin emit). Same object every call.
-   */
-  static getLiquidFunParticleViews() {
-    return LiquidFunSystem.getParticleViews();
-  }
-
-  /**
-   * Stamp viscousScale on every particle in a LiquidFun group (melt / thicken).
-   */
-  static setLiquidFunGroupViscousScale(groupId, scale) {
-    LiquidFunSystem.setGroupViscousScale(groupId, scale);
-  }
-
-  /**
    * Reset all particle emitter state (extends parent reset)
    * Called when switching scenes to clear stale static state
    */
   static reset() {
     super.reset();
     this._warnedPoolExhausted = false;
-    LiquidFunSystem.unbindSabs();
   }
 }

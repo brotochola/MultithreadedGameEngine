@@ -49,7 +49,7 @@ import {
 import { ParticleEmitter } from './ParticleEmitter.js';
 import { liquidFunRenderByteSize } from './liquidFunRender.js';
 import { liquidFunGroupsByteSize, LIQUIDFUN_GROUPS_MAX } from './liquidFunGroups.js';
-import { LiquidFunSystem } from './LiquidFunSystem.js';
+import { LiquidFun } from './LiquidFun.js';
 import { Joint } from './Joint.js';
 import { SoundManager } from './SoundManager.js';
 import { MAX_COMPONENTS, MAX_ENTITIES, MAX_ENTITY_TYPES } from './QuerySystem.js';
@@ -170,6 +170,7 @@ function initializeParticleBuffers(scene) {
   const maxParticles = config.particle.maxParticles;
 
   ParticleEmitter.reset();
+  LiquidFun.unbindSabs();
 
   if (maxParticles <= 0) return;
 
@@ -200,7 +201,7 @@ function initializeLiquidFunRenderBuffer(scene) {
   scene.buffers.liquidFunRender = new SharedArrayBuffer(liquidFunRenderByteSize(maxCount));
   scene.buffers.liquidFunGroups = new SharedArrayBuffer(liquidFunGroupsByteSize(LIQUIDFUN_GROUPS_MAX));
   scene.liquidFunMaxCount = maxCount;
-  LiquidFunSystem.bindSabs({
+  LiquidFun.bindSabs({
     groups: scene.buffers.liquidFunGroups,
     render: scene.buffers.liquidFunRender,
     maxCount,
@@ -834,6 +835,7 @@ export function teardownSceneSharedState(scene) {
   Joint.reset();
   TileMap.reset();
   ParticleEmitter.reset();
+  LiquidFun.unbindSabs();
   DecorationPool.reset();
   BulletPool.reset();
   // Releases the _postToRenderer closure (would otherwise retain the

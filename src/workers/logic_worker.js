@@ -27,6 +27,7 @@ import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
+import { bindLiquidFunQuerySab } from '../box2d/liquidFunQuery.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
 import {
   bindContactRing,
@@ -962,6 +963,9 @@ class LogicWorker extends AbstractWorker {
         }
         if (data.queryAabbSab) {
           bindQueryAabbSab(data.queryAabbSab);
+        }
+        if (data.liquidFunQuerySab) {
+          bindLiquidFunQuerySab(data.liquidFunQuerySab);
         }
         if (data.movedSab) {
           bindMovedBodies(data.movedSab);

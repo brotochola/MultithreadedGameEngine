@@ -8,12 +8,13 @@ import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
-import { LiquidFunSystem } from './LiquidFunSystem.js';
+import { LiquidFun } from './LiquidFun.js';
 import { bindCommandRing, enqueueExplode } from '../box2d/box2dCommandRing.js';
 import {
   bindQueryAabbSab,
   box2dQueryAABBAsync,
 } from '../box2d/box2dQueryAabb.js';
+import { bindLiquidFunQuerySab } from '../box2d/liquidFunQuery.js';
 import { bindMovedBodies, getMovedBodiesViews } from '../box2d/box2dMovedBodies.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
 import { AdobeAnimComponent } from '../components/AdobeAnimComponent.js';
@@ -1613,6 +1614,7 @@ class Scene {
         sleepingByteOffset: e.data.sleepingByteOffset,
         commandSab: e.data.commandSab,
         queryAabbSab: e.data.queryAabbSab || null,
+        liquidFunQuerySab: e.data.liquidFunQuerySab || null,
         contactSab: e.data.contactSab,
         movedSab: e.data.movedSab || null,
         hitSab: e.data.hitSab || null,
@@ -1631,13 +1633,16 @@ class Scene {
       bindBox2dHotFields(payload);
       this.box2dHotFields = payload;
       if (payload.liquidFunHeap) {
-        LiquidFunSystem.bindHeapPose(payload.liquidFunHeap);
+        LiquidFun.bindHeapPose(payload.liquidFunHeap);
       }
       if (payload.commandSab) {
         bindCommandRing(payload.commandSab);
       }
       if (payload.queryAabbSab) {
         bindQueryAabbSab(payload.queryAabbSab);
+      }
+      if (payload.liquidFunQuerySab) {
+        bindLiquidFunQuerySab(payload.liquidFunQuerySab);
       }
       if (payload.movedSab) {
         bindMovedBodies(payload.movedSab);

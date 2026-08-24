@@ -12,7 +12,7 @@ Mode is chosen at the call site via `emit` / `emitZenithal` / `emitFlat`.
 | `ParticleEmitter.emitZenithal(config)` | Same heighted physics | XY on floor plane; scale (+ optional alpha) from `-z` |
 | `ParticleEmitter.emitFlat(config)` | No ground; XY + gravity on `vy` | `screenY = y` (ignore `z`) |
 | `ParticleEmitter.stampDecal(config)` | Instant floor stamp via heighted `emit` | Decal on tilemap |
-| `ParticleEmitter.emitLiquidFunParticles(config)` | Box2D liquidfun-c (physics worker WASM) | Same XY as rigid bodies; see [LiquidFun](./LIQUIDFUN.md) |
+| `LiquidFun.emit(config)` | Box2D liquidfun-c (physics worker WASM) | Same XY as rigid bodies; see [LiquidFun](./LIQUIDFUN.md) |
 
 Per-particle flags written at spawn:
 

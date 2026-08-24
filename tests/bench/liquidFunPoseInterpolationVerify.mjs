@@ -70,11 +70,11 @@ async function sampleMode(browser, baseUrl, mode) {
         // Let box2d finish booting before emitting.
         await new Promise((resolve) => setTimeout(resolve, 800));
 
-        const { ParticleEmitter } = await import('/src/index.js').then((m) => m.default);
+        const { LiquidFun } = await import('/src/index.js').then((m) => m.default);
         const LiquidFunRenderModule = await import('/src/core/liquidFunRender.js');
         const lfViews = LiquidFunRenderModule.bindLiquidFunRender(scene.buffers.liquidFunRender, scene.liquidFunMaxCount);
 
-        ParticleEmitter.emitLiquidFunParticles({
+        LiquidFun.emit({
           flags: 0,
           shape: 'circle',
           posX: 2000,
@@ -208,15 +208,15 @@ async function verifyReorderMitigation(browser, baseUrl) {
       const scene = window.__WEED_BENCHMARK__.getScene();
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      const { ParticleEmitter } = await import('/src/index.js').then((m) => m.default);
+      const { LiquidFun } = await import('/src/index.js').then((m) => m.default);
       const LiquidFunRenderModule = await import('/src/core/liquidFunRender.js');
       const lfViews = LiquidFunRenderModule.bindLiquidFunRender(scene.buffers.liquidFunRender, scene.liquidFunMaxCount);
 
       // Never-expiring blob first, so there's always a survivor to reseed.
-      ParticleEmitter.emitLiquidFunParticles({ flags: 0, shape: 'circle', posX: 2000, posY: 700, radius: 40 });
+      LiquidFun.emit({ flags: 0, shape: 'circle', posX: 2000, posY: 700, radius: 40 });
       // Independently-randomized short lifespans -> particles expire (and
       // trigger SolveZombie compaction) at scattered times, not all at once.
-      ParticleEmitter.emitLiquidFunParticles({
+      LiquidFun.emit({
         flags: 0,
         shape: 'circle',
         posX: 2200,

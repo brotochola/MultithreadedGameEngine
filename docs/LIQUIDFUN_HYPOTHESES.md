@@ -16,7 +16,8 @@ repo, not attempted here), so this campaign is **L2 + correctness gate only**.
 |-------|---------|-----------------|
 | **Correctness** | `node --test tests/node/liquidfun.test.js tests/node/liquidfun.wasm.test.js` (then full `npm test`) | All pass — a faster `STEP_MS` that breaks physics is invalid |
 | **L1 (added for H6)** | `pnpm bench:micro:liquidfun-capturepairs` ([`tests/bench/liquidfun-capturepairs-microbench.mjs`](../tests/bench/liquidfun-capturepairs-microbench.mjs)) | Wall-clock ms for one large SPRING-group `create_particle_group_box` call — the only way to see create-time-only wins the L2 steady-state window can't |
-| **L2** | `pnpm bench:feature:liquidfun` (`LiquidFunStressScene` — 5k water + 1k `SPRING\|STATIC_PRESSURE`), **2 runs per point** | `physics.BOX2D_MS` (== `lfParticleSystem_Step` cost; `BODY_COUNT` is 3 static floors, negligible) |
+| **L2** | `pnpm bench:feature:liquidfun` (`LiquidFunStressScene`), **2 runs per point** | `physics.LIQUIDFUN_MS` (fluid solve); `BOX2D_MS` still full `step_world` (rigid + LiquidFun) |
+| **L2 query** | `pnpm bench:feature:liquidfun-query` (`LiquidFunQueryStressScene`) | physics `STEP_MS` / `BOX2D_MS` / `LIQUIDFUN_MS` + logic `STEP_MS` under sync QueryAABB/RayCast churn |
 | **L3** | `demos/liquidFunDemoScene` (manual) | Visual: still stable, no explosions/tunneling |
 
 Every C change: edit sibling repo → `build_for_weed.bat` (incremental, ~10-15s once configured) → copies `box2d_wasm.js`/`.wasm` into `src/box2d/` → correctness gate → L2 ×2 → record here → stop for manual sanity check before the next hypothesis.
@@ -50,7 +51,7 @@ Every C change: edit sibling repo → `build_for_weed.bat` (incremental, ~10-15s
 ### H1 — `strictContactCheck` configurable, default `false` (2026-08-23)
 
 Landed across `ConfigDefaults.js`, `utils.js`, `physics_host.impl.js` (both merge copies),
-`weedjs_post.js`, `box2dCommandRing.impl.js`, `LiquidFunSystem.js`, `physics-api.js`,
+`weedjs_post.js`, `box2dCommandRing.impl.js`, `LiquidFun.js`, `liquidFunQuery.js`, `physics-api.js`,
 `wasm_wrapper.c`. Correctness: 17/17 liquidfun tests, 168/168 full suite (including the
 existing floor+wall-corner test, which still holds with `strictContactCheck=false` —
 no regression).

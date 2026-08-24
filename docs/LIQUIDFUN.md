@@ -21,7 +21,7 @@ Box2D 3 (Erin Catto C, this fork) has opaque ids, SoA buffers, and no hook to in
 | `physics-api.js` | this repo | `cwrap` + center+half → WASM AABB |
 | `box2dCommandRing` | this repo | Main/logic → physics worker (no `postMessage` blobs) |
 | `weedjs_post.js` | this repo | Drain ring, `world.step`; LiquidFun pose is **HEAP-bound** (no x/y/alpha memcpy) |
-| `LiquidFunSystem` | this repo | Scene-facing API; `bindSabs` + `bindHeapPose` |
+| `LiquidFun` | this repo | Scene-facing API; `bindSabs` + `bindHeapPose` + emit/query |
 
 ### Particle pose: HEAP SAB (like Transform)
 
@@ -56,7 +56,7 @@ Scene.config.physics.liquidFun.enabled
   handleInit → createParticleSystem once
 
 Scene.create
-  emitLiquidFunParticles (few long-lived materials)
+  LiquidFun.emit (few long-lived materials)
     ring CMD 13 SET_LIQUIDFUN_EMIT   // spacing, strength, tint, textureId
     ring CMD 9 / 10 CREATE           // next create consumes emit params
   Floor / RigidBody spawn            → body dirty → syncBodies
@@ -89,7 +89,7 @@ property threaded through the ring to `create_particle_system`'s 5th param — i
 to be hardcoded `true` in `wasm_wrapper.c` regardless of what JS asked for. See the
 "Body collision" section below for what it actually does.
 
-Scene sets `enabled: true` to auto-create the system at physics init. Do not also call `LiquidFunSystem.createSystem` from `create()` (destroys the previous system).
+Scene sets `enabled: true` to auto-create the system at physics init. Do not also call `LiquidFun.createSystem` from `create()` (destroys the previous system).
 
 ---
 
@@ -146,13 +146,13 @@ explicit SSE2/wasm128 intrinsics (`<emmintrin.h>`, same technique Box2D's own
 
 Emit is **explicit knobs**, not a named cookbook. `LIQUIDFUN_FLAGS` + per-call `viscousScale` / `tint` / `strength` / `trackGroup`. Game recipes (oil, dulce, jelly) live in the scene, not the engine.
 
-**Viscosity:** `effective = viscousStrength * 0.5 * (scale[a] + scale[b])`. System baseline via `physics.liquidFun.viscousStrength` (default `0.25`) or `LiquidFunSystem.setTuning`. Per-emit `viscousScale` stamps particles (default 1). Melt: `ParticleEmitter.setLiquidFunGroupViscousScale(id, scale)` bulk-stamps members.
+**Viscosity:** `effective = viscousStrength * 0.5 * (scale[a] + scale[b])`. System baseline via `physics.liquidFun.viscousStrength` (default `0.25`) or `LiquidFun.setTuning`. Per-emit `viscousScale` stamps particles (default 1). Melt: `LiquidFun.setGroupViscousScale(id, scale)` bulk-stamps members.
 
-**Groups:** Kept when `ELASTIC|SPRING`, or `trackGroup: true`, or `viscousScale != 1`. Shape groups set `hasShapeGroups` (stats + elastic/spring). Bookkeeping viscous groups do **not**. Ungrouped create returns **`-1`** (not `0`). List via `ParticleEmitter.getLiquidFunParticleGroups()` (thin SAB, cap 256).
+**Groups:** Kept when `ELASTIC|SPRING`, or `trackGroup: true`, or `viscousScale != 1`. Shape groups set `hasShapeGroups` (stats + elastic/spring). Bookkeeping viscous groups do **not**. Ungrouped create returns **`-1`** (not `0`). List via `LiquidFun.getGroups()` (thin SAB, cap 256).
 
 What is slow: a new **shape** group every mouse splash. Spray viscous blobs with `viscousScale != 1` keeps bookkeeping groups only.
 
-System tuning knobs on `physics.liquidFun` (also `LiquidFunSystem.setTuning`): `dampingStrength`, `pressureStrength`, `viscousStrength`, `tensileStrength`, `powderStrength`, `springStrength`, `staticPressureStrength`, `staticPressureRelaxation`, `staticPressureIterations`.
+System tuning knobs on `physics.liquidFun` (also `LiquidFun.setTuning`): `dampingStrength`, `pressureStrength`, `viscousStrength`, `tensileStrength`, `powderStrength`, `springStrength`, `staticPressureStrength`, `staticPressureRelaxation`, `staticPressureIterations`.
 
 ---
 
@@ -198,7 +198,7 @@ Thin render SAB size is `physics.liquidFun.maxCount`, not `particle.maxParticles
 
 ## JS / SAB integration (hot path rules)
 
-**Create (cold):** `LiquidFunSystem` / `ParticleEmitter.emitLiquidFunParticles` enqueue 8-byte-stride ring slots. Never `_spawn` / never the CPU free list. No WASM from the main thread. Physics worker drains once per step before `world.step`.
+**Create (cold):** `LiquidFun.emit` / `createParticleBox` enqueue 8-byte-stride ring slots. Never `_spawn` / never the CPU free list. No WASM from the main thread. Physics worker drains once per step before `world.step`.
 
 **Step (hot, physics worker):**
 
@@ -227,11 +227,13 @@ Opcode `SET_LIQUIDFUN_EMIT` (13) is four floats: `spacing, strength, tintBits, t
 
 ## Scene API
 
+`ParticleEmitter` = Weed CPU visual particles only. LiquidFun fluids use **`LiquidFun`**.
+
 ```javascript
 // Scene.config.physics
 liquidFun: { enabled: true, radius: 10, maxCount: 10000, subSteps: 1, strictContactCheck: false }
 
-ParticleEmitter.emitLiquidFunParticles({
+LiquidFun.emit({
   flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE,
   viscousScale: 10,
   tint: 0xc6862a,
@@ -240,10 +242,29 @@ ParticleEmitter.emitLiquidFunParticles({
   texture: '_whiteCircle',
   spacing: 0,     // 0 → C rest stride
   trackGroup: true,
+  groupFlags: LIQUIDFUN_GROUP_FLAGS.SOLID | LIQUIDFUN_GROUP_FLAGS.RIGID, // optional ice
 });
+
+LiquidFun.getGroups();
+LiquidFun.getViews();
+LiquidFun.setGroupViscousScale(id, scale);
+LiquidFun.joinParticleGroups(a, b);
+LiquidFun.splitParticleGroup(id);
+LiquidFun.applyForce(i, fx, fy);
+LiquidFun.groupApplyLinearImpulse(id, ix, iy);
+
+// Logic — sync (Atomics.wait). Main — async (Atomics.waitAsync).
+LiquidFun.queryAABB(x0, y0, x1, y1, out); // out: Int32Array particle indices
+LiquidFun.rayCast(x1, y1, x2, y2, out);
+await LiquidFun.queryAABBAsync(x0, y0, x1, y1, out);
+await LiquidFun.rayCastAsync(x1, y1, x2, y2, out);
 ```
 
-Demo: [`demos/liquidFunDemoScene/liquidFunDemoScene.js`](../demos/liquidFunDemoScene/liquidFunDemoScene.js) — recipes defined on the scene tools; LMB sprays those knobs.
+Single-flight SAB (`liquidFunQuery`), same pattern as body `box2dQueryAABB`. Physics services pending queries in `doStep` (including paused/`dt==0`). No GameObject/Scene query methods — call `LiquidFun.*` like `Camera` / `Mouse`.
+
+**Debug stats:** with `config.debug.collectDetailedStats`, physics panel shows **LiquidFun** (`LIQUIDFUN_MS`) = wall time of `lfParticleSystem_Step` + pose deinterleave inside `step_world`. `BOX2D_MS` remains the full `world.step` wall time (rigid + LiquidFun).
+
+Demo: [`demos/liquidFunDemoScene/liquidFunDemoScene.js`](../demos/liquidFunDemoScene/liquidFunDemoScene.js) — recipes on scene tools; LMB sprays. Query self-check: [`demos/liquidFunQueryScene/liquidFunQueryScene.js`](../demos/liquidFunQueryScene/liquidFunQueryScene.js).
 
 `radius` is the **particle** radius (world units), not the group radius. Group `radius` / `halfWidth` is the fill shape. Spacing `0` → pack at **0.75 × diameter** (Google particle stride).
 

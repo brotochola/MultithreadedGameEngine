@@ -13,6 +13,7 @@ Classic physics worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Sce
 | `box2dConstants.impl.js` + `box2dConstants.js` | Dual-load enums / state channels |
 | `box2dCommandRing.impl.js` + `box2dCommandRing.js` | Pose / vel / fixedRotation / LiquidFun create commands |
 | `box2dQueryAabb.impl.js` + `box2dQueryAabb.js` | Single-flight gameplay QueryAABB SAB |
+| `liquidFunQuery.impl.js` + `liquidFunQuery.js` | Single-flight LiquidFun QueryAABB / RayCast SAB |
 | `box2dContactRing.impl.js` + `box2dContactRing.js` | Contact/sensor event ring |
 | `box2dHotFields.js` | Bind Transform/RigidBody hot views onto WASM HEAP |
 

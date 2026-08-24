@@ -540,6 +540,7 @@ function createPhysicsApi(Module) {
   const getParticleQueryHit = wrap("get_particle_query_hit", "number", ["number"]);
   const getParticleWeightByteOffset = wrap("get_particle_weight_byte_offset", "number", []);
   const getParticleCount = wrap("get_particle_count", "number", []);
+  const getLiquidFunStepMs = wrap("get_liquidfun_step_ms", "number", []);
   const getParticleCapacity = wrap("get_particle_capacity", "number", []);
   const getParticleRadius = wrap("get_particle_radius", "number", []);
   const getParticleCountByteOffset = wrap("get_particle_count_byte_offset", "number", []);
@@ -1530,12 +1531,31 @@ function createPhysicsApi(Module) {
       return out;
     }
 
+    /** Fill Int32Array results without allocating; returns full hit count. */
+    fillParticleQueryAabb(x0, y0, x1, y1, results, cap) {
+      const n = particleQueryAabb(x0, y0, x1, y1) | 0;
+      const write = n < cap ? n : cap | 0;
+      for (let i = 0; i < write; i++) results[i] = getParticleQueryHit(i) | 0;
+      return n;
+    }
+
+    fillParticleRayCast(x1, y1, x2, y2, results, cap) {
+      const n = particleRayCast(x1, y1, x2, y2) | 0;
+      const write = n < cap ? n : cap | 0;
+      for (let i = 0; i < write; i++) results[i] = getParticleQueryHit(i) | 0;
+      return n;
+    }
+
     getParticleWeightByteOffset() {
       return getParticleWeightByteOffset();
     }
 
     getParticleCount() {
       return getParticleCount();
+    }
+
+    getLiquidFunStepMs() {
+      return getLiquidFunStepMs();
     }
 
     getParticleCapacity() {

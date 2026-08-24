@@ -101,6 +101,8 @@ export const PHYSICS_STATS = Object.freeze({
   COUNTER_ISLANDS: 33,
   COUNTER_AWAKE_CONTACTS: 34,
   COUNTER_TREE_HEIGHT: 35,
+  /** Wall ms of lfParticleSystem_Step + pose deinterleave inside step_world. */
+  LIQUIDFUN_MS: 36,
   STRIDE_FLOATS: 48,
   BUFFER_SIZE: 48 * 4,
 });
@@ -256,6 +258,7 @@ export const WORKER_DISPLAY_CONFIG = Object.freeze({
       { key: 'AWAKE_COUNT', label: 'Awake', format: fmtNum },
       { key: 'BODY_MOVED_COUNT', label: 'Moved', format: fmtNum },
       { key: 'BOX2D_MS', label: 'Box2d', format: fmtMs },
+      { key: 'LIQUIDFUN_MS', label: 'LiquidFun', format: fmtMs },
       { key: 'PROFILE_COLLIDE_MS', label: 'Collide', format: fmtMs },
       { key: 'PROFILE_SOLVE_MS', label: 'Solve', format: fmtMs },
       { key: 'PROFILE_SLEEP_MS', label: 'Sleep', format: fmtMs },

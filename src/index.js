@@ -74,7 +74,7 @@ export { JointBreakListener } from './components/JointBreakListener.js';
 // ============================================================================
 // Note: Particles are NOT GameObjects - they use ParticleComponent directly
 export { ParticleEmitter, DECAL_STAMPS_BLEND_MODE } from './core/ParticleEmitter.js';
-export { LiquidFunSystem, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } from './core/LiquidFunSystem.js';
+export { LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } from './core/LiquidFun.js';
 
 // ============================================================================
 // DECORATIONS
@@ -118,6 +118,13 @@ export {
   bindQueryAabbSab,
   isQueryAabbBound,
 } from './box2d/box2dQueryAabb.js';
+export {
+  liquidFunQueryAABB,
+  liquidFunQueryAABBAsync,
+  liquidFunRayCast,
+  liquidFunRayCastAsync,
+  bindLiquidFunQuerySab,
+} from './box2d/liquidFunQuery.js';
 
 // ============================================================================
 // FLASHES
@@ -207,7 +214,7 @@ import { AdobeAnimComponent } from './components/AdobeAnimComponent.js';
 import { ParticleComponent } from './components/ParticleComponent.js';
 
 import { ParticleEmitter, DECAL_STAMPS_BLEND_MODE } from './core/ParticleEmitter.js';
-import { LiquidFunSystem, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } from './core/LiquidFunSystem.js';
+import { LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } from './core/LiquidFun.js';
 import { DecorationPool, SWAY_OFF, SWAY_LOOP, SWAY_IMPULSE } from './core/DecorationPool.js';
 import { Decoration } from './core/Decoration.js';
 import { DecorationSpatial } from './core/DecorationSpatial.js';
@@ -240,6 +247,13 @@ import {
   bindQueryAabbSab,
   isQueryAabbBound,
 } from './box2d/box2dQueryAabb.js';
+import {
+  liquidFunQueryAABB,
+  liquidFunQueryAABBAsync,
+  liquidFunRayCast,
+  liquidFunRayCastAsync,
+  bindLiquidFunQuerySab,
+} from './box2d/liquidFunQuery.js';
 import {
   ShapeType,
   MAX_POLYGON_VERTICES,
@@ -313,7 +327,7 @@ const WEED = Object.freeze({
 
   // Particles
   ParticleEmitter,
-  LiquidFunSystem,
+  LiquidFun,
   LIQUIDFUN_FLAGS,
   LIQUIDFUN_GROUP_FLAGS,
 
@@ -346,6 +360,13 @@ const WEED = Object.freeze({
   box2dQueryAABBAsync,
   bindQueryAabbSab,
   isQueryAabbBound,
+
+  // LiquidFun QueryAABB / RayCast (logic sync / Scene async)
+  liquidFunQueryAABB,
+  liquidFunQueryAABBAsync,
+  liquidFunRayCast,
+  liquidFunRayCastAsync,
+  bindLiquidFunQuerySab,
 
   // Flashes
   Flash,

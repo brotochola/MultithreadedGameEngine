@@ -16,6 +16,7 @@
     'box2dJointBreakRing.impl.js',
     'box2dMovedBodies.impl.js',
     'box2dQueryAabb.impl.js',
+    'liquidFunQuery.impl.js',
   );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
   const publishBox2dContactEvent = Box2dContactRing.publishContactEvent;
@@ -163,6 +164,7 @@
     COUNTER_ISLANDS: 33,
     COUNTER_AWAKE_CONTACTS: 34,
     COUNTER_TREE_HEIGHT: 35,
+    LIQUIDFUN_MS: 36,
   };
 
   let heapHighWaterKb = 0;
@@ -1115,6 +1117,28 @@
     });
   }
 
+  function serviceLiquidFunQuery() {
+    if (!world || typeof LiquidFunQuery === 'undefined') return;
+    var OP_AABB = LiquidFunQuery.OP_AABB;
+    LiquidFunQuery.servicePendingLiquidFunQuery(function (
+      op,
+      a,
+      b,
+      c,
+      d,
+      results,
+      cap,
+    ) {
+      var n;
+      if ((op | 0) === OP_AABB) {
+        n = world.fillParticleQueryAabb(a, b, c, d, results, cap);
+      } else {
+        n = world.fillParticleRayCast(a, b, c, d, results, cap);
+      }
+      return n | 0;
+    });
+  }
+
   function applyForcesAndTorque() {
     for (let n = 0; n < denseCount; n++) {
       const i = denseList[n];
@@ -1291,7 +1315,7 @@
 
   function syncLiquidFunParticlesToSharedBuffers() {
     // Pose (x/y/alpha/count) lives on the WASM HEAP SAB and is bound zero-copy
-    // via LiquidFunSystem.bindHeapPose on box2dReady. Thin SAB keeps emit-only
+    // via LiquidFun.bindHeapPose on box2dReady. Thin SAB keeps emit-only
     // fields (scale/tint/texture/layer). Interpolation prev pose is latched in
     // pre_render (_prevLfX), not copied here.
     if (!world || typeof world.getParticleCount !== 'function') return;
@@ -1421,6 +1445,10 @@
     statsF32[PS.COMMAND_MS] = commandMs;
     statsF32[PS.FORCE_MS] = forceMs;
     statsF32[PS.BOX2D_MS] = box2dMs;
+    statsF32[PS.LIQUIDFUN_MS] =
+      world && typeof world.getLiquidFunStepMs === 'function'
+        ? world.getLiquidFunStepMs()
+        : 0;
     statsF32[PS.POST_MS] = postMs;
     statsF32[PS.BODY_SYNC_CHANGES] = bodySyncChanges;
     statsF32[PS.BODY_SYNC_VISITED] = lastBodySyncVisited;
@@ -1514,9 +1542,10 @@
     if (!world) {
       return;
     }
-    // Service even when dt==0 / paused so sync box2dQueryAABB callers do not hang.
+    // Service even when dt==0 / paused so sync query callers do not hang.
     if (!(dt > 0)) {
       serviceQueryAabb();
+      serviceLiquidFunQuery();
       return;
     }
     if (!collectDetailedStats) {
@@ -1524,6 +1553,7 @@
       drainCommands();
       syncJoints();
       serviceQueryAabb();
+      serviceLiquidFunQuery();
       snapshotPrevPose(entityCount);
       applyForcesAndTorque();
       world.step(dt, solverSteps);
@@ -1539,6 +1569,7 @@
     const jointSyncChanges = syncJoints();
     const t3 = performance.now();
     serviceQueryAabb();
+    serviceLiquidFunQuery();
     snapshotPrevPose(entityCount);
     applyForcesAndTorque();
     const t4 = performance.now();
@@ -1679,6 +1710,9 @@
     }
     if (data.queryAabbSab) {
       Box2dQueryAabb.bindQueryAabbSab(data.queryAabbSab);
+    }
+    if (data.liquidFunQuerySab) {
+      LiquidFunQuery.bindLiquidFunQuerySab(data.liquidFunQuerySab);
     }
     if (data.contactSab) {
       Box2dContactRing.bindContactRing(data.contactSab);

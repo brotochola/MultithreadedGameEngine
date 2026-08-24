@@ -58,7 +58,8 @@ Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`]
 | Particle integrate | `particleIntegrate.js`, particle_worker | `particle-integrate-microbench.mjs` | `stressScenes/ParticleIntegrateStressScene` | zenithalParticleTest | `PARTICLE_PHYSICS_MS`, `BUILD_ACTIVE_VISIBLE_MS` — **champion P4+P5** |
 | Spatial rebuild + neighbors | `spatial_worker.js`, `Grid.js` | (todo) | `stressScenes/StationarySpatialScene` | Balls | `NEIGHBOR_MS`, `REBUILD_MS` |
 | Box2D step / sync | `weedjs_post.js` | semi (WASM) | Balls / BallsAndRectangles | Balls | `STEP_MS`, `BOX2D_MS`, `BODY_COUNT` |
-| LiquidFun particle step | `lf_particle_system.c` (sibling `box2d_3.0_wasm_sab`) | `liquidfun-capturepairs-microbench.mjs` (CapturePairs create-time only; step itself has no L1) | `stressScenes/LiquidFunStressScene` | `demos/liquidFunDemoScene` | `STEP_MS`, `BOX2D_MS` (~10.2k water + ~2k spring/staticPressure, resized after H7) |
+| LiquidFun particle step | `lf_particle_system.c` (sibling `box2d_3.0_wasm_sab`) | `liquidfun-capturepairs-microbench.mjs` (CapturePairs create-time only; step itself has no L1) | `stressScenes/LiquidFunStressScene` | `demos/liquidFunDemoScene` | `LIQUIDFUN_MS` (fluid inside `step_world`); `BOX2D_MS` = full step (rigid + LiquidFun); ~10.2k water + ~2k spring/staticPressure |
+| LiquidFun QueryAABB / RayCast | `liquidFunQuery.js` | SAB protocol `liquidFunQuery.test.js` | `stressScenes/LiquidFunQueryStressScene` | `demos/liquidFunQueryScene` | physics + logic `STEP_MS` under sync query churn |
 | Box2D QueryAABB | `box2dQueryAabb.js` | semi | `demos/.../Box2dQueryAabbScene` | — | query / physics STEP |
 | NavGrid Dijkstra / A* | `NavGrid.js`, particle_worker | (todo) | (todo) `NavStressScene` | car / bichos / Predator | ms/path |
 | AngularSweep visibility | `AngularSweep.js` | (todo) | (todo) | Predator | ms/polygon |
@@ -91,6 +92,7 @@ Microbenches import production `src/...` code (no algorithm copies). Run a corre
 | QueryChurnScene | `/tests/bench/stressScenes/QueryChurnScene.js` | Spawn/despawn + query publication |
 | RenderQueueStressScene | `/tests/bench/stressScenes/RenderQueueStressScene.js` | Cull / Y-sort / render queue |
 | LiquidFunStressScene | `/tests/bench/stressScenes/LiquidFunStressScene.js` | ~10.2k water + ~2k spring/staticPressure → `lfParticleSystem_Step` cost |
+| LiquidFunQueryStressScene | `/tests/bench/stressScenes/LiquidFunQueryStressScene.js` | Dense fluid + per-frame sync `LiquidFun.queryAABB` / `rayCast` |
 
 ```bash
 node tests/bench/run-integrated-worker-benchmark.mjs --headed \
