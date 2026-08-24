@@ -20,10 +20,28 @@ Box2D 3 (Erin Catto C, this fork) has opaque ids, SoA buffers, and no hook to in
 | `wasm_wrapper.c` | sibling `box2d/src/` | `EMSCRIPTEN_KEEPALIVE` exports + global `g_particles` |
 | `physics-api.js` | this repo | `cwrap` + center+half → WASM AABB |
 | `box2dCommandRing` | this repo | Main/logic → physics worker (no `postMessage` blobs) |
-| `weedjs_post.js` | this repo | Drain ring, `world.step`, copy HEAP → thin LiquidFun render SAB |
-| `LiquidFunSystem` | this repo | Scene-facing API |
+| `weedjs_post.js` | this repo | Drain ring, `world.step`; LiquidFun pose is **HEAP-bound** (no x/y/alpha memcpy) |
+| `LiquidFunSystem` | this repo | Scene-facing API; `bindSabs` + `bindHeapPose` |
 
-One world. Particles and fixtures share **the same world floats**. `b2SetLengthUnitsPerMeter` only tunes Box2D thresholds; it does **not** rescale particles vs bodies.
+### Particle pose: HEAP SAB (like Transform)
+
+`WebAssembly.Memory({ shared: true })` — the WASM heap **is** a SharedArrayBuffer. Rigid bodies already bind `Transform.x/y` onto it. LiquidFun particle `count` / `x` / `y` / `alpha` / `weight` use the same pattern via `liquidFunHeap` on `box2dReady`. The thin LiquidFun render SAB keeps only emit fields C does not own (`tint`, `scale*`, `textureId`, `layerId`, …).
+
+### Group slabs (Google LiquidFun 1.1)
+
+Groups are contiguous `[firstIndex, lastIndex)`. `SolveZombie` is **order-preserving compact** (not swap-with-last). `RotateBuffer` supports Join. Membership for gameplay: loop the slab on HEAP views — O(members).
+
+| Group flag | Meaning (Google) |
+|--|--|
+| `SOLID` | Depth field + `SolveSolid` ejection on **inter-group** contacts (intra contacts still exist) |
+| `RIGID` | `SolveRigid`: slab velocity from COM + ω |
+
+Emit: `groupFlags` packed in `SET_LIQUIDFUN_EMIT` (bits 17–20). Demo: **Y** ice = solid\|rigid box group + dynamic `Box` bodies.
+
+---
+
+## What this is
+
 
 Weed default: pixels as units (`lengthUnitsPerMeter: 100`, gravity `{x:0,y:980}`). Native sibling demos use meters (`radius ≈ 0.05`, gravity `-10`). Both work if radius, positions, and gravity use one unit system.
 

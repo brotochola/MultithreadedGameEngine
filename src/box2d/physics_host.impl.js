@@ -172,6 +172,10 @@
     off += n * 4;
     var particleCount = new Int32Array(sab, off, n);
     off += n * 4;
+    var firstIndex = new Int32Array(sab, off, n);
+    off += n * 4;
+    var lastIndex = new Int32Array(sab, off, n);
+    off += n * 4;
     var viscousScale = new Float32Array(sab, off, n);
     off += n * 4;
     var x = new Float32Array(sab, off, n);
@@ -189,6 +193,8 @@
       count: count,
       id: id,
       particleCount: particleCount,
+      firstIndex: firstIndex,
+      lastIndex: lastIndex,
       viscousScale: viscousScale,
       x: x,
       y: y,
@@ -521,6 +527,7 @@
       sensorEventCapacity: ready.sensorEventCapacity,
       contactPairIntStride: ready.contactPairIntStride || 2,
       eventHeaderIntCount: ready.eventHeaderIntCount || 11,
+      liquidFunHeap: ready.liquidFunHeap || null,
     });
   }
 
@@ -693,6 +700,8 @@
         count: packView(G.count),
         id: packView(G.id),
         particleCount: packView(G.particleCount),
+        firstIndex: packView(G.firstIndex),
+        lastIndex: packView(G.lastIndex),
         viscousScale: packView(G.viscousScale),
         x: packView(G.x),
         y: packView(G.y),

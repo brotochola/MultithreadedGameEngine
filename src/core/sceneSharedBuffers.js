@@ -200,7 +200,11 @@ function initializeLiquidFunRenderBuffer(scene) {
   scene.buffers.liquidFunRender = new SharedArrayBuffer(liquidFunRenderByteSize(maxCount));
   scene.buffers.liquidFunGroups = new SharedArrayBuffer(liquidFunGroupsByteSize(LIQUIDFUN_GROUPS_MAX));
   scene.liquidFunMaxCount = maxCount;
-  LiquidFunSystem.bindGroupsSab(scene.buffers.liquidFunGroups);
+  LiquidFunSystem.bindSabs({
+    groups: scene.buffers.liquidFunGroups,
+    render: scene.buffers.liquidFunRender,
+    maxCount,
+  });
 }
 
 function initializeDecorationBuffers(scene) {

@@ -421,13 +421,15 @@ test('liquidFun render SAB is not ParticleComponent', () => {
   assert.ok(!('flat' in views));
 });
 
-test('liquidFun groups SAB fits bindLiquidFunGroups (all 9 columns)', () => {
+test('liquidFun groups SAB fits bindLiquidFunGroups (first/last + 7 f32)', () => {
   const n = LIQUIDFUN_GROUPS_MAX;
   const sab = new SharedArrayBuffer(liquidFunGroupsByteSize(n));
   const views = bindLiquidFunGroups(sab, n);
   assert.equal(views.count.length, 1);
   assert.equal(views.id.length, n);
   assert.equal(views.particleCount.length, n);
+  assert.equal(views.firstIndex.length, n);
+  assert.equal(views.lastIndex.length, n);
   assert.equal(views.viscousScale.length, n);
   assert.equal(views.x.length, n);
   assert.equal(views.y.length, n);
@@ -437,7 +439,11 @@ test('liquidFun groups SAB fits bindLiquidFunGroups (all 9 columns)', () => {
   assert.equal(views.angle.length, n);
   views.count[0] = 1;
   views.id[n - 1] = 7;
+  views.firstIndex[n - 1] = 10;
+  views.lastIndex[n - 1] = 40;
   views.angle[n - 1] = 1.5;
   assert.equal(views.id[n - 1], 7);
+  assert.equal(views.firstIndex[n - 1], 10);
+  assert.equal(views.lastIndex[n - 1], 40);
   assert.equal(views.angle[n - 1], 1.5);
 });

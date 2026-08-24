@@ -45,6 +45,7 @@ import {
 import { Layer } from '../core/Layer.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
 import { bindLiquidFunRender } from '../core/liquidFunRender.js';
+import { LiquidFunSystem } from '../core/LiquidFunSystem.js';
 import { DECORATION_NO_PARENT } from '../core/DecorationPool.js';
 import { AdobeAnimRegistry } from '../core/AdobeAnimRegistry.js';
 const INVALID_TEXTURE_ID = 0xFFFF;
@@ -85,6 +86,15 @@ class PreRenderWorker extends AbstractWorker {
         this.maxParticles = 0;
         this.liquidFun = null;
         this.liquidFunMaxCount = 0;
+        // HEAP prev pose latch (replaces thin SAB px/py after zero-copy bind)
+        this._prevLfX = null;
+        this._prevLfY = null;
+        this._prevLfCount = 0;
+        this._lfSnapX = null;
+        this._lfSnapY = null;
+        this._lfSnapCount = 0;
+        this._lfSnapValid = false;
+        this._lfPoseReadyFrame = -1;
         this.maxDecorations = 0;
         this.maxBullets = 0;
 
@@ -1455,6 +1465,63 @@ class PreRenderWorker extends AbstractWorker {
         super._latchPose(true);
         this._rbActive = RigidBody.active;
         this._updatePoseTiming();
+        this._latchLiquidFunPrevPose();
+    }
+
+    /**
+     * On each new physics publish: `_prevLf*` is the previous snapshot;
+     * then snapshot current HEAP x/y for the next transition.
+     * Shrinking count (zombie compaction) clears prev (index reshuffle).
+     */
+    _latchLiquidFunPrevPose() {
+        const lf = this.liquidFun;
+        if (!lf?.x || !lf?.count) return;
+        if (this.interpolationMode === 'off') return;
+        const ready = this.poseSync ? Atomics.load(this.poseSync, 0) : 0;
+        if (ready === this._lfPoseReadyFrame) return;
+
+        const n = lf.count[0] | 0;
+        const maxN = this.liquidFunMaxCount | 0;
+        if (!this._lfSnapX || this._lfSnapX.length < maxN) {
+            this._lfSnapX = new Float32Array(maxN);
+            this._lfSnapY = new Float32Array(maxN);
+            this._prevLfX = new Float32Array(maxN);
+            this._prevLfY = new Float32Array(maxN);
+        }
+
+        const shrinking = n < (this._lfSnapCount | 0);
+        this._lfPoseReadyFrame = ready;
+
+        if (shrinking || n <= 0 || !this._lfSnapValid) {
+            this._prevLfCount = 0;
+        } else {
+            this._prevLfX.set(this._lfSnapX.subarray(0, this._lfSnapCount));
+            this._prevLfY.set(this._lfSnapY.subarray(0, this._lfSnapCount));
+            this._prevLfCount = this._lfSnapCount;
+        }
+
+        if (n > 0) {
+            this._lfSnapX.set(lf.x.subarray(0, n));
+            this._lfSnapY.set(lf.y.subarray(0, n));
+            this._lfSnapCount = n;
+            this._lfSnapValid = true;
+        } else {
+            this._lfSnapCount = 0;
+            this._lfSnapValid = false;
+        }
+    }
+
+    handleCustomMessage(data) {
+        super.handleCustomMessage(data);
+        if (data?.msg === 'box2dReady' && data.liquidFunHeap && this.liquidFun) {
+            const v = LiquidFunSystem.getParticleViews();
+            if (v?.x) {
+                this.liquidFun.count = v.count;
+                this.liquidFun.x = v.x;
+                this.liquidFun.y = v.y;
+                if (v.alpha) this.liquidFun.alpha = v.alpha;
+            }
+        }
     }
 
     /**
@@ -1943,10 +2010,14 @@ class PreRenderWorker extends AbstractWorker {
                 rqEntityIndex[out] = -1;
             } else if (type === 7) {
                 const lf = this.liquidFun;
-                if (this.interpolationMode === 'interpolate' && lf.px) {
+                if (
+                    this.interpolationMode === 'interpolate' &&
+                    this._prevLfX &&
+                    this._prevLfCount > idx
+                ) {
                     const alpha = this._poseAlpha;
-                    const px = lf.px[idx];
-                    const py = lf.py[idx];
+                    const px = this._prevLfX[idx];
+                    const py = this._prevLfY[idx];
                     rqX[out] = px + (lf.x[idx] - px) * alpha;
                     rqY[out] = py + (lf.y[idx] - py) * alpha;
                 } else {
@@ -2362,10 +2433,14 @@ class PreRenderWorker extends AbstractWorker {
 
                 } else if (type === 7) {
                     const lf = this.liquidFun;
-                    if (this.interpolationMode === 'interpolate' && lf.px) {
+                    if (
+                        this.interpolationMode === 'interpolate' &&
+                        this._prevLfX &&
+                        this._prevLfCount > idx
+                    ) {
                         const alpha = this._poseAlpha;
-                        const px = lf.px[idx];
-                        const py = lf.py[idx];
+                        const px = this._prevLfX[idx];
+                        const py = this._prevLfY[idx];
                         rqX[out] = px + (lf.x[idx] - px) * alpha;
                         rqY[out] = py + (lf.y[idx] - py) * alpha;
                     } else {

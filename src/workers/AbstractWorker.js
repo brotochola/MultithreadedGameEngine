@@ -32,6 +32,7 @@ import { Sun } from '../core/Sun.js';
 import { Layer } from '../core/Layer.js';
 import { TileMap } from '../core/TileMap.js';
 import { Ray } from '../core/Ray.js';
+import { LiquidFunSystem } from '../core/LiquidFunSystem.js';
 import { setAssertRotCSUnit } from '../box2d/box2dCommandRing.js';
 import { SceneBridge } from '../core/SceneBridge.js';
 import { DebugDraw } from '../core/debug/DebugDraw.js';
@@ -565,6 +566,15 @@ export class AbstractWorker {
       if (this.config.worldWidth && this.config.worldHeight) {
         Camera.setWorldBounds(this.config.worldWidth, this.config.worldHeight);
       }
+    }
+
+    // LiquidFun groups + thin emit SAB (HEAP pose bound later on box2dReady).
+    if (data.buffers?.liquidFunGroups || data.buffers?.liquidFunRender) {
+      LiquidFunSystem.bindSabs({
+        groups: data.buffers.liquidFunGroups || null,
+        render: data.buffers.liquidFunRender || null,
+        maxCount: data.liquidFunMaxCount | 0,
+      });
     }
 
     // Initialize Mouse static class (input state shared across workers)
@@ -1274,6 +1284,9 @@ export class AbstractWorker {
       }
       if (data.movedSab) {
         bindMovedBodies(data.movedSab);
+      }
+      if (data.liquidFunHeap) {
+        LiquidFunSystem.bindHeapPose(data.liquidFunHeap);
       }
     }
   }

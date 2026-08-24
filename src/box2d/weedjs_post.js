@@ -82,6 +82,7 @@
     textureId: 0,
     viscousScale: 1,
     trackGroup: 0,
+    groupFlags: 0,
     lifetimeMin: 0,
     lifetimeMax: 0, // <= 0 = no age-based destruction (default)
     fadeToAlpha0: 0, // 0 = opaque until destroy; 1 = lerp alpha over life
@@ -946,6 +947,7 @@
     setLiquidFunEmit(packed, spacing, strength, tintBits, viscousScale) {
       pendingLiquidFunEmit.textureId = packed & 0xffff;
       pendingLiquidFunEmit.trackGroup = (packed >>> 16) & 1;
+      pendingLiquidFunEmit.groupFlags = (packed >>> 17) & 0xf;
       pendingLiquidFunEmit.spacing = spacing || 0;
       pendingLiquidFunEmit.strength = strength || 0;
       pendingLiquidFunEmit.tintBits = tintBits >>> 0;
@@ -990,6 +992,30 @@
       if (!world || typeof world.setGroupViscousScale !== 'function') return;
       world.setGroupViscousScale(groupId, scale);
     },
+    joinParticleGroups(groupA, groupB) {
+      if (!world || typeof world.joinParticleGroups !== 'function') return;
+      world.joinParticleGroups(groupA, groupB);
+    },
+    splitParticleGroup(groupId) {
+      if (!world || typeof world.splitParticleGroup !== 'function') return;
+      world.splitParticleGroup(groupId);
+    },
+    particleApplyForce(index, fx, fy) {
+      if (!world || typeof world.particleApplyForce !== 'function') return;
+      world.particleApplyForce(index, fx, fy);
+    },
+    particleApplyImpulse(index, ix, iy) {
+      if (!world || typeof world.particleApplyLinearImpulse !== 'function') return;
+      world.particleApplyLinearImpulse(index, ix, iy);
+    },
+    groupApplyForce(groupId, fx, fy) {
+      if (!world || typeof world.particleGroupApplyForce !== 'function') return;
+      world.particleGroupApplyForce(groupId, fx, fy);
+    },
+    groupApplyImpulse(groupId, ix, iy) {
+      if (!world || typeof world.particleGroupApplyLinearImpulse !== 'function') return;
+      world.particleGroupApplyLinearImpulse(groupId, ix, iy);
+    },
     createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
       if (!world) return;
       liquidFunXFloatOffset = 0;
@@ -1024,6 +1050,7 @@
         emit.fadeToAlpha0,
         emit.viscousScale,
         emit.trackGroup,
+        emit.groupFlags || 0,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -1043,6 +1070,7 @@
         emit.fadeToAlpha0,
         emit.viscousScale,
         emit.trackGroup,
+        emit.groupFlags || 0,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -1195,6 +1223,7 @@
       textureId: 0,
       viscousScale: 1,
       trackGroup: 0,
+      groupFlags: 0,
       lifetimeMin: 0,
       lifetimeMax: 0,
       fadeToAlpha0: 0,
@@ -1213,6 +1242,7 @@
       emit.textureId = 0;
       emit.viscousScale = 1;
       emit.trackGroup = 0;
+      emit.groupFlags = 0;
       emit.lifetimeMin = 0;
       emit.lifetimeMax = 0;
       emit.fadeToAlpha0 = 0;
@@ -1257,81 +1287,27 @@
       }
       if (layerId) layerId[i] = lid;
     }
-    if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
 
   function syncLiquidFunParticlesToSharedBuffers() {
+    // Pose (x/y/alpha/count) lives on the WASM HEAP SAB and is bound zero-copy
+    // via LiquidFunSystem.bindHeapPose on box2dReady. Thin SAB keeps emit-only
+    // fields (scale/tint/texture/layer). Interpolation prev pose is latched in
+    // pre_render (_prevLfX), not copied here.
     if (!world || typeof world.getParticleCount !== 'function') return;
-    if (!liquidFunViews) return;
-    const count = world.getParticleCount();
-    if (count <= 0) {
-      if (liquidFunViews.count) liquidFunViews.count[0] = 0;
-      return;
-    }
-
+    // Resolve HEAP offsets once so paintNewLiquidFunParticles / debug can use them.
     if (!liquidFunXFloatOffset || !liquidFunYFloatOffset) {
+      if (typeof world.getParticleXByteOffset !== 'function') return;
       const xByteOffset = world.getParticleXByteOffset();
       const yByteOffset = world.getParticleYByteOffset();
       if (!xByteOffset || !yByteOffset) return;
       liquidFunXFloatOffset = xByteOffset >> 2;
       liquidFunYFloatOffset = yByteOffset >> 2;
     }
-    if (!liquidFunAlphaFloatOffset) {
+    if (!liquidFunAlphaFloatOffset && typeof world.getParticleAlphaByteOffset === 'function') {
       const alphaByteOffset = world.getParticleAlphaByteOffset();
       if (alphaByteOffset) liquidFunAlphaFloatOffset = alphaByteOffset >> 2;
     }
-
-    const heapF32 = Module.HEAPF32;
-    if (!heapF32) return;
-
-    const maxP = Math.min(count, liquidFunMaxCount || 0);
-    if (liquidFunViews.px && liquidFunViews.py) {
-      // Previous-position snapshot for true interpolation (px/py), taken
-      // from the about-to-be-overwritten x/y before this step's new values
-      // land - entirely JS-side, no WASM round-trip needed.
-      //
-      // SolveZombie compacts dead particles via swap-with-last (upstream
-      // LiquidFun's own documented behavior - particle indices are only
-      // stable until a lower-indexed particle is destroyed), so a shrinking
-      // count means index identity was reshuffled this step. Don't trust any
-      // px/py as valid "previous" data on that frame - reseed every particle
-      // from its own current position instead (same as a freshly-spawned
-      // particle gets below), trading one tick of no-smoothing for zero
-      // wrong-direction blends.
-      const prevCount = maxP < liquidFunPrevSyncedCount ? 0 : liquidFunPrevSyncedCount;
-      if (prevCount > 0) {
-        liquidFunViews.px.set(liquidFunViews.x.subarray(0, prevCount));
-        liquidFunViews.py.set(liquidFunViews.y.subarray(0, prevCount));
-      }
-      if (maxP > prevCount) {
-        // New this frame (freshly spawned, or every particle on a
-        // compaction frame) - seed prev = this step's own new position
-        // (read straight from the WASM heap, same source x/y are about to
-        // be overwritten from) so they don't interpolate in from stale/zero
-        // SAB memory.
-        liquidFunViews.px.set(
-          heapF32.subarray(liquidFunXFloatOffset + prevCount, liquidFunXFloatOffset + maxP),
-          prevCount
-        );
-        liquidFunViews.py.set(
-          heapF32.subarray(liquidFunYFloatOffset + prevCount, liquidFunYFloatOffset + maxP),
-          prevCount
-        );
-      }
-    }
-    // C already deinterleaved x/y into contiguous arrays (step_world) - bulk
-    // TypedArray copies instead of a scalar per-particle loop.
-    liquidFunViews.x.set(heapF32.subarray(liquidFunXFloatOffset, liquidFunXFloatOffset + maxP));
-    liquidFunViews.y.set(heapF32.subarray(liquidFunYFloatOffset, liquidFunYFloatOffset + maxP));
-    if (liquidFunViews.alpha && liquidFunAlphaFloatOffset) {
-      // Per-particle fade-to-0 over an expiring lifespan when fadeToAlpha0 was
-      // set at create (always 1.0 otherwise, including untracked particles) -
-      // computed in C by the same pass that ages/expires particles, bulk-copied
-      // here same as x/y.
-      liquidFunViews.alpha.set(heapF32.subarray(liquidFunAlphaFloatOffset, liquidFunAlphaFloatOffset + maxP));
-    }
-    liquidFunPrevSyncedCount = maxP;
-    if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
 
   function syncLiquidFunGroupsToSharedBuffers() {
@@ -1345,6 +1321,16 @@
       if (!(world.getParticleGroupAlive(gid) | 0)) continue;
       liquidFunGroupsViews.id[w] = gid;
       liquidFunGroupsViews.particleCount[w] = world.getParticleGroupParticleCount(gid) | 0;
+      if (liquidFunGroupsViews.firstIndex) {
+        liquidFunGroupsViews.firstIndex[w] = world.getParticleGroupFirstIndex
+          ? world.getParticleGroupFirstIndex(gid) | 0
+          : 0;
+      }
+      if (liquidFunGroupsViews.lastIndex) {
+        liquidFunGroupsViews.lastIndex[w] = world.getParticleGroupLastIndex
+          ? world.getParticleGroupLastIndex(gid) | 0
+          : 0;
+      }
       liquidFunGroupsViews.viscousScale[w] = world.getParticleGroupViscousScale(gid);
       liquidFunGroupsViews.x[w] = world.getParticleGroupCenterX(gid);
       liquidFunGroupsViews.y[w] = world.getParticleGroupCenterY(gid);
@@ -1781,6 +1767,12 @@
           : null,
         id: viewFromDesc(data.liquidFunGroupsViews.id, Int32Array),
         particleCount: viewFromDesc(data.liquidFunGroupsViews.particleCount, Int32Array),
+        firstIndex: data.liquidFunGroupsViews.firstIndex
+          ? viewFromDesc(data.liquidFunGroupsViews.firstIndex, Int32Array)
+          : null,
+        lastIndex: data.liquidFunGroupsViews.lastIndex
+          ? viewFromDesc(data.liquidFunGroupsViews.lastIndex, Int32Array)
+          : null,
         viscousScale: viewFromDesc(data.liquidFunGroupsViews.viscousScale, Float32Array),
         x: viewFromDesc(data.liquidFunGroupsViews.x, Float32Array),
         y: viewFromDesc(data.liquidFunGroupsViews.y, Float32Array),
@@ -1813,6 +1805,24 @@
     const ready = world.getReadyPayload();
     bindStateChannels(ready, entityCount);
 
+    let liquidFunHeap = null;
+    if (
+      liquidFunMaxCount > 0 &&
+      typeof world.getParticleXByteOffset === 'function' &&
+      world.getParticleXByteOffset()
+    ) {
+      liquidFunHeap = {
+        sab: ready.sab,
+        countByteOffset: world.getParticleCountByteOffset() | 0,
+        xByteOffset: world.getParticleXByteOffset() | 0,
+        yByteOffset: world.getParticleYByteOffset() | 0,
+        alphaByteOffset: (world.getParticleAlphaByteOffset && world.getParticleAlphaByteOffset()) || 0,
+        weightByteOffset:
+          (world.getParticleWeightByteOffset && world.getParticleWeightByteOffset()) || 0,
+        maxCount: liquidFunMaxCount | 0,
+      };
+    }
+
     const readyMsg = {
       type: 'WEEDJS_READY',
       sab: ready.sab,
@@ -1829,6 +1839,7 @@
       contactPairIntStride: ready.contactPairIntStride,
       eventHeaderIntCount: ready.eventHeaderIntCount,
       movedSab: data.movedSab || null,
+      liquidFunHeap,
     };
     if (typeof globalThis.weedjsOnReady === 'function') {
       globalThis.weedjsOnReady(readyMsg);

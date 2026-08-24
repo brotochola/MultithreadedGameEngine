@@ -451,8 +451,10 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
   ]);
   const createParticleGroupCircle = wrap("create_particle_group_circle", "number", [
+    "number",
     "number",
     "number",
     "number",
@@ -502,6 +504,41 @@ function createPhysicsApi(Module) {
   const getParticleGroupViscousScale = wrap("get_particle_group_viscous_scale", "number", [
     "number",
   ]);
+  const getParticleGroupFirstIndex = wrap("get_particle_group_first_index", "number", ["number"]);
+  const getParticleGroupLastIndex = wrap("get_particle_group_last_index", "number", ["number"]);
+  const getParticleGroupFlags = wrap("get_particle_group_flags", "number", ["number"]);
+  const joinParticleGroups = wrap("join_particle_groups", null, ["number", "number"]);
+  const splitParticleGroup = wrap("split_particle_group", null, ["number"]);
+  const particleApplyForce = wrap("particle_apply_force", null, ["number", "number", "number"]);
+  const particleApplyLinearImpulse = wrap("particle_apply_linear_impulse", null, [
+    "number",
+    "number",
+    "number",
+  ]);
+  const particleGroupApplyForce = wrap("particle_group_apply_force", null, [
+    "number",
+    "number",
+    "number",
+  ]);
+  const particleGroupApplyLinearImpulse = wrap("particle_group_apply_linear_impulse", null, [
+    "number",
+    "number",
+    "number",
+  ]);
+  const particleQueryAabb = wrap("particle_query_aabb", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const particleRayCast = wrap("particle_ray_cast", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const getParticleQueryHit = wrap("get_particle_query_hit", "number", ["number"]);
+  const getParticleWeightByteOffset = wrap("get_particle_weight_byte_offset", "number", []);
   const getParticleCount = wrap("get_particle_count", "number", []);
   const getParticleCapacity = wrap("get_particle_capacity", "number", []);
   const getParticleRadius = wrap("get_particle_radius", "number", []);
@@ -1325,6 +1362,7 @@ function createPhysicsApi(Module) {
       fadeToAlpha0 = 0,
       viscousScale = 1,
       trackGroup = 0,
+      groupFlags = 0,
     ) {
       if (!this._particleSystem) this.createParticleSystem();
       return createParticleGroupBox(
@@ -1340,6 +1378,7 @@ function createPhysicsApi(Module) {
         fadeToAlpha0 ? 1 : 0,
         viscousScale > 0 ? viscousScale : 1,
         trackGroup ? 1 : 0,
+        groupFlags >>> 0,
       );
     }
 
@@ -1355,6 +1394,7 @@ function createPhysicsApi(Module) {
       fadeToAlpha0 = 0,
       viscousScale = 1,
       trackGroup = 0,
+      groupFlags = 0,
     ) {
       if (!this._particleSystem) this.createParticleSystem();
       return createParticleGroupCircle(
@@ -1369,6 +1409,7 @@ function createPhysicsApi(Module) {
         fadeToAlpha0 ? 1 : 0,
         viscousScale > 0 ? viscousScale : 1,
         trackGroup ? 1 : 0,
+        groupFlags >>> 0,
       );
     }
 
@@ -1439,6 +1480,60 @@ function createPhysicsApi(Module) {
       return getParticleGroupViscousScale(groupId | 0);
     }
 
+    getParticleGroupFirstIndex(groupId) {
+      return getParticleGroupFirstIndex(groupId | 0) | 0;
+    }
+
+    getParticleGroupLastIndex(groupId) {
+      return getParticleGroupLastIndex(groupId | 0) | 0;
+    }
+
+    getParticleGroupFlags(groupId) {
+      return getParticleGroupFlags(groupId | 0) >>> 0;
+    }
+
+    joinParticleGroups(groupA, groupB) {
+      joinParticleGroups(groupA | 0, groupB | 0);
+    }
+
+    splitParticleGroup(groupId) {
+      splitParticleGroup(groupId | 0);
+    }
+
+    particleApplyForce(index, fx, fy) {
+      particleApplyForce(index | 0, fx, fy);
+    }
+
+    particleApplyLinearImpulse(index, ix, iy) {
+      particleApplyLinearImpulse(index | 0, ix, iy);
+    }
+
+    particleGroupApplyForce(groupId, fx, fy) {
+      particleGroupApplyForce(groupId | 0, fx, fy);
+    }
+
+    particleGroupApplyLinearImpulse(groupId, ix, iy) {
+      particleGroupApplyLinearImpulse(groupId | 0, ix, iy);
+    }
+
+    particleQueryAabb(x0, y0, x1, y1) {
+      const n = particleQueryAabb(x0, y0, x1, y1) | 0;
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(getParticleQueryHit(i) | 0);
+      return out;
+    }
+
+    particleRayCast(x1, y1, x2, y2) {
+      const n = particleRayCast(x1, y1, x2, y2) | 0;
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(getParticleQueryHit(i) | 0);
+      return out;
+    }
+
+    getParticleWeightByteOffset() {
+      return getParticleWeightByteOffset();
+    }
+
     getParticleCount() {
       return getParticleCount();
     }
@@ -1449,6 +1544,10 @@ function createPhysicsApi(Module) {
 
     getParticleRadius() {
       return getParticleRadius();
+    }
+
+    getParticleCountByteOffset() {
+      return getParticleCountByteOffset();
     }
 
     getParticlePosByteOffset() {

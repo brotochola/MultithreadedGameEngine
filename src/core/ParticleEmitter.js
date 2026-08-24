@@ -382,6 +382,13 @@ export class ParticleEmitter extends SharedAtomicPool {
   }
 
   /**
+   * Zero-alloc LiquidFun particle views (HEAP pose + thin emit). Same object every call.
+   */
+  static getLiquidFunParticleViews() {
+    return LiquidFunSystem.getParticleViews();
+  }
+
+  /**
    * Stamp viscousScale on every particle in a LiquidFun group (melt / thicken).
    */
   static setLiquidFunGroupViscousScale(groupId, scale) {
@@ -395,6 +402,6 @@ export class ParticleEmitter extends SharedAtomicPool {
   static reset() {
     super.reset();
     this._warnedPoolExhausted = false;
-    LiquidFunSystem.bindGroupsSab(null);
+    LiquidFunSystem.unbindSabs();
   }
 }

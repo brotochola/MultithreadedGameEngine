@@ -8,6 +8,7 @@ import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
 import { Collider } from '../components/Collider.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
+import { LiquidFunSystem } from './LiquidFunSystem.js';
 import { bindCommandRing, enqueueExplode } from '../box2d/box2dCommandRing.js';
 import {
   bindQueryAabbSab,
@@ -1625,9 +1626,13 @@ class Scene {
         sensorEventCapacity: e.data.sensorEventCapacity,
         contactPairIntStride: e.data.contactPairIntStride || 2,
         eventHeaderIntCount: e.data.eventHeaderIntCount || 11,
+        liquidFunHeap: e.data.liquidFunHeap || null,
       };
       bindBox2dHotFields(payload);
       this.box2dHotFields = payload;
+      if (payload.liquidFunHeap) {
+        LiquidFunSystem.bindHeapPose(payload.liquidFunHeap);
+      }
       if (payload.commandSab) {
         bindCommandRing(payload.commandSab);
       }

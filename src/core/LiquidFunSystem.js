@@ -3,6 +3,7 @@
 import { Box2dCommandRing } from '../box2d/box2dCommandRing.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { bindLiquidFunGroups, LIQUIDFUN_GROUPS_MAX } from './liquidFunGroups.js';
+import { bindLiquidFunRender } from './liquidFunRender.js';
 
 // Bits match liquidfun-c lfParticleFlag (not Google LiquidFun's extra listener bits).
 export const LIQUIDFUN_FLAGS = Object.freeze({
@@ -16,6 +17,13 @@ export const LIQUIDFUN_FLAGS = Object.freeze({
   SPRING: 1 << 6,
   BARRIER: 1 << 7,
   STATIC_PRESSURE: 1 << 8,
+});
+
+/** Google b2ParticleGroupFlag subset (group construction, not particle bits). */
+export const LIQUIDFUN_GROUP_FLAGS = Object.freeze({
+  SOLID: 1 << 0,
+  RIGID: 1 << 1,
+  CAN_BE_EMPTY: 1 << 2,
 });
 
 function resolveLifespanSec(lifespan) {
@@ -63,6 +71,7 @@ function resolveEmit(options) {
     strength: o.strength != null ? o.strength : 0,
     viscousScale: viscousScale > 0 ? viscousScale : 1,
     trackGroup: !!o.trackGroup,
+    groupFlags: o.groupFlags != null ? o.groupFlags >>> 0 : 0,
     tint: o.tint != null ? o.tint : 0,
     textureId,
     lifetimeMinSec: life.minSec,
@@ -83,6 +92,7 @@ function enqueueEmitParams(resolved) {
     resolved.textureId,
     resolved.viscousScale,
     resolved.trackGroup,
+    resolved.groupFlags,
   );
   if (resolved.lifetimeMaxSec > 0) {
     Box2dCommandRing.enqueueSetLiquidFunLifespan(
@@ -105,12 +115,117 @@ function enqueueEmitParams(resolved) {
 }
 
 let _groupsViews = null;
+let _renderViews = null;
+/** Cached mix of HEAP pose + thin emit SAB — same object every getParticleViews(). */
+let _particleViews = null;
 const _groupsScratch = [];
 
 export class LiquidFunSystem {
-  /** Called when scene allocates the groups SAB. */
+  /** Called when scene allocates the groups SAB. Prefer bindSabs. */
   static bindGroupsSab(sab) {
     _groupsViews = sab ? bindLiquidFunGroups(sab, LIQUIDFUN_GROUPS_MAX) : null;
+  }
+
+  /**
+   * Bind LiquidFun groups + thin emit SAB on this realm (main or any AbstractWorker).
+   * HEAP pose (x/y/alpha/count) is bound later via bindHeapPose on box2dReady.
+   * @param {{ groups?: SharedArrayBuffer|null, render?: SharedArrayBuffer|null, maxCount?: number }} opts
+   */
+  static bindSabs({ groups = null, render = null, maxCount = 0 } = {}) {
+    _groupsViews = groups ? bindLiquidFunGroups(groups, LIQUIDFUN_GROUPS_MAX) : null;
+    const n = maxCount | 0;
+    _renderViews = render && n > 0 ? bindLiquidFunRender(render, n) : null;
+    _particleViews = null;
+  }
+
+  /** Unbind all LiquidFun views (scene teardown / ParticleEmitter.reset). */
+  static unbindSabs() {
+    _groupsViews = null;
+    _renderViews = null;
+    _particleViews = null;
+  }
+
+  /**
+   * Bind live particle pose onto the WASM HEAP SAB (same pattern as Transform).
+   * @param {{ sab: SharedArrayBuffer, countByteOffset: number, xByteOffset: number, yByteOffset: number, alphaByteOffset: number, weightByteOffset?: number, maxCount: number }} payload
+   */
+  static bindHeapPose(payload) {
+    if (!payload?.sab || !(payload.maxCount > 0)) {
+      if (_particleViews) {
+        _particleViews.count = _renderViews?.count ?? null;
+        _particleViews.x = _renderViews?.x ?? null;
+        _particleViews.y = _renderViews?.y ?? null;
+        _particleViews.alpha = _renderViews?.alpha ?? null;
+        _particleViews.weight = null;
+      }
+      return;
+    }
+    const sab = payload.sab;
+    const n = payload.maxCount | 0;
+    const count = new Int32Array(sab, payload.countByteOffset | 0, 1);
+    const x = new Float32Array(sab, payload.xByteOffset | 0, n);
+    const y = new Float32Array(sab, payload.yByteOffset | 0, n);
+    const alpha =
+      payload.alphaByteOffset > 0 ? new Float32Array(sab, payload.alphaByteOffset | 0, n) : null;
+    const weight =
+      payload.weightByteOffset > 0 ? new Float32Array(sab, payload.weightByteOffset | 0, n) : null;
+    _particleViews = LiquidFunSystem._mergeParticleViews({ count, x, y, alpha, weight, maxCount: n });
+  }
+
+  static _mergeParticleViews(heap) {
+    const thin = _renderViews;
+    return {
+      count: heap.count,
+      x: heap.x,
+      y: heap.y,
+      alpha: heap.alpha || thin?.alpha || null,
+      weight: heap.weight || null,
+      scaleX: thin?.scaleX || null,
+      scaleY: thin?.scaleY || null,
+      rotC: thin?.rotC || null,
+      rotS: thin?.rotS || null,
+      tint: thin?.tint || null,
+      textureId: thin?.textureId || null,
+      baseAlpha: thin?.baseAlpha || null,
+      layerId: thin?.layerId || null,
+      // px/py kept only until pre_render latches HEAP prev; thin SAB may still have them
+      px: thin?.px || null,
+      py: thin?.py || null,
+      firstIndex: null,
+      lastIndex: null,
+      maxCount: heap.maxCount | 0,
+    };
+  }
+
+  /**
+   * Zero-alloc particle views (HEAP pose + thin emit fields). Same object every call.
+   * Live count = views.count[0]. Null until bindSabs (and ideally bindHeapPose) ran.
+   */
+  static getParticleViews() {
+    if (_particleViews) return _particleViews;
+    if (_renderViews) {
+      // Fallback before box2dReady: thin SAB still has x/y until HEAP bind lands.
+      _particleViews = {
+        count: _renderViews.count,
+        x: _renderViews.x,
+        y: _renderViews.y,
+        alpha: _renderViews.alpha,
+        weight: null,
+        scaleX: _renderViews.scaleX,
+        scaleY: _renderViews.scaleY,
+        rotC: _renderViews.rotC,
+        rotS: _renderViews.rotS,
+        tint: _renderViews.tint,
+        textureId: _renderViews.textureId,
+        baseAlpha: _renderViews.baseAlpha,
+        layerId: _renderViews.layerId,
+        px: _renderViews.px,
+        py: _renderViews.py,
+        maxCount: _renderViews.maxCount,
+      };
+      return _particleViews;
+    }
+    return null;
   }
 
   /**
@@ -143,6 +258,30 @@ export class LiquidFunSystem {
     Box2dCommandRing.enqueueSetGroupViscousScale(groupId, scale);
   }
 
+  static joinParticleGroups(groupA, groupB) {
+    Box2dCommandRing.enqueueJoinParticleGroups(groupA, groupB);
+  }
+
+  static splitParticleGroup(groupId) {
+    Box2dCommandRing.enqueueSplitParticleGroup(groupId);
+  }
+
+  static applyForce(index, fx, fy) {
+    Box2dCommandRing.enqueueParticleApplyForce(index, fx, fy);
+  }
+
+  static applyLinearImpulse(index, ix, iy) {
+    Box2dCommandRing.enqueueParticleApplyImpulse(index, ix, iy);
+  }
+
+  static groupApplyForce(groupId, fx, fy) {
+    Box2dCommandRing.enqueueGroupApplyForce(groupId, fx, fy);
+  }
+
+  static groupApplyLinearImpulse(groupId, ix, iy) {
+    Box2dCommandRing.enqueueGroupApplyImpulse(groupId, ix, iy);
+  }
+
   /**
    * Alive LiquidFun groups mirrored from the physics worker (≤1 step stale).
    * Reuses a scratch array — do not hold references across frames without copying.
@@ -169,6 +308,8 @@ export class LiquidFunSystem {
           vy: 0,
           angularVelocity: 0,
           angle: 0,
+          firstIndex: 0,
+          lastIndex: 0,
         };
         out[i] = g;
       }
@@ -181,6 +322,8 @@ export class LiquidFunSystem {
       g.vy = v.vy[i];
       g.angularVelocity = v.angularVelocity[i];
       g.angle = v.angle[i];
+      g.firstIndex = v.firstIndex ? v.firstIndex[i] | 0 : 0;
+      g.lastIndex = v.lastIndex ? v.lastIndex[i] | 0 : 0;
     }
     return out;
   }

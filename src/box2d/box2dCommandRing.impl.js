@@ -27,6 +27,12 @@
     SET_LIQUIDFUN_SCALE: 15, // entity=layerId; scaleMin, scaleMax, alphaMin, alphaMax (next create)
     SET_PARTICLE_TUNING: 16, // entity=phase 0|1|2; four floats per phase (see enqueueSetParticleTuning)
     SET_GROUP_VISCOUS_SCALE: 17, // entity=groupId, a=viscousScale
+    JOIN_PARTICLE_GROUPS: 18, // entity=groupA, a=groupB
+    SPLIT_PARTICLE_GROUP: 19, // entity=groupId
+    PARTICLE_APPLY_FORCE: 20, // entity=index, a=fx, b=fy
+    PARTICLE_APPLY_IMPULSE: 21, // entity=index, a=ix, b=iy
+    GROUP_APPLY_FORCE: 22, // entity=groupId, a=fx, b=fy
+    GROUP_APPLY_IMPULSE: 23, // entity=groupId, a=ix, b=iy
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -173,9 +179,10 @@
     );
   }
 
-  function enqueueSetLiquidFunEmit(spacing, strength, tintBits, textureId, viscousScale, trackGroup) {
+  function enqueueSetLiquidFunEmit(spacing, strength, tintBits, textureId, viscousScale, trackGroup, groupFlags) {
     var packed = (textureId | 0) & 0xffff;
     if (trackGroup) packed |= 1 << 16;
+    packed |= ((groupFlags | 0) & 0xf) << 17;
     return enqueue(
       BOX2D_CMD.SET_LIQUIDFUN_EMIT,
       packed,
@@ -242,6 +249,30 @@
 
   function enqueueSetGroupViscousScale(groupId, scale) {
     return enqueue(BOX2D_CMD.SET_GROUP_VISCOUS_SCALE, groupId | 0, scale > 0 ? scale : 1, 0, 0, 0);
+  }
+
+  function enqueueJoinParticleGroups(groupA, groupB) {
+    return enqueue(BOX2D_CMD.JOIN_PARTICLE_GROUPS, groupA | 0, groupB | 0, 0, 0, 0);
+  }
+
+  function enqueueSplitParticleGroup(groupId) {
+    return enqueue(BOX2D_CMD.SPLIT_PARTICLE_GROUP, groupId | 0, 0, 0, 0, 0);
+  }
+
+  function enqueueParticleApplyForce(index, fx, fy) {
+    return enqueue(BOX2D_CMD.PARTICLE_APPLY_FORCE, index | 0, fx, fy, 0, 0);
+  }
+
+  function enqueueParticleApplyImpulse(index, ix, iy) {
+    return enqueue(BOX2D_CMD.PARTICLE_APPLY_IMPULSE, index | 0, ix, iy, 0, 0);
+  }
+
+  function enqueueGroupApplyForce(groupId, fx, fy) {
+    return enqueue(BOX2D_CMD.GROUP_APPLY_FORCE, groupId | 0, fx, fy, 0, 0);
+  }
+
+  function enqueueGroupApplyImpulse(groupId, ix, iy) {
+    return enqueue(BOX2D_CMD.GROUP_APPLY_IMPULSE, groupId | 0, ix, iy, 0, 0);
   }
 
   function enqueueCreateParticleGroupBox(systemId, posX, posY, halfWidth, halfHeight, flags) {
@@ -328,6 +359,24 @@
         case BOX2D_CMD.SET_GROUP_VISCOUS_SCALE:
           if (handlers.setGroupViscousScale) handlers.setGroupViscousScale(entity, a);
           break;
+        case BOX2D_CMD.JOIN_PARTICLE_GROUPS:
+          if (handlers.joinParticleGroups) handlers.joinParticleGroups(entity, a);
+          break;
+        case BOX2D_CMD.SPLIT_PARTICLE_GROUP:
+          if (handlers.splitParticleGroup) handlers.splitParticleGroup(entity);
+          break;
+        case BOX2D_CMD.PARTICLE_APPLY_FORCE:
+          if (handlers.particleApplyForce) handlers.particleApplyForce(entity, a, b);
+          break;
+        case BOX2D_CMD.PARTICLE_APPLY_IMPULSE:
+          if (handlers.particleApplyImpulse) handlers.particleApplyImpulse(entity, a, b);
+          break;
+        case BOX2D_CMD.GROUP_APPLY_FORCE:
+          if (handlers.groupApplyForce) handlers.groupApplyForce(entity, a, b);
+          break;
+        case BOX2D_CMD.GROUP_APPLY_IMPULSE:
+          if (handlers.groupApplyImpulse) handlers.groupApplyImpulse(entity, a, b);
+          break;
         default:
           break;
       }
@@ -360,6 +409,12 @@
     enqueueSetLiquidFunScale: enqueueSetLiquidFunScale,
     enqueueSetParticleTuning: enqueueSetParticleTuning,
     enqueueSetGroupViscousScale: enqueueSetGroupViscousScale,
+    enqueueJoinParticleGroups: enqueueJoinParticleGroups,
+    enqueueSplitParticleGroup: enqueueSplitParticleGroup,
+    enqueueParticleApplyForce: enqueueParticleApplyForce,
+    enqueueParticleApplyImpulse: enqueueParticleApplyImpulse,
+    enqueueGroupApplyForce: enqueueGroupApplyForce,
+    enqueueGroupApplyImpulse: enqueueGroupApplyImpulse,
     enqueueCreateParticleGroupBox: enqueueCreateParticleGroupBox,
     enqueueCreateParticleGroupCircle: enqueueCreateParticleGroupCircle,
     enqueueDestroyParticleGroup: enqueueDestroyParticleGroup,
