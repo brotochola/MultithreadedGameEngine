@@ -80,6 +80,13 @@
     textureId: 0,
     lifetimeMin: 0,
     lifetimeMax: 0, // <= 0 = no age-based destruction (default)
+    fadeToAlpha0: 0, // 0 = opaque until destroy; 1 = lerp alpha over life
+    scaleSet: 0, // 1 = this burst set scale/alpha/layerId
+    scaleMin: 1,
+    scaleMax: 1,
+    alphaMin: 1,
+    alphaMax: 1,
+    layerId: 0,
     pending: false,
   };
   let jointHandle = null; // Int32Array, -1 = none, -2 = fail this revision
@@ -928,9 +935,19 @@
       pendingLiquidFunEmit.textureId = textureId | 0;
       pendingLiquidFunEmit.pending = true;
     },
-    setLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec) {
+    setLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec, fadeToAlpha0) {
       pendingLiquidFunEmit.lifetimeMin = lifetimeMinSec || 0;
       pendingLiquidFunEmit.lifetimeMax = lifetimeMaxSec || 0;
+      pendingLiquidFunEmit.fadeToAlpha0 = fadeToAlpha0 ? 1 : 0;
+      pendingLiquidFunEmit.pending = true;
+    },
+    setLiquidFunScale(layerId, scaleMin, scaleMax, alphaMin, alphaMax) {
+      pendingLiquidFunEmit.scaleSet = 1;
+      pendingLiquidFunEmit.layerId = layerId | 0;
+      pendingLiquidFunEmit.scaleMin = scaleMin;
+      pendingLiquidFunEmit.scaleMax = scaleMax;
+      pendingLiquidFunEmit.alphaMin = alphaMin;
+      pendingLiquidFunEmit.alphaMax = alphaMax;
       pendingLiquidFunEmit.pending = true;
     },
     createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
@@ -961,6 +978,7 @@
         emit.strength,
         emit.lifetimeMin,
         emit.lifetimeMax,
+        emit.fadeToAlpha0,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -977,6 +995,7 @@
         emit.strength,
         emit.lifetimeMin,
         emit.lifetimeMax,
+        emit.fadeToAlpha0,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -1129,6 +1148,13 @@
       textureId: 0,
       lifetimeMin: 0,
       lifetimeMax: 0,
+      fadeToAlpha0: 0,
+      scaleSet: 0,
+      scaleMin: 1,
+      scaleMax: 1,
+      alphaMin: 1,
+      alphaMax: 1,
+      layerId: 0,
       pending: false,
     };
     if (!emit.pending) {
@@ -1138,6 +1164,13 @@
       emit.textureId = 0;
       emit.lifetimeMin = 0;
       emit.lifetimeMax = 0;
+      emit.fadeToAlpha0 = 0;
+      emit.scaleSet = 0;
+      emit.scaleMin = 1;
+      emit.scaleMax = 1;
+      emit.alphaMin = 1;
+      emit.alphaMax = 1;
+      emit.layerId = 0;
     }
     return emit;
   }
@@ -1152,15 +1185,26 @@
     const scaleY = liquidFunViews.scaleY;
     const rotC = liquidFunViews.rotC;
     const rotS = liquidFunViews.rotS;
-    const alpha = liquidFunViews.alpha;
+    const baseAlpha = liquidFunViews.baseAlpha;
+    const layerId = liquidFunViews.layerId;
+    const scaleLo = emit.scaleSet ? emit.scaleMin : 1;
+    const scaleHi = emit.scaleSet ? emit.scaleMax : 1;
+    const alphaLo = emit.scaleSet ? emit.alphaMin : 1;
+    const alphaHi = emit.scaleSet ? emit.alphaMax : 1;
+    const lid = emit.scaleSet ? emit.layerId | 0 : 0;
     for (let i = oldCount; i < maxP; i++) {
       tint[i] = emit.tintBits ? emit.tintBits >>> 0 : 0x3399ff;
       textureId[i] = emit.textureId | 0;
-      scaleX[i] = 1.0;
-      scaleY[i] = 1.0;
+      const s = scaleHi === scaleLo ? scaleLo : scaleLo + Math.random() * (scaleHi - scaleLo);
+      scaleX[i] = s;
+      scaleY[i] = s;
       if (rotC) rotC[i] = 1.0;
       if (rotS) rotS[i] = 0.0;
-      if (alpha) alpha[i] = 1.0;
+      if (baseAlpha) {
+        baseAlpha[i] =
+          alphaHi === alphaLo ? alphaLo : alphaLo + Math.random() * (alphaHi - alphaLo);
+      }
+      if (layerId) layerId[i] = lid;
     }
     if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
@@ -1229,9 +1273,10 @@
     liquidFunViews.x.set(heapF32.subarray(liquidFunXFloatOffset, liquidFunXFloatOffset + maxP));
     liquidFunViews.y.set(heapF32.subarray(liquidFunYFloatOffset, liquidFunYFloatOffset + maxP));
     if (liquidFunViews.alpha && liquidFunAlphaFloatOffset) {
-      // Per-particle fade-to-0 over an expiring lifespan (always 1.0 for
-      // particles with no lifespan tracking) - computed in C by the same
-      // pass that ages/expires particles, bulk-copied here same as x/y.
+      // Per-particle fade-to-0 over an expiring lifespan when fadeToAlpha0 was
+      // set at create (always 1.0 otherwise, including untracked particles) -
+      // computed in C by the same pass that ages/expires particles, bulk-copied
+      // here same as x/y.
       liquidFunViews.alpha.set(heapF32.subarray(liquidFunAlphaFloatOffset, liquidFunAlphaFloatOffset + maxP));
     }
     liquidFunPrevSyncedCount = maxP;
@@ -1608,6 +1653,12 @@
           : null,
         tint: viewFromDesc(data.liquidFunViews.tint, Uint32Array),
         textureId: viewFromDesc(data.liquidFunViews.textureId, Uint16Array),
+        baseAlpha: data.liquidFunViews.baseAlpha
+          ? viewFromDesc(data.liquidFunViews.baseAlpha, Float32Array)
+          : null,
+        layerId: data.liquidFunViews.layerId
+          ? viewFromDesc(data.liquidFunViews.layerId, Uint8Array)
+          : null,
       };
       liquidFunMaxCount = data.liquidFunMaxCount | 0;
       liquidFunXFloatOffset = 0;

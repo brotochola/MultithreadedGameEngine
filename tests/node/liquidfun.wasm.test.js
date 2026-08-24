@@ -681,7 +681,7 @@ test('WASM particle lifespan: age-based destruction (SetParticleDestructionByAge
   // min === max: every particle in the group gets exactly the same lifetime
   // (no per-particle RNG spread), so the expiry step is deterministic.
   const lifetimeSec = 0.1;
-  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec);
+  const gid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 0);
   assert.ok(gid >= 0, `circle group failed: ${gid}`);
   const count = getParticleCount();
   assert.ok(count > 4, `expected a blob, got ${count}`);
@@ -695,7 +695,7 @@ test('WASM particle lifespan: age-based destruction (SetParticleDestructionByAge
   assert.equal(getParticleCount(), 0, 'every particle should have aged out and been swept by SolveZombie');
 });
 
-test('WASM particle lifespan alpha fades toward 0 as remainingLife runs out; untracked particles stay at alpha=1', () => {
+test('WASM particle lifespan alpha fades toward 0 only when fadeToAlpha0=1; untracked and fade=0 stay at alpha=1', () => {
   const { memory, fn } = instantiateBox2dWasm();
 
   const createWorld = fn('create_world');
@@ -715,7 +715,7 @@ test('WASM particle lifespan alpha fades toward 0 as remainingLife runs out; unt
 
   // --- Block 1: no lifespan requested (0,0) - alpha must stay 1 forever. ---
   assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
-  const untrackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0);
+  const untrackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, 0, 0, 0);
   assert.ok(untrackedGid >= 0, `circle group failed: ${untrackedGid}`);
   const untrackedCount = getParticleCount();
   assert.ok(untrackedCount > 4, `expected a blob, got ${untrackedCount}`);
@@ -731,13 +731,10 @@ test('WASM particle lifespan alpha fades toward 0 as remainingLife runs out; unt
     }
   }
 
-  // --- Block 2: fresh system, 1s lifespan, sampled at the midpoint. ---
-  // create_particle_system tears down + recreates the singleton, so this
-  // group's indices/heap are fully independent of block 1's (no reorder
-  // concerns from mixing tracked/untracked particles in one system).
+  // --- Block 2: lifespan + fadeToAlpha0=1, sampled at midpoint → alpha ~0.5. ---
   assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
   const lifetimeSec = 1.0;
-  const trackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec);
+  const trackedGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 1);
   assert.ok(trackedGid >= 0, `circle group failed: ${trackedGid}`);
   const trackedCount = getParticleCount();
   assert.ok(trackedCount > 4, `expected a blob, got ${trackedCount}`);
@@ -760,4 +757,21 @@ test('WASM particle lifespan alpha fades toward 0 as remainingLife runs out; unt
     stepWorld(worldId, dt, 4);
   }
   assert.equal(getParticleCount(), 0, 'every tracked particle should have aged out by now');
+
+  // --- Block 3: lifespan + fadeToAlpha0=0 → alpha stays 1 until destroy. ---
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 300), 'create_particle_system failed');
+  const opaqueGid = createParticleGroupCircle(0, 80, 40, 0, 0, 0.5, lifetimeSec, lifetimeSec, 0);
+  assert.ok(opaqueGid >= 0, `circle group failed: ${opaqueGid}`);
+  const opaqueCount = getParticleCount();
+  assert.ok(opaqueCount > 4, `expected a blob, got ${opaqueCount}`);
+  for (let i = 0; i < halfSteps; i++) {
+    stepWorld(worldId, dt, 4);
+  }
+  assert.equal(getParticleCount(), opaqueCount, 'must not have expired yet at the midpoint');
+  {
+    const alphaBase = getParticleAlphaByteOffset() >> 2;
+    for (let i = 0; i < opaqueCount; i++) {
+      assert.equal(heap[alphaBase + i], 1, `fade=0 particle ${i} alpha should stay 1`);
+    }
+  }
 });

@@ -22,10 +22,35 @@ export const LIQUIDFUN_MATERIALS = Object.freeze({
   water: Object.freeze({ flags: LIQUIDFUN_FLAGS.WATER | LIQUIDFUN_FLAGS.TENSILE, strength: 0, tint: 0x3399ff }),
   oil: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS, strength: 0, tint: 0x6b3a1f }),
   cream: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE, strength: 0.2, tint: 0xf5f0e1 }),
-  dulceDeLeche: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE, strength: 0.4, tint: 0xc6862a }),
+  dulceDeLeche: Object.freeze({ flags: LIQUIDFUN_FLAGS.VISCOUS | LIQUIDFUN_FLAGS.TENSILE, strength: 1422, tint: 0xc6862a }),
   jelly: Object.freeze({ flags: LIQUIDFUN_FLAGS.ELASTIC, strength: 0.55, tint: 0x33ff66 }),
   sand: Object.freeze({ flags: LIQUIDFUN_FLAGS.POWDER, strength: 0, tint: 0xffcc00 }),
 });
+
+function resolveLifespanSec(lifespan) {
+  // Google SetParticleDestructionByAge-style age-based destruction, in ms
+  // (matches ParticleComponent.lifespan's convention) - converted to
+  // seconds crossing into the command ring. Omitted => no lifespan (0,0).
+  // Accepts a bare number (fixed life) or { min, max } (per-particle random).
+  if (lifespan == null) return { minSec: 0, maxSec: 0 };
+  if (typeof lifespan === 'number') {
+    const sec = lifespan * 0.001;
+    return { minSec: sec, maxSec: sec };
+  }
+  return {
+    minSec: lifespan.min != null ? lifespan.min * 0.001 : 0,
+    maxSec: lifespan.max != null ? lifespan.max * 0.001 : 0,
+  };
+}
+
+function resolveRange(value, defaultVal = 1) {
+  // Same shape as ParticleEmitter.emit scale/alpha: number or { min, max }.
+  if (value == null) return null;
+  if (typeof value === 'number') return { min: value, max: value };
+  const min = value.min != null ? value.min : defaultVal;
+  const max = value.max != null ? value.max : min;
+  return { min, max };
+}
 
 function resolveEmit(options) {
   const o = options || {};
@@ -34,7 +59,7 @@ function resolveEmit(options) {
   if (!textureId && o.texture) {
     textureId = SpriteSheetRegistry.getTextureId(o.texture) | 0;
   }
-  const lifespan = o.lifespan || null;
+  const life = resolveLifespanSec(o.lifespan);
   return {
     posX: o.posX,
     posY: o.posY,
@@ -47,11 +72,13 @@ function resolveEmit(options) {
     strength: o.strength != null ? o.strength : preset ? preset.strength : 0,
     tint: o.tint != null ? o.tint : preset ? preset.tint : 0,
     textureId,
-    // Google SetParticleDestructionByAge-style age-based destruction, in ms
-    // (matches ParticleComponent.lifespan's convention) - converted to
-    // seconds crossing into the command ring. Omitted => no lifespan (0,0).
-    lifetimeMinSec: lifespan && lifespan.min != null ? lifespan.min * 0.001 : 0,
-    lifetimeMaxSec: lifespan && lifespan.max != null ? lifespan.max * 0.001 : 0,
+    lifetimeMinSec: life.minSec,
+    lifetimeMaxSec: life.maxSec,
+    fadeToAlpha0: !!o.fadeToAlpha0,
+    scale: resolveRange(o.scale, 1),
+    alpha: resolveRange(o.alpha, 1),
+    layerId: o.layerId != null ? o.layerId | 0 : 0,
+    hasSprite: o.scale != null || o.alpha != null || (o.layerId != null && (o.layerId | 0) !== 0),
   };
 }
 
@@ -63,7 +90,22 @@ function enqueueEmitParams(resolved) {
     resolved.textureId,
   );
   if (resolved.lifetimeMaxSec > 0) {
-    Box2dCommandRing.enqueueSetLiquidFunLifespan(resolved.lifetimeMinSec, resolved.lifetimeMaxSec);
+    Box2dCommandRing.enqueueSetLiquidFunLifespan(
+      resolved.lifetimeMinSec,
+      resolved.lifetimeMaxSec,
+      resolved.fadeToAlpha0,
+    );
+  }
+  if (resolved.hasSprite) {
+    const s = resolved.scale || { min: 1, max: 1 };
+    const a = resolved.alpha || { min: 1, max: 1 };
+    Box2dCommandRing.enqueueSetLiquidFunScale(
+      resolved.layerId,
+      s.min,
+      s.max,
+      a.min,
+      a.max,
+    );
   }
 }
 
@@ -93,10 +135,18 @@ export class LiquidFunSystem {
    * @param {number} [options.tint]
    * @param {number} [options.textureId]
    * @param {string} [options.texture] - Resolved via SpriteSheetRegistry if textureId omitted.
-   * @param {{min: number, max: number}} [options.lifespan] - Age-based destruction in
-   *   milliseconds; each particle independently gets a random lifetime in [min, max],
-   *   then is destroyed (Google SetParticleDestructionByAge-style) and fades its alpha
-   *   to 0 as it approaches expiry. Omitted => particles live forever (default).
+   * @param {number|{min: number, max: number}} [options.lifespan] - Age-based destruction
+   *   in milliseconds (Google SetParticleDestructionByAge-style). Bare number = fixed
+   *   life for every particle; `{ min, max }` = independent random in range. Omitted =>
+   *   particles live forever (default).
+   * @param {boolean} [options.fadeToAlpha0=false] - When true (and lifespan is set),
+   *   lerp render alpha from 1 to 0 over remaining life. Default false: stay opaque
+   *   until zombie destroy.
+   * @param {number|{min: number, max: number}} [options.scale] - Sprite scale (same
+   *   shape as ParticleEmitter.emit). Omitted => 1.
+   * @param {number|{min: number, max: number}} [options.alpha] - Emit opacity (same
+   *   shape as ParticleEmitter.emit). Multiplied by WASM life-fade. Omitted => 1.
+   * @param {number} [options.layerId=0] - Custom layer id (Layer.getId('water')), 0 = ENTITIES.
    */
   static createParticleBox(options) {
     const r = resolveEmit(options);

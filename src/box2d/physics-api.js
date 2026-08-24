@@ -448,8 +448,10 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
   ]);
   const createParticleGroupCircle = wrap("create_particle_group_circle", "number", [
+    "number",
     "number",
     "number",
     "number",
@@ -1275,7 +1277,7 @@ function createPhysicsApi(Module) {
       );
     }
 
-    createParticleGroupBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0) {
+    createParticleGroupBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0, fadeToAlpha0 = 0) {
       if (!this._particleSystem) this.createParticleSystem();
       return createParticleGroupBox(
         posX - halfWidth,
@@ -1287,12 +1289,23 @@ function createPhysicsApi(Module) {
         strength,
         lifetimeMin,
         lifetimeMax,
+        fadeToAlpha0 ? 1 : 0,
       );
     }
 
-    createParticleGroupCircle(posX, posY, radius, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0) {
+    createParticleGroupCircle(posX, posY, radius, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0, fadeToAlpha0 = 0) {
       if (!this._particleSystem) this.createParticleSystem();
-      return createParticleGroupCircle(posX, posY, radius, spacing, flags >>> 0, strength, lifetimeMin, lifetimeMax);
+      return createParticleGroupCircle(
+        posX,
+        posY,
+        radius,
+        spacing,
+        flags >>> 0,
+        strength,
+        lifetimeMin,
+        lifetimeMax,
+        fadeToAlpha0 ? 1 : 0,
+      );
     }
 
     destroyParticleGroup(groupId) {

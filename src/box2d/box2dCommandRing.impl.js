@@ -23,7 +23,8 @@
     DESTROY_PARTICLE_GROUP: 11, // systemId, groupId
     DESTROY_PARTICLE_SYSTEM: 12, // systemId
     SET_LIQUIDFUN_EMIT: 13, // spacing, strength, tintBits, textureId (next create consumes)
-    SET_LIQUIDFUN_LIFESPAN: 14, // lifetimeMinSec, lifetimeMaxSec (next create consumes; 0,0 = no lifespan)
+    SET_LIQUIDFUN_LIFESPAN: 14, // lifetimeMinSec, lifetimeMaxSec, fadeToAlpha0 (0|1); next create consumes; 0,0 = no lifespan
+    SET_LIQUIDFUN_SCALE: 15, // entity=layerId; scaleMin, scaleMax, alphaMin, alphaMax (next create)
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -181,8 +182,26 @@
     );
   }
 
-  function enqueueSetLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec) {
-    return enqueue(BOX2D_CMD.SET_LIQUIDFUN_LIFESPAN, 0, lifetimeMinSec || 0, lifetimeMaxSec || 0, 0, 0);
+  function enqueueSetLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec, fadeToAlpha0) {
+    return enqueue(
+      BOX2D_CMD.SET_LIQUIDFUN_LIFESPAN,
+      0,
+      lifetimeMinSec || 0,
+      lifetimeMaxSec || 0,
+      fadeToAlpha0 ? 1 : 0,
+      0,
+    );
+  }
+
+  function enqueueSetLiquidFunScale(layerId, scaleMin, scaleMax, alphaMin, alphaMax) {
+    return enqueue(
+      BOX2D_CMD.SET_LIQUIDFUN_SCALE,
+      layerId | 0,
+      scaleMin,
+      scaleMax,
+      alphaMin,
+      alphaMax,
+    );
   }
 
   function enqueueCreateParticleGroupBox(systemId, posX, posY, halfWidth, halfHeight, flags) {
@@ -258,7 +277,10 @@
           if (handlers.setLiquidFunEmit) handlers.setLiquidFunEmit(a, b, c, d);
           break;
         case BOX2D_CMD.SET_LIQUIDFUN_LIFESPAN:
-          if (handlers.setLiquidFunLifespan) handlers.setLiquidFunLifespan(a, b);
+          if (handlers.setLiquidFunLifespan) handlers.setLiquidFunLifespan(a, b, c);
+          break;
+        case BOX2D_CMD.SET_LIQUIDFUN_SCALE:
+          if (handlers.setLiquidFunScale) handlers.setLiquidFunScale(entity, a, b, c, d);
           break;
         default:
           break;
@@ -289,6 +311,7 @@
     enqueueCreateParticleSystem: enqueueCreateParticleSystem,
     enqueueSetLiquidFunEmit: enqueueSetLiquidFunEmit,
     enqueueSetLiquidFunLifespan: enqueueSetLiquidFunLifespan,
+    enqueueSetLiquidFunScale: enqueueSetLiquidFunScale,
     enqueueCreateParticleGroupBox: enqueueCreateParticleGroupBox,
     enqueueCreateParticleGroupCircle: enqueueCreateParticleGroupCircle,
     enqueueDestroyParticleGroup: enqueueDestroyParticleGroup,

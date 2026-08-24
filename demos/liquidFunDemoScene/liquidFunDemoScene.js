@@ -3,13 +3,14 @@
 
 import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
+import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
 
-const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_MATERIALS } = WEED;
+const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_MATERIALS, Layer } = WEED;
 
 // Keys avoid WASD. Jelly is elastic (a group per burst) so it sprays slower.
 const LIQUID_TOOLS = [
-  { key: 'q', material: 'water', shape: 'circle', radius: 230 },
+  { key: 'q', material: 'water', shape: 'circle', radius: 100 },
   { key: 'e', material: 'oil', shape: 'circle', radius: 130 },
   { key: 'r', material: 'cream', shape: 'circle', radius: 130 },
   { key: 'f', material: 'dulceDeLeche', shape: 'circle', radius: 110 },
@@ -48,7 +49,12 @@ export class LiquidFunDemoScene extends WEED.Scene {
       noLimitFPS: false,
       gravity: { x: 0, y: 980 },
       sleeping: false,
-      liquidFun: { enabled: true, radius: 8, maxCount: 65534, subSteps: 1 },
+      liquidFun: {
+        enabled: true,
+        radius: 16,
+        maxCount: 65534,
+        subSteps: 1,
+      },
     },
 
     renderer: {
@@ -65,6 +71,28 @@ export class LiquidFunDemoScene extends WEED.Scene {
     lighting: {
       enabled: false,
     },
+
+    // Additive density RT + threshold shader (tips4devs cartoon water).
+    layers: {
+      water: {
+        zIndex: 4,
+        blendMode: BLEND_MODES.NORMAL,
+        resolution: 0.5,
+        maxItems: 65534,
+        ySorting: false,
+        shader: {
+          fragment: 'liquid',
+          containerBlend: BLEND_MODES.ADD,
+          uniforms: {
+            uCutoff: { value: 0.2, type: 'f32' },
+            uFoam: { value: 0.42, type: 'f32' },
+            uDepth: { value: 0.35, type: 'f32' },
+            uBodyAlpha: { value: 0.1, type: 'f32' },
+            uEdgeAlpha: { value: 0.45, type: 'f32' },
+          },
+        },
+      },
+    },
   };
 
   // ========================================
@@ -75,6 +103,9 @@ export class LiquidFunDemoScene extends WEED.Scene {
     textures: {
       box: '/demos/img/box_100_100.png',
       ball: '/demos/img/bola.png',
+    },
+    shaders: {
+      liquid: '/demos/shaders/liquid.frag',
     },
   };
 
@@ -226,8 +257,11 @@ export class LiquidFunDemoScene extends WEED.Scene {
       shape: tool.shape,
       posX: Mouse.x,
       posY: Mouse.y,
-      texture: '_whiteCircle',
-      lifespan: { min: 800, max: 1200 },
+      texture: '_lightGradient',
+      layerId: Layer.getId('water'),
+      scale: 5,
+      alpha: 0.25,
+      // lifespan: { min: 800, max: 1200 },
     };
     if (tool.shape === 'box') {
       emit.halfWidth = tool.halfWidth;

@@ -1335,7 +1335,7 @@ class PreRenderWorker extends AbstractWorker {
      * Layer routing by type:
      *   type 0 (entity)       -> SpriteRenderer.layerId[index]
      *   type 1 (particle)     -> ParticleComponent.layerId[index]
-     *   type 7 (LiquidFun)    -> default ENTITIES layer
+     *   type 7 (LiquidFun)    -> liquidFun.layerId[index] (emit-time)
      *   type 2 (decoration)   -> DecorationComponent.layerId[index]
      *   type 3 (light glow)   -> LightEmitter.layerIdOfGlowSprite[index] || SpriteRenderer.layerId[index]
      *   type 4 (bullet)       -> BulletComponent.layerId[index]
@@ -1353,7 +1353,7 @@ class PreRenderWorker extends AbstractWorker {
             let layerId = 0;
             if (type === 0) layerId = SpriteRenderer.layerId[index];
             else if (type === 1) layerId = ParticleComponent.layerId[index];
-            else if (type === 7) layerId = 0;
+            else if (type === 7) layerId = this.liquidFun?.layerId?.[index] || 0;
             else if (type === 2) layerId = DecorationComponent.layerId[index];
             else if (type === 3) layerId = LightEmitter.layerIdOfGlowSprite[index] || SpriteRenderer.layerId[index];
             else if (type === 4 || type === 5) layerId = BulletComponent.layerId[index];
@@ -1955,7 +1955,7 @@ class PreRenderWorker extends AbstractWorker {
                 }
                 rqScaleX[out] = lf.scaleX[idx];
                 rqScaleY[out] = lf.scaleY[idx];
-                rqAlpha[out] = lf.alpha[idx];
+                rqAlpha[out] = lf.alpha[idx] * (lf.baseAlpha ? lf.baseAlpha[idx] : 1);
                 rqRotC[out] = lf.rotC[idx];
                 rqRotS[out] = lf.rotS[idx];
                 rqTint[out] = lf.tint[idx];
@@ -2355,6 +2355,33 @@ class PreRenderWorker extends AbstractWorker {
                     rqTextureId[out] = pAnimIdx === 0
                         ? whiteCircleTextureId2
                         : (this.animationFrameStart?.[pAnimIdx] ?? INVALID_TEXTURE_ID);
+                    rqAnchorX[out] = 0.5;
+                    rqAnchorY[out] = 0.5;
+                    rqType[out] = 1;
+                    rqEntityIndex[out] = -1;
+
+                } else if (type === 7) {
+                    const lf = this.liquidFun;
+                    if (this.interpolationMode === 'interpolate' && lf.px) {
+                        const alpha = this._poseAlpha;
+                        const px = lf.px[idx];
+                        const py = lf.py[idx];
+                        rqX[out] = px + (lf.x[idx] - px) * alpha;
+                        rqY[out] = py + (lf.y[idx] - py) * alpha;
+                    } else {
+                        rqX[out] = lf.x[idx];
+                        rqY[out] = lf.y[idx];
+                    }
+                    rqScaleX[out] = lf.scaleX[idx];
+                    rqScaleY[out] = lf.scaleY[idx];
+                    rqAlpha[out] = lf.alpha[idx] * (lf.baseAlpha ? lf.baseAlpha[idx] : 1);
+                    rqRotC[out] = lf.rotC[idx];
+                    rqRotS[out] = lf.rotS[idx];
+                    rqTint[out] = lf.tint[idx];
+                    const lfAnimIdx = lf.textureId[idx];
+                    rqTextureId[out] = lfAnimIdx === 0
+                        ? whiteCircleTextureId2
+                        : (this.animationFrameStart?.[lfAnimIdx] ?? INVALID_TEXTURE_ID);
                     rqAnchorX[out] = 0.5;
                     rqAnchorY[out] = 0.5;
                     rqType[out] = 1;

@@ -5,12 +5,17 @@
  * this step's new values) - they feed preRender.interpolation 'interpolate'
  * (ConfigDefaults.js). This SAB is single-buffered (overwritten in place every
  * step) unlike poseDataA/B, so px/py are a real snapshot, not a second buffer.
+ *
+ * alpha = WASM life-fade (1→0 when fadeToAlpha0). baseAlpha = emit opacity
+ * (never overwritten by sync). rqAlpha = alpha * baseAlpha.
+ * layerId = emit routing (0 = ENTITIES), same idea as ParticleComponent.layerId.
  */
 
 export function liquidFunRenderByteSize(maxCount) {
   const n = maxCount | 0;
   const header = 8;
-  const bytes = header + 9 * n * 4 + n * 4 + n * 2;
+  // 9 f32 pose fields + tint u32 + textureId u16 + baseAlpha f32 + layerId u8
+  const bytes = header + 9 * n * 4 + n * 4 + n * 2 + n * 4 + n;
   return (bytes + 3) & ~3;
 }
 
@@ -39,5 +44,26 @@ export function bindLiquidFunRender(sab, maxCount) {
   const tint = new Uint32Array(sab, off, n);
   off += n * 4;
   const textureId = new Uint16Array(sab, off, n);
-  return { count, x, y, scaleX, scaleY, rotC, rotS, alpha, px, py, tint, textureId, maxCount: n };
+  off += n * 2;
+  off = (off + 3) & ~3;
+  const baseAlpha = new Float32Array(sab, off, n);
+  off += n * 4;
+  const layerId = new Uint8Array(sab, off, n);
+  return {
+    count,
+    x,
+    y,
+    scaleX,
+    scaleY,
+    rotC,
+    rotS,
+    alpha,
+    px,
+    py,
+    tint,
+    textureId,
+    baseAlpha,
+    layerId,
+    maxCount: n,
+  };
 }

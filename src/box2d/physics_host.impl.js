@@ -130,7 +130,27 @@
     var tint = new Uint32Array(sab, off, n);
     off += n * 4;
     var textureId = new Uint16Array(sab, off, n);
-    return { count: count, x: x, y: y, scaleX: scaleX, scaleY: scaleY, rotC: rotC, rotS: rotS, alpha: alpha, px: px, py: py, tint: tint, textureId: textureId };
+    off += n * 2;
+    off = (off + 3) & ~3;
+    var baseAlpha = new Float32Array(sab, off, n);
+    off += n * 4;
+    var layerId = new Uint8Array(sab, off, n);
+    return {
+      count: count,
+      x: x,
+      y: y,
+      scaleX: scaleX,
+      scaleY: scaleY,
+      rotC: rotC,
+      rotS: rotS,
+      alpha: alpha,
+      px: px,
+      py: py,
+      tint: tint,
+      textureId: textureId,
+      baseAlpha: baseAlpha,
+      layerId: layerId,
+    };
   }
 
   function schemaEntry(typeOrSpec) {
@@ -578,6 +598,8 @@
         py: packView(L.py),
         tint: packView(L.tint),
         textureId: packView(L.textureId),
+        baseAlpha: packView(L.baseAlpha),
+        layerId: packView(L.layerId),
       };
     }
 
