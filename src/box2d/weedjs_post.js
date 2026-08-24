@@ -67,11 +67,19 @@
   let liquidFunMaxCount = 0;
   let liquidFunXFloatOffset = 0;
   let liquidFunYFloatOffset = 0;
+  let liquidFunAlphaFloatOffset = 0;
+  // How many particles' px/py were populated as of the last sync - the
+  // "existing vs newly-appeared" boundary for the previous-position snapshot
+  // below. Reset to 0 whenever the particle system (re)creates, same sites
+  // as the X/Y offsets.
+  let liquidFunPrevSyncedCount = 0;
   let pendingLiquidFunEmit = {
     spacing: 0,
     strength: 0.5,
     tintBits: 0,
     textureId: 0,
+    lifetimeMin: 0,
+    lifetimeMax: 0, // <= 0 = no age-based destruction (default)
     pending: false,
   };
   let jointHandle = null; // Int32Array, -1 = none, -2 = fail this revision
@@ -307,6 +315,7 @@
     if (!(n > 0)) return;
     poseCapacity = n;
     poseSync = new Int32Array(pose.sync);
+    // 4 channels: x,y,rotC,rotS.
     const bytesPerBuf = n * 4 * 4;
     for (let i = 0; i < 2; i++) {
       const sab = i === 0 ? pose.dataA : pose.dataB;
@@ -350,7 +359,7 @@
    */
   function publishPose(/* entityCount */) {
     if (!poseSync || !poseBuffers[0] || !denseList) return;
-    const writeIdx = poseFrame % 2;
+    const writeIdx = poseFrame & 1;
     const buf = poseBuffers[writeIdx];
     const x = views.x;
     const y = views.y;
@@ -919,10 +928,17 @@
       pendingLiquidFunEmit.textureId = textureId | 0;
       pendingLiquidFunEmit.pending = true;
     },
+    setLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec) {
+      pendingLiquidFunEmit.lifetimeMin = lifetimeMinSec || 0;
+      pendingLiquidFunEmit.lifetimeMax = lifetimeMaxSec || 0;
+      pendingLiquidFunEmit.pending = true;
+    },
     createParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
       if (!world) return;
       liquidFunXFloatOffset = 0;
       liquidFunYFloatOffset = 0;
+      liquidFunAlphaFloatOffset = 0;
+      liquidFunPrevSyncedCount = 0;
       world.createParticleSystem(
         radius || 10,
         maxCount || 10000,
@@ -943,6 +959,8 @@
         emit.spacing,
         flags || 0,
         emit.strength,
+        emit.lifetimeMin,
+        emit.lifetimeMax,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -957,6 +975,8 @@
         emit.spacing,
         flags || 0,
         emit.strength,
+        emit.lifetimeMin,
+        emit.lifetimeMax,
       );
       paintNewLiquidFunParticles(oldCount, emit);
     },
@@ -1107,6 +1127,8 @@
       strength: 0.5,
       tintBits: 0,
       textureId: 0,
+      lifetimeMin: 0,
+      lifetimeMax: 0,
       pending: false,
     };
     if (!emit.pending) {
@@ -1114,6 +1136,8 @@
       emit.strength = 0.5;
       emit.tintBits = 0;
       emit.textureId = 0;
+      emit.lifetimeMin = 0;
+      emit.lifetimeMax = 0;
     }
     return emit;
   }
@@ -1157,15 +1181,60 @@
       liquidFunXFloatOffset = xByteOffset >> 2;
       liquidFunYFloatOffset = yByteOffset >> 2;
     }
+    if (!liquidFunAlphaFloatOffset) {
+      const alphaByteOffset = world.getParticleAlphaByteOffset();
+      if (alphaByteOffset) liquidFunAlphaFloatOffset = alphaByteOffset >> 2;
+    }
 
     const heapF32 = Module.HEAPF32;
     if (!heapF32) return;
 
     const maxP = Math.min(count, liquidFunMaxCount || 0);
-    // C already deinterleaved x/y into two contiguous arrays (step_world) -
-    // two bulk TypedArray copies instead of a scalar per-particle loop.
+    if (liquidFunViews.px && liquidFunViews.py) {
+      // Previous-position snapshot for true interpolation (px/py), taken
+      // from the about-to-be-overwritten x/y before this step's new values
+      // land - entirely JS-side, no WASM round-trip needed.
+      //
+      // SolveZombie compacts dead particles via swap-with-last (upstream
+      // LiquidFun's own documented behavior - particle indices are only
+      // stable until a lower-indexed particle is destroyed), so a shrinking
+      // count means index identity was reshuffled this step. Don't trust any
+      // px/py as valid "previous" data on that frame - reseed every particle
+      // from its own current position instead (same as a freshly-spawned
+      // particle gets below), trading one tick of no-smoothing for zero
+      // wrong-direction blends.
+      const prevCount = maxP < liquidFunPrevSyncedCount ? 0 : liquidFunPrevSyncedCount;
+      if (prevCount > 0) {
+        liquidFunViews.px.set(liquidFunViews.x.subarray(0, prevCount));
+        liquidFunViews.py.set(liquidFunViews.y.subarray(0, prevCount));
+      }
+      if (maxP > prevCount) {
+        // New this frame (freshly spawned, or every particle on a
+        // compaction frame) - seed prev = this step's own new position
+        // (read straight from the WASM heap, same source x/y are about to
+        // be overwritten from) so they don't interpolate in from stale/zero
+        // SAB memory.
+        liquidFunViews.px.set(
+          heapF32.subarray(liquidFunXFloatOffset + prevCount, liquidFunXFloatOffset + maxP),
+          prevCount
+        );
+        liquidFunViews.py.set(
+          heapF32.subarray(liquidFunYFloatOffset + prevCount, liquidFunYFloatOffset + maxP),
+          prevCount
+        );
+      }
+    }
+    // C already deinterleaved x/y into contiguous arrays (step_world) - bulk
+    // TypedArray copies instead of a scalar per-particle loop.
     liquidFunViews.x.set(heapF32.subarray(liquidFunXFloatOffset, liquidFunXFloatOffset + maxP));
     liquidFunViews.y.set(heapF32.subarray(liquidFunYFloatOffset, liquidFunYFloatOffset + maxP));
+    if (liquidFunViews.alpha && liquidFunAlphaFloatOffset) {
+      // Per-particle fade-to-0 over an expiring lifespan (always 1.0 for
+      // particles with no lifespan tracking) - computed in C by the same
+      // pass that ages/expires particles, bulk-copied here same as x/y.
+      liquidFunViews.alpha.set(heapF32.subarray(liquidFunAlphaFloatOffset, liquidFunAlphaFloatOffset + maxP));
+    }
+    liquidFunPrevSyncedCount = maxP;
     if (liquidFunViews.count) liquidFunViews.count[0] = maxP;
   }
 
@@ -1531,12 +1600,20 @@
           ? viewFromDesc(data.liquidFunViews.rotS, Float32Array)
           : null,
         alpha: viewFromDesc(data.liquidFunViews.alpha, Float32Array),
+        px: data.liquidFunViews.px
+          ? viewFromDesc(data.liquidFunViews.px, Float32Array)
+          : null,
+        py: data.liquidFunViews.py
+          ? viewFromDesc(data.liquidFunViews.py, Float32Array)
+          : null,
         tint: viewFromDesc(data.liquidFunViews.tint, Uint32Array),
         textureId: viewFromDesc(data.liquidFunViews.textureId, Uint16Array),
       };
       liquidFunMaxCount = data.liquidFunMaxCount | 0;
       liquidFunXFloatOffset = 0;
       liquidFunYFloatOffset = 0;
+      liquidFunAlphaFloatOffset = 0;
+      liquidFunPrevSyncedCount = 0;
     }
     if (data.stats) {
       statsF32 = viewFromDesc(data.stats, Float32Array);

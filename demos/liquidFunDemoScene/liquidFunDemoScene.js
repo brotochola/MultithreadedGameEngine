@@ -9,7 +9,7 @@ const { Mouse, Keyboard, ParticleEmitter, LIQUIDFUN_MATERIALS } = WEED;
 
 // Keys avoid WASD. Jelly is elastic (a group per burst) so it sprays slower.
 const LIQUID_TOOLS = [
-  { key: 'q', material: 'water', shape: 'circle', radius: 130 },
+  { key: 'q', material: 'water', shape: 'circle', radius: 230 },
   { key: 'e', material: 'oil', shape: 'circle', radius: 130 },
   { key: 'r', material: 'cream', shape: 'circle', radius: 130 },
   { key: 'f', material: 'dulceDeLeche', shape: 'circle', radius: 110 },
@@ -43,6 +43,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
     },
 
     physics: {
+      // fixedFps: 20,
       subStepCount: 1,
       noLimitFPS: false,
       gravity: { x: 0, y: 980 },
@@ -53,6 +54,12 @@ export class LiquidFunDemoScene extends WEED.Scene {
     renderer: {
       noLimitFPS: false,
       maxVisibleRenderables: 120000,
+    },
+
+    preRender: {
+      interpolation: {
+        mode: 'interpolate', // 'off' | 'interpolate'
+      },
     },
 
     lighting: {
@@ -220,6 +227,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posX: Mouse.x,
       posY: Mouse.y,
       texture: '_whiteCircle',
+      lifespan: { min: 800, max: 1200 },
     };
     if (tool.shape === 'box') {
       emit.halfWidth = tool.halfWidth;

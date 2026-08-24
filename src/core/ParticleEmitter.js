@@ -351,6 +351,8 @@ export class ParticleEmitter extends SharedAtomicPool {
    *
    * @param {Object} options
    * @param {string} [options.material] - water | oil | cream | dulceDeLeche | jelly | sand
+   * @param {{min: number, max: number}} [options.lifespan] - Age-based destruction in ms
+   *   (see LiquidFunSystem.createParticleBox). Omitted => particles live forever.
    */
   static emitLiquidFunParticles(options) {
     const o = options || {};

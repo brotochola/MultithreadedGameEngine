@@ -35,6 +35,7 @@ import {
 import { PRE_RENDER_STATS, createStatsWriter } from './workers-utils.js';
 import {
     RENDERER_DEFAULTS,
+    PRE_RENDER_DEFAULTS,
     CAMERA_TYPES,
     DECORATION_Y_SORT_SCALE,
     ENTITY_GLOW_SORT_BIAS,
@@ -154,6 +155,15 @@ class PreRenderWorker extends AbstractWorker {
 
         // Physics pose publish latch (mirror renderQueueSync)
         this._rbActive = null;
+
+        // Pose smoothing (preRender.interpolation) - self-measured physics-step
+        // timing, no cross-worker config needed. Computed once per tick in
+        // _latchPose(), consumed per-entity in _displayPose()/LiquidFun collect.
+        this.interpolationMode = 'off';
+        this._poseLastSeenReadyFrame = 0;
+        this._poseLastChangeWallClock = 0;
+        this._poseMeasuredIntervalMs = 0;
+        this._poseAlpha = 1; // interpolate: 0..1 progress toward the latched frame
 
         // Texture metadata
         this.animationFrameStart = null;
@@ -301,6 +311,10 @@ class PreRenderWorker extends AbstractWorker {
             console.log('[PRE_RENDER WORKER] Running in unlimited FPS mode');
         }
         this.backpressure = preRenderConfig.backpressure !== false;
+
+        // Pose smoothing when physics runs slower than render (see ConfigDefaults PRE_RENDER_DEFAULTS.interpolation).
+        const interpConfig = preRenderConfig.interpolation || {};
+        this.interpolationMode = interpConfig.mode ?? PRE_RENDER_DEFAULTS.interpolation.mode;
 
         // Store counts
         this.globalEntityCount = data.globalEntityCount || 0;
@@ -1440,11 +1454,39 @@ class PreRenderWorker extends AbstractWorker {
     _latchPose() {
         super._latchPose(true);
         this._rbActive = RigidBody.active;
+        this._updatePoseTiming();
+    }
+
+    /**
+     * Self-measured physics-step timing for preRender.interpolation - no need
+     * to know the configured physics.fixedFps, self-calibrates from observed
+     * readyFrame transitions. Computed once per tick, not per entity.
+     */
+    _updatePoseTiming() {
+        if (this.interpolationMode === 'off') return;
+        if (!this.poseSync) return;
+        const ready = Atomics.load(this.poseSync, 0);
+        const now = performance.now();
+        if (ready !== this._poseLastSeenReadyFrame) {
+            if (this._poseLastSeenReadyFrame > 0) {
+                const gap = now - this._poseLastChangeWallClock;
+                if (gap > 0) {
+                    this._poseMeasuredIntervalMs = this._poseMeasuredIntervalMs
+                        ? this._poseMeasuredIntervalMs * 0.8 + gap * 0.2
+                        : gap;
+                }
+            }
+            this._poseLastSeenReadyFrame = ready;
+            this._poseLastChangeWallClock = now;
+        }
+        const elapsedMs = now - this._poseLastChangeWallClock;
+        this._poseAlpha = this._poseMeasuredIntervalMs > 0 ? Math.min(1, elapsedMs / this._poseMeasuredIntervalMs) : 1;
     }
 
     /**
      * Display pose: published post-step snapshot when latched, else Transform (boot).
-     * Writes into caller-provided `out` (no alloc).
+     * Writes into caller-provided `out` (no alloc). Applies preRender.interpolation
+     * (mode 'interpolate' | 'off') when a published pose is available.
      * @param {number} idx
      * @param {{ x: number, y: number, rotC: number, rotS: number }} out
      */
@@ -1452,6 +1494,35 @@ class PreRenderWorker extends AbstractWorker {
         const poseX = this._poseX;
         const rb = this._rbActive;
         if (poseX && rb && rb[idx]) {
+            if (this.interpolationMode === 'interpolate' && this._prevPoseX) {
+                const alpha = this._poseAlpha;
+                const px = this._prevPoseX[idx];
+                const py = this._prevPoseY[idx];
+                out.x = px + (poseX[idx] - px) * alpha;
+                out.y = py + (this._poseY[idx] - py) * alpha;
+                const pc = this._prevPoseRotC[idx];
+                const ps = this._prevPoseRotS[idx];
+                const c = this._poseRotC[idx];
+                const s = this._poseRotS[idx];
+                if (pc === c && ps === s) {
+                    // Rotation unchanged this interval (fixedRotation bodies,
+                    // or a rotating body momentarily still) - any alpha blend
+                    // is exactly this same value, already unit length. Skip
+                    // the lerp+renormalize below entirely (exact, not lossy).
+                    out.rotC = c;
+                    out.rotS = s;
+                    return;
+                }
+                const rc = pc + (c - pc) * alpha;
+                const rs = ps + (s - ps) * alpha;
+                // Renormalize the lerped unit complex number (rotC,rotS) - plain
+                // sqrt, not Math.hypot (its overflow/underflow guard is wasted
+                // cost here; c,s are always small, bounded values).
+                const len = Math.sqrt(rc * rc + rs * rs) || 1;
+                out.rotC = rc / len;
+                out.rotS = rs / len;
+                return;
+            }
             out.x = poseX[idx];
             out.y = this._poseY[idx];
             out.rotC = this._poseRotC[idx];
@@ -1872,8 +1943,16 @@ class PreRenderWorker extends AbstractWorker {
                 rqEntityIndex[out] = -1;
             } else if (type === 7) {
                 const lf = this.liquidFun;
-                rqX[out] = lf.x[idx];
-                rqY[out] = lf.y[idx];
+                if (this.interpolationMode === 'interpolate' && lf.px) {
+                    const alpha = this._poseAlpha;
+                    const px = lf.px[idx];
+                    const py = lf.py[idx];
+                    rqX[out] = px + (lf.x[idx] - px) * alpha;
+                    rqY[out] = py + (lf.y[idx] - py) * alpha;
+                } else {
+                    rqX[out] = lf.x[idx];
+                    rqY[out] = lf.y[idx];
+                }
                 rqScaleX[out] = lf.scaleX[idx];
                 rqScaleY[out] = lf.scaleY[idx];
                 rqAlpha[out] = lf.alpha[idx];

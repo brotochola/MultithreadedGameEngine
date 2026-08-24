@@ -291,6 +291,10 @@
       prepare: prepareIntegratedWorkerBenchmark,
       beginMeasure: beginMeasureIntegratedWorkerBenchmark,
       collect: collectIntegratedWorkerBenchmark,
+      // Raw Scene instance (buffers, spawnEntity, ...) for callers that need
+      // more than the summarized STEP_MS/Load% report, e.g. sampling a live
+      // SharedArrayBuffer directly (poseInterpolationVerify.mjs).
+      getScene: () => session?.scene ?? null,
     };
 
     document.body.dataset.benchmarkReady = 'true';

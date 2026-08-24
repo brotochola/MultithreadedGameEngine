@@ -435,6 +435,18 @@ export const PRE_RENDER_DEFAULTS = Object.freeze({
   fixedFps: 0,
   /** When true, skip packing if >1 frame ahead of pixi (Atomics sync). */
   backpressure: true,
+  /**
+   * Smooth visuals when physics runs slower than render (e.g. physics.fixedFps
+   * below the display rate). 'interpolate' blends between the last two
+   * published physics frames (bodies and LiquidFun particles both have a real
+   * previous-frame slot) - always lags true simulation time by up to one
+   * physics frame, but never guesses wrong (no collision overshoot, unlike
+   * extrapolation, which this engine deliberately does not do). Scene
+   * override: config.preRender.interpolation.
+   */
+  interpolation: Object.freeze({
+    mode: 'off', // 'off' | 'interpolate'
+  }),
 });
 
 // ============================================================================

@@ -129,6 +129,12 @@ export class AbstractWorker {
     this._poseY = null;
     this._poseRotC = null;
     this._poseRotS = null;
+    // Other double-buffer slot (previous physics frame) - only valid once
+    // readyFrame >= 2. Used for pose interpolation (preRender.interpolation).
+    this._prevPoseX = null;
+    this._prevPoseY = null;
+    this._prevPoseRotC = null;
+    this._prevPoseRotS = null;
 
     // Registered entity classes information (set during initialization)
     this.registeredClasses = [];
@@ -922,6 +928,8 @@ export class AbstractWorker {
     this.poseCapacity = n;
     this.poseSync = new Int32Array(pose.sync);
     const sabs = [pose.dataA, pose.dataB];
+    // 4 channels: x,y,rotC,rotS - must mirror weedjs_post.js bindPosePublish
+    // (physics-worker-side writer of this same SAB layout).
     for (let i = 0; i < 2; i++) {
       const sab = sabs[i];
       this.poseBuffers[i] = {
@@ -945,11 +953,24 @@ export class AbstractWorker {
     if (!this.poseSync || !this.poseBuffers[0]) return;
     const ready = Atomics.load(this.poseSync, 0);
     if (!(ready > 0)) return;
-    const buf = this.poseBuffers[(ready - 1) % 2];
+    const curIdx = (ready - 1) & 1;
+    const buf = this.poseBuffers[curIdx];
     this._poseX = buf.x;
     this._poseY = buf.y;
     this._poseRotC = buf.rotC;
     this._poseRotS = buf.rotS;
+    if (ready >= 2) {
+      const prevBuf = this.poseBuffers[1 - curIdx];
+      this._prevPoseX = prevBuf.x;
+      this._prevPoseY = prevBuf.y;
+      this._prevPoseRotC = prevBuf.rotC;
+      this._prevPoseRotS = prevBuf.rotS;
+    } else {
+      this._prevPoseX = null;
+      this._prevPoseY = null;
+      this._prevPoseRotC = null;
+      this._prevPoseRotS = null;
+    }
     if (consume) Atomics.store(this.poseSync, 1, ready);
   }
 

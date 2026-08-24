@@ -65,6 +65,7 @@
     "bench:particle:tournament": "node tests/bench/run-particle-hyp-tournament.mjs",
     "bench:feature:liquidfun": "node tests/bench/run-integrated-worker-benchmark.mjs --scene /tests/bench/stressScenes/LiquidFunStressScene.js --scene-export LiquidFunStressScene --output tests/results/liquidfun-stress.json",
     "bench:micro:liquidfun-capturepairs": "node tests/bench/liquidfun-capturepairs-microbench.mjs",
+    "verify:pose-interpolation": "node tests/bench/poseInterpolationVerify.mjs",
     "bake:atlas": "node scripts/bake-big-atlas.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

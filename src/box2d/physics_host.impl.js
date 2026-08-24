@@ -103,6 +103,8 @@
     polyNormalY: { type: Float32Array, length: MAX_POLYGON_VERTICES },
   };
 
+  // Mirrors src/core/liquidFunRender.js bindLiquidFunRender (nested classic
+  // worker - no ESM import). Layout must stay identical to that file.
   function bindLiquidFunRenderViews(sab, maxCount) {
     var n = maxCount | 0;
     var off = 8;
@@ -121,10 +123,14 @@
     off += n * 4;
     var alpha = new Float32Array(sab, off, n);
     off += n * 4;
+    var px = new Float32Array(sab, off, n);
+    off += n * 4;
+    var py = new Float32Array(sab, off, n);
+    off += n * 4;
     var tint = new Uint32Array(sab, off, n);
     off += n * 4;
     var textureId = new Uint16Array(sab, off, n);
-    return { count: count, x: x, y: y, scaleX: scaleX, scaleY: scaleY, rotC: rotC, rotS: rotS, alpha: alpha, tint: tint, textureId: textureId };
+    return { count: count, x: x, y: y, scaleX: scaleX, scaleY: scaleY, rotC: rotC, rotS: rotS, alpha: alpha, px: px, py: py, tint: tint, textureId: textureId };
   }
 
   function schemaEntry(typeOrSpec) {
@@ -568,6 +574,8 @@
         rotC: packView(L.rotC),
         rotS: packView(L.rotS),
         alpha: packView(L.alpha),
+        px: packView(L.px),
+        py: packView(L.py),
         tint: packView(L.tint),
         textureId: packView(L.textureId),
       };
@@ -726,7 +734,16 @@
     if (state.box2dReady) {
       var t0 = performance.now();
       var dt = deltaTime / 1000;
-      if (dt > 1 / 20) dt = 1 / 20;
+      // Stutter guard: cap a single step's dt so one huge frame hitch can't
+      // hand Box2D/LiquidFun an unstable step. Ceiling tracks a deliberately
+      // configured physics.fixedFps (large single steps already trade off
+      // some solver stability, same tradeoff AbstractWorker's own 100ms
+      // deltaTime clamp accepts elsewhere) instead of a fixed 20fps-equivalent —
+      // otherwise fixedFps < 20 gets silently re-capped and the sim runs in
+      // slow motion (fixedFps:10 simulated dt=0.05 out of a real 0.1s elapsed
+      // == half speed) rather than "same speed, bigger/rarer steps".
+      var maxDt = state.fixedFps > 0 ? 1 / state.fixedFps : 1 / 20;
+      if (dt > maxDt) dt = maxDt;
       if (dt > 0) {
         weedjsDoStep(dt, state.settings.subStepCount);
       }

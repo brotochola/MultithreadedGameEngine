@@ -29,5 +29,4 @@ test('pixi custom layers use sortKey depth when layer.ySorting', () => {
 
 test('instancedSprites config flag removed (always instanced)', () => {
   assert.doesNotMatch(defaults, /instancedSprites/);
-  assert.doesNotMatch(defaults, /\binterpolation\s*:/);
 });

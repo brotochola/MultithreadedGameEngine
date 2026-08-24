@@ -319,6 +319,106 @@ comparable to the original ~3.30ms baseline (different particle counts), but
 every hypothesis that landed (H2-H4, H6-H8) measured a real, reproducible win on
 whichever scene was current at the time, and none regressed correctness.
 
+## Render extension — pose extrapolation for particles (2026-08-23)
+
+Not a `lfParticleSystem_Step` hot-loop hypothesis like H1-H8 above — a new
+opt-in **renderer** feature (`config.renderer.interpolation`, `ConfigDefaults.js`)
+that reuses this campaign's H8 deinterleave pipeline, so it's logged here rather
+than starting a separate doc. Also covers rigid bodies (`pre_render_worker.js`
+`_displayPose`), out of scope for this LiquidFun-only doc.
+
+**Why:** the physics worker (and LiquidFun's step) can run behind the display's
+refresh rate (`physics.fixedFps` below render rate, or a heavy frame). Without
+smoothing, visuals snap between physics-frame snapshots. LiquidFun's render SAB
+(`liquidFunRender.js`) is single-buffered — no previous-frame slot — so
+particles can only **extrapolate** (current position + velocity × time-since-publish),
+never interpolate between two known frames like rigid bodies can.
+
+**Change:** mirrored `get_particle_x/y_byte_offset`'s pattern with
+`get_particle_vx/vy_byte_offset` (`wasm_wrapper.c`, filled from
+`lfParticleSystem_GetVelocityBuffer` in the same `step_world` loop that already
+fills `g_particle_x/y`), wrapped in `physics-api.js`, added `vx`/`vy` channels
+to the LiquidFun render SAB (`liquidFunRender.js` + `physics_host.impl.js`),
+bulk-copied in `syncLiquidFunParticlesToSharedBuffers` (same `Float32Array.set`
+technique as H8). `pre_render_worker.js` extrapolates only at the final
+render-queue write (not during AABB culling — imperceptible slop there, not
+worth the extra per-entity cost in that hot loop).
+
+**Correctness:** new test `WASM particle vx/vy deinterleave matches the
+interleaved velocity buffer` (same shape as H8's position test) + a
+`liquidFun render SAB is not ParticleComponent` update (that test asserted
+`vx` must NOT exist — now intentionally does; `lifespan`/`flat` still don't).
+19/19 liquidfun tests, 172/172 full suite.
+
+**Found and fixed along the way:** `AbstractWorker._bindPosePublish` (every
+consumer worker's *reader* of the rigid-body pose SAB) is a separate,
+hand-duplicated copy of `weedjs_post.js`'s `bindPosePublish` (the physics
+worker's *writer*) — the two must agree byte-for-byte on the same SAB and had
+already drifted once before (see `tests/node/gpuSortKeyNoCpuSort.test.js`
+history: a boolean `renderer.interpolation: true` existed Jan 2026, directly in
+the pre-render-queue-era `pixi_worker.js`, removed Aug 2026 as dead code when
+that pipeline was rebuilt around `pre_render_worker`). Adding vx/vy/angVel to
+the writer without the reader crashed `_displayPose` at runtime
+(`this._poseAngVel[idx]` on `undefined`) — only caught by the L2 benchmark run,
+not the unit suite. Added `tests/node/poseInterpolation.test.js` to pin the
+7-channel byte layout on the reader directly, so this class of drift fails in
+Node next time.
+
+**Benchmark — does it eat FPS?** `pre_render_worker`'s own `STEP_MS`/Load%,
+2 runs per point, headless, `renderer.interpolation.mode` temp-set per run
+(reverted after):
+
+| Scene | Mode | `preRender STEP_MS` (run1, run2) | Load% |
+|---|---|---|---|
+| `LiquidFunStressScene` (~12.2k particles, 3 static bodies) | off | 0.907, 0.868 | 5% |
+| `LiquidFunStressScene` | extrapolate | 0.958, 1.058 | 5-6% |
+| `BallsScene` (9000 dynamic bodies) | off | 1.093, 0.812 | 5-7% |
+| `BallsScene` | interpolate | 1.359, 0.947 | 6-8% |
+| `BallsScene` | extrapolate | 1.198, 0.963 | 6-7% |
+
+**Verdict: small but real cost, not free, and close to the run-to-run noise
+floor at this scale** (the off-mode's own two runs already swing ~0.28ms on
+`BallsScene`, comparable to the ~0.13-0.2ms deltas above). `pre_render` is a
+minor slice of the frame budget in both worst-case scenes either way (5-8%
+Load vs. `physics`/`logic0` at 34-71%), so neither mode changes the
+bottleneck or overall frame time in these scenes. Would matter more in a scene
+where `pre_render` itself is already the bottleneck (many visible entities,
+cheap physics).
+
+### Correction — LiquidFun extrapolation was actually a no-op (2026-08-24)
+
+The above benchmark table is still valid (it measures `pre_render` cost
+regardless of whether the math it runs has any effect), but the particle
+*data* it was operating on was broken: the LiquidFun render SAB gets bound
+via a **third**, independent path beyond the two already covered by
+`tests/node/poseInterpolation.test.js` — `physics_host.impl.js` packs
+`state.liquidFun` (itself correctly bound, vx/vy included) into a plain
+`{sab, byteOffset, length}` descriptor per field and hands it to
+`weedjs_post.js`'s `WEEDJS_INIT` handler, which unpacks each field back into
+a real view via `viewFromDesc()`. Both ends had their own hand-written field
+list; vx/vy were added to the *source* (`bindLiquidFunRenderViews`) but never
+threaded through this pack/unpack round trip, so `weedjs_post.js`'s actual
+`liquidFunViews.vx/vy` stayed `undefined` and the SAB's vx/vy channel that
+`pre_render_worker.js` reads for extrapolation stayed at its zero-initialized
+value forever. `extrapolate` mode ran with `vx=vy=0` for every particle -
+silently doing nothing, indistinguishable from `off` by design, not by bug
+in the blend math itself.
+
+Found via the same real-render-queue-sampling technique as the body
+verification, adapted for particles (`tests/bench/liquidFunPoseInterpolationVerify.mjs`
+- spawns exactly one particle, since LiquidFun render-queue rows always write
+`entityIndex = -1`, so tracking "one particle" any other way is ambiguous):
+
+| Mode | Y spread within each physics interval |
+|---|---|
+| `off` | 0.000px, every group |
+| `extrapolate` (before fix) | 0.000px, every group - identical to `off` |
+| `extrapolate` (after fix) | 7.9-13.3px, every group |
+
+Fixed by adding `vx`/`vy` to both `physics_host.impl.js`'s `initPayload.liquidFunViews`
+pack and `weedjs_post.js`'s unpack. Regression test:
+`tests/node/liquidFunViewsDescriptor.test.js`. 175/175 full suite.
+
 ## Related
 
 - Feature pyramid: [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md), [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md)

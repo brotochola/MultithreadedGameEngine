@@ -446,8 +446,12 @@ function createPhysicsApi(Module) {
     "number",
     "number",
     "number",
+    "number",
+    "number",
   ]);
   const createParticleGroupCircle = wrap("create_particle_group_circle", "number", [
+    "number",
+    "number",
     "number",
     "number",
     "number",
@@ -470,7 +474,7 @@ function createPhysicsApi(Module) {
   const getParticleFlagsByteOffset = wrap("get_particle_flags_byte_offset", "number", []);
   const getParticleXByteOffset = wrap("get_particle_x_byte_offset", "number", []);
   const getParticleYByteOffset = wrap("get_particle_y_byte_offset", "number", []);
-
+  const getParticleAlphaByteOffset = wrap("get_particle_alpha_byte_offset", "number", []);
   const DEFAULT_MATERIAL = Object.freeze({
     density: 1.0,
     friction: 0.3,
@@ -1271,7 +1275,7 @@ function createPhysicsApi(Module) {
       );
     }
 
-    createParticleGroupBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0, strength = 0.5) {
+    createParticleGroupBox(posX, posY, halfWidth, halfHeight, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0) {
       if (!this._particleSystem) this.createParticleSystem();
       return createParticleGroupBox(
         posX - halfWidth,
@@ -1281,12 +1285,14 @@ function createPhysicsApi(Module) {
         spacing,
         flags >>> 0,
         strength,
+        lifetimeMin,
+        lifetimeMax,
       );
     }
 
-    createParticleGroupCircle(posX, posY, radius, spacing = 0, flags = 0, strength = 0.5) {
+    createParticleGroupCircle(posX, posY, radius, spacing = 0, flags = 0, strength = 0.5, lifetimeMin = 0, lifetimeMax = 0) {
       if (!this._particleSystem) this.createParticleSystem();
-      return createParticleGroupCircle(posX, posY, radius, spacing, flags >>> 0, strength);
+      return createParticleGroupCircle(posX, posY, radius, spacing, flags >>> 0, strength, lifetimeMin, lifetimeMax);
     }
 
     destroyParticleGroup(groupId) {
@@ -1328,6 +1334,11 @@ function createPhysicsApi(Module) {
     getParticleYByteOffset() {
       return getParticleYByteOffset();
     }
+
+    getParticleAlphaByteOffset() {
+      return getParticleAlphaByteOffset();
+    }
+
   }
 
   return { PhysicsWorld, BodyHandle, JointHandle };

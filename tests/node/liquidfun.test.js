@@ -172,6 +172,50 @@ test('LiquidFunSystem enqueues SET_LIQUIDFUN_EMIT then create', () => {
   assert.deepEqual(received[6], { type: 'destroyParticleSystem', systemId: 0 });
 });
 
+test('LiquidFunSystem enqueues SET_LIQUIDFUN_LIFESPAN (ms -> sec) only when options.lifespan is set', () => {
+  const sab = createCommandRingSab(64);
+  bindCommandRing(sab);
+  const i32 = new Int32Array(sab);
+  const f32 = new Float32Array(sab);
+
+  LiquidFunSystem.createSystem();
+  // No lifespan option - must not enqueue SET_LIQUIDFUN_LIFESPAN at all.
+  ParticleEmitter.emitLiquidFunParticles({ shape: 'circle', posX: 0, posY: 0, radius: 20 });
+  // lifespan in ms, per ParticleComponent.lifespan's convention.
+  ParticleEmitter.emitLiquidFunParticles({
+    shape: 'circle',
+    posX: 10,
+    posY: 20,
+    radius: 20,
+    lifespan: { min: 100, max: 1000 },
+  });
+
+  const received = [];
+  drainCommandRing(i32, f32, {
+    createParticleSystem() {},
+    setLiquidFunEmit() {
+      received.push({ type: 'setLiquidFunEmit' });
+    },
+    setLiquidFunLifespan(lifetimeMinSec, lifetimeMaxSec) {
+      received.push({ type: 'setLiquidFunLifespan', lifetimeMinSec, lifetimeMaxSec });
+    },
+    createParticleGroupCircle() {
+      received.push({ type: 'createParticleGroupCircle' });
+    },
+  });
+
+  assert.equal(BOX2D_CMD.SET_LIQUIDFUN_LIFESPAN, 14);
+  // First emit: setLiquidFunEmit + createParticleGroupCircle only (no lifespan command).
+  // Second emit: setLiquidFunEmit + setLiquidFunLifespan + createParticleGroupCircle.
+  assert.deepEqual(
+    received.map((r) => r.type),
+    ['setLiquidFunEmit', 'createParticleGroupCircle', 'setLiquidFunEmit', 'setLiquidFunLifespan', 'createParticleGroupCircle'],
+  );
+  const lifespanCmd = received[3];
+  assert.ok(Math.abs(lifespanCmd.lifetimeMinSec - 0.1) < 1e-6, 'min: 100ms -> 0.1s');
+  assert.ok(Math.abs(lifespanCmd.lifetimeMaxSec - 1.0) < 1e-6, 'max: 1000ms -> 1.0s');
+});
+
 test('liquidFun render SAB is not ParticleComponent', () => {
   const n = 16;
   const sab = new SharedArrayBuffer(liquidFunRenderByteSize(n));
@@ -183,7 +227,15 @@ test('liquidFun render SAB is not ParticleComponent', () => {
   views.x[2] = 42;
   views.tint[2] = 0x3399ff;
   assert.equal(views.y[2], 0);
+  // px/py: previous-frame position snapshot feeding preRender.interpolation
+  // 'interpolate' - not the same thing as ParticleComponent's simulation
+  // state, which is why lifespan/flat (CPU-particle-only fields) still must
+  // not exist here (LiquidFun's own age-based destruction is JS-invisible -
+  // it only ever shows up as the particle disappearing + alpha fading).
+  assert.equal(views.px.length, n);
+  assert.equal(views.py.length, n);
   assert.ok(!('vx' in views));
+  assert.ok(!('vy' in views));
   assert.ok(!('lifespan' in views));
   assert.ok(!('flat' in views));
 });

@@ -34,6 +34,7 @@ function resolveEmit(options) {
   if (!textureId && o.texture) {
     textureId = SpriteSheetRegistry.getTextureId(o.texture) | 0;
   }
+  const lifespan = o.lifespan || null;
   return {
     posX: o.posX,
     posY: o.posY,
@@ -46,6 +47,11 @@ function resolveEmit(options) {
     strength: o.strength != null ? o.strength : preset ? preset.strength : 0,
     tint: o.tint != null ? o.tint : preset ? preset.tint : 0,
     textureId,
+    // Google SetParticleDestructionByAge-style age-based destruction, in ms
+    // (matches ParticleComponent.lifespan's convention) - converted to
+    // seconds crossing into the command ring. Omitted => no lifespan (0,0).
+    lifetimeMinSec: lifespan && lifespan.min != null ? lifespan.min * 0.001 : 0,
+    lifetimeMaxSec: lifespan && lifespan.max != null ? lifespan.max * 0.001 : 0,
   };
 }
 
@@ -56,6 +62,9 @@ function enqueueEmitParams(resolved) {
     resolved.tint,
     resolved.textureId,
   );
+  if (resolved.lifetimeMaxSec > 0) {
+    Box2dCommandRing.enqueueSetLiquidFunLifespan(resolved.lifetimeMinSec, resolved.lifetimeMaxSec);
+  }
 }
 
 export class LiquidFunSystem {
@@ -84,6 +93,10 @@ export class LiquidFunSystem {
    * @param {number} [options.tint]
    * @param {number} [options.textureId]
    * @param {string} [options.texture] - Resolved via SpriteSheetRegistry if textureId omitted.
+   * @param {{min: number, max: number}} [options.lifespan] - Age-based destruction in
+   *   milliseconds; each particle independently gets a random lifetime in [min, max],
+   *   then is destroyed (Google SetParticleDestructionByAge-style) and fades its alpha
+   *   to 0 as it approaches expiry. Omitted => particles live forever (default).
    */
   static createParticleBox(options) {
     const r = resolveEmit(options);

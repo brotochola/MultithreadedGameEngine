@@ -20,6 +20,7 @@ export const enqueueExplode = R.enqueueExplode;
 export const enqueueSetSleepThreshold = R.enqueueSetSleepThreshold;
 export const enqueueCreateParticleSystem = R.enqueueCreateParticleSystem;
 export const enqueueSetLiquidFunEmit = R.enqueueSetLiquidFunEmit;
+export const enqueueSetLiquidFunLifespan = R.enqueueSetLiquidFunLifespan;
 export const enqueueCreateParticleGroupBox = R.enqueueCreateParticleGroupBox;
 export const enqueueCreateParticleGroupCircle = R.enqueueCreateParticleGroupCircle;
 export const enqueueDestroyParticleGroup = R.enqueueDestroyParticleGroup;
