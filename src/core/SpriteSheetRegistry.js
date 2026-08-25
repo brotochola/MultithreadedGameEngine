@@ -5,8 +5,10 @@
 import {
   create2dCanvas,
   createCircularGradientCanvas,
+  createMetaballCanvas,
   createBulletTrailCanvas,
   LIGHT_GRADIENT_TEXTURE_RADIUS,
+  METABALL_TEXTURE_RADIUS,
 } from './utils.js';
 import { ASSETS_DEFAULTS } from './ConfigDefaults.js';
 
@@ -1024,6 +1026,25 @@ class SpriteSheetRegistry {
     animations['_lightGradient'] = ['_lightGradient'];
     console.log(
       `  ✅ Generated built-in: _lightGradient (${lightGradientCanvas.width}x${lightGradientCanvas.height})`
+    );
+
+    // Fluid / metaball density splat (64px, alpha = 1 - d²)
+    const metaballCanvas = createMetaballCanvas(METABALL_TEXTURE_RADIUS, 0xffffff);
+    imagesToPack.push({
+      name: '_metaball',
+      sourceImg: metaballCanvas,
+      sourceRect: null,
+      width: metaballCanvas.width,
+      height: metaballCanvas.height,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: metaballCanvas.width,
+      sourceHeight: metaballCanvas.height,
+      isSpritesheetFrame: false,
+    });
+    animations['_metaball'] = ['_metaball'];
+    console.log(
+      `  ✅ Generated built-in: _metaball (${metaballCanvas.width}x${metaballCanvas.height})`
     );
 
     // Bullet trail line (10x1 white with gradient alpha: prev→curr)

@@ -16,15 +16,16 @@ const GF = LIQUIDFUN_GROUP_FLAGS;
 // Keys avoid WASD. Jelly is elastic (a group per burst) so it sprays slower.
 // Ice = rigid+solid particle group (Google groupFlags), not a Box2D body.
 const LIQUID_TOOLS = [
-  { key: 'q', name: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
-  { key: 'e', name: 'oil', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
-  { key: 'r', name: 'cream', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
-  { key: 'f', name: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 10, tint: 0xc6862a },
-  { key: 'g', name: 'jelly', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
-  { key: 't', name: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
+  { key: 'q', name: 'water', layer: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
+  { key: 'e', name: 'oil', layer: 'water', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
+  { key: 'r', name: 'cream', layer: 'water', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
+  { key: 'f', name: 'dulceDeLeche', layer: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 10, tint: 0xc6862a },
+  { key: 'g', name: 'jelly', layer: 'dulceDeLeche', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
+  { key: 't', name: 'sand', layer: 'water', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
   {
     key: 'y',
     name: 'ice',
+    layer: 'water',
     shape: 'box',
     halfWidth: 90,
     halfHeight: 60,
@@ -40,6 +41,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
   static config = {
     worldWidth: 5000,
     worldHeight: 5000,
+    debug: { collectDetailedStats: true },
 
     spatial: {
       cellSize: 128,
@@ -65,7 +67,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       liquidFun: {
         enabled: true,
         radius: 16,
-        maxCount: 65534,
+        maxCount: 20000,
         subSteps: 1,
       },
     },
@@ -76,9 +78,9 @@ export class LiquidFunDemoScene extends WEED.Scene {
     },
 
     preRender: {
-      interpolation: {
-        mode: 'interpolate',
-      },
+      // interpolation: {
+      //   mode: 'interpolate',
+      // },
     },
 
     lighting: {
@@ -89,18 +91,36 @@ export class LiquidFunDemoScene extends WEED.Scene {
       water: {
         zIndex: 4,
         blendMode: BLEND_MODES.NORMAL,
-        resolution: 0.5,
+        resolution: 1,
         maxItems: 65534,
         ySorting: false,
         shader: {
           fragment: 'liquid',
-          containerBlend: BLEND_MODES.ADD,
+          containerBlend: BLEND_MODES.NORMAL,
           uniforms: {
             uCutoff: { value: 0.3, type: 'f32' },
             uFoam: { value: 0.42, type: 'f32' },
-            uDepth: { value: 0.35, type: 'f32' },
-            uBodyAlpha: { value: 0.1, type: 'f32' },
-            uEdgeAlpha: { value: 0.45, type: 'f32' },
+            uDepth: { value: 0.55, type: 'f32' },
+            uBodyAlpha: { value: 0.4, type: 'f32' },
+            uEdgeAlpha: { value: 0.65, type: 'f32' },
+          },
+        },
+      },
+      dulceDeLeche: {
+        zIndex: 5,
+        blendMode: BLEND_MODES.NORMAL,
+        resolution: 1,
+        maxItems: 65534,
+        ySorting: false,
+        shader: {
+          fragment: 'dulceDeLeche',
+          containerBlend: BLEND_MODES.NORMAL,
+          uniforms: {
+            uCutoff: { value: 0.28, type: 'f32' },
+            uRim: { value: 0.4, type: 'f32' },
+            uDepth: { value: 0.5, type: 'f32' },
+            uBodyAlpha: { value: 0.85, type: 'f32' },
+            uEdgeAlpha: { value: 0.7, type: 'f32' },
           },
         },
       },
@@ -114,6 +134,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
     },
     shaders: {
       liquid: '/demos/shaders/liquid.frag',
+      dulceDeLeche: '/demos/shaders/dulceDeLeche.frag',
     },
   };
 
@@ -198,7 +219,8 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   spawnParticleGroups() {
-    const sprite = { texture: '_lightGradient', layerId: Layer.getId('water'), scale: 5, alpha: 0.25 };
+    const waterSprite = { texture: '_metaball', layerId: Layer.getId('water'), scale: 1, alpha: 0.25 };
+    const dulceSprite = { texture: '_metaball', layerId: Layer.getId('dulceDeLeche'), scale: 1, alpha: 0.25 };
     LiquidFun.emit({
       flags: F.VISCOUS,
       viscousScale: 1,
@@ -207,7 +229,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posX: 1600,
       posY: 500,
       radius: 120,
-      ...sprite,
+      ...waterSprite,
     });
     LiquidFun.emit({
       flags: F.VISCOUS | F.TENSILE,
@@ -218,7 +240,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posY: 500,
       radius: 400,
       trackGroup: true,
-      ...sprite,
+      ...dulceSprite,
     });
     LiquidFun.emit({
       flags: F.WATER,
@@ -229,7 +251,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posY: 200,
       halfWidth: 120,
       halfHeight: 80,
-      ...sprite,
+      ...waterSprite,
     });
   }
 
@@ -289,10 +311,10 @@ export class LiquidFunDemoScene extends WEED.Scene {
       shape: tool.shape,
       posX: Mouse.x,
       posY: Mouse.y,
-      texture: '_lightGradient',
-      layerId: Layer.getId('water'),
-      scale: 5,
-      alpha: 0.25,
+      texture: '_metaball',
+      layerId: Layer.getId(tool.layer || 'water'),
+      scale: 1,
+      alpha: 0.15,
     };
     if (tool.shape === 'box') {
       emit.halfWidth = tool.halfWidth;

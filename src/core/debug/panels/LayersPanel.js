@@ -14,6 +14,7 @@ export class LayersPanel {
       layerUniformInputs: {},
     };
     this.panel = null;
+    this._shaderOptionsSynced = false;
   }
 
   // ------- DOM creation -------
@@ -31,11 +32,18 @@ export class LayersPanel {
   // ------- lifecycle -------
 
   attach() {
+    this._shaderOptionsSynced = false;
     this._updateLayersAvailability();
   }
 
   update() {
     this._updateLayersSection();
+    // Shader assets may finish loading after first attach — refresh options once ready.
+    const sources = this.debugUI.scene?._loadedShaderSources;
+    if (sources && !this._shaderOptionsSynced) {
+      this._updateLayersAvailability();
+      if (Object.keys(sources).length > 0) this._shaderOptionsSynced = true;
+    }
   }
 
   // ------- layer row -------
@@ -95,13 +103,14 @@ export class LayersPanel {
     alphaCont.appendChild(alphaSlider); alphaCont.appendChild(alphaVal);
     row.appendChild(alphaCont);
 
-    // Shader
+    // Shader (custom layers only — runtime swap / none for live testing)
     const shaderCont = document.createElement('div'); shaderCont.style.cssText = cellStyle;
     const shaderLbl = document.createElement('span'); shaderLbl.style.cssText = lblStyle; shaderLbl.textContent = 'Shader:';
     shaderCont.appendChild(shaderLbl);
     const shaderSelect = document.createElement('select'); shaderSelect.style.cssText = selectStyle; shaderSelect.disabled = true;
     const noneOpt = document.createElement('option'); noneOpt.value = ''; noneOpt.textContent = '(none)';
     shaderSelect.appendChild(noneOpt);
+    shaderSelect.onchange = () => this._setLayerShader(layerName, shaderSelect.value);
     shaderCont.appendChild(shaderSelect);
     row.appendChild(shaderCont);
 
@@ -310,18 +319,17 @@ export class LayersPanel {
       controls.blendMode.disabled = !isAvailable;
       controls.zIndex.disabled = !isAvailable;
 
-      const shaderSelect = controls.shader;
-      if (shaderSelect && shaderNames.length > 0 && shaderSelect.options.length <= 1) {
-        for (const name of shaderNames) {
-          const opt = document.createElement('option'); opt.value = name; opt.textContent = name;
-          shaderSelect.appendChild(opt);
-        }
-      }
-
       const layer = Layer.initialized ? Layer.get(layerName) : null;
+      const canEditShader = !!(isAvailable && layer && !layer.builtIn && layer.hasRenderQueue);
+      const shaderSelect = controls.shader;
+      shaderSelect.disabled = !canEditShader;
+      this._syncShaderOptions(shaderSelect, shaderNames);
+
       if (layer) {
         const meta = Layer._metadata?.layers?.[layer.id];
-        if (meta?.shaderName) shaderSelect.value = meta.shaderName;
+        if (document.activeElement !== shaderSelect) {
+          shaderSelect.value = meta?.shaderName || '';
+        }
         controls.ySorting.checked = layer.ySorting;
         controls.resolution.textContent = layer.resolution.toFixed(3) + 'x';
         if (document.activeElement !== controls.alpha) {
@@ -332,6 +340,35 @@ export class LayersPanel {
         if (layer.hasShader) controls.containerBlend.value = Layer._BLEND_MODE_STRINGS[Layer._containerBlendId[layer.id]] || 'normal';
       }
     }
+  }
+
+  _syncShaderOptions(shaderSelect, shaderNames) {
+    if (!shaderSelect) return;
+    const prev = shaderSelect.value;
+    const expected = 1 + shaderNames.length;
+    let needsRebuild = shaderSelect.options.length !== expected;
+    if (!needsRebuild) {
+      for (let i = 0; i < shaderNames.length; i++) {
+        if (shaderSelect.options[i + 1]?.value !== shaderNames[i]) {
+          needsRebuild = true;
+          break;
+        }
+      }
+    }
+    if (!needsRebuild) return;
+
+    shaderSelect.innerHTML = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '(none)';
+    shaderSelect.appendChild(noneOpt);
+    for (let i = 0; i < shaderNames.length; i++) {
+      const opt = document.createElement('option');
+      opt.value = shaderNames[i];
+      opt.textContent = shaderNames[i];
+      shaderSelect.appendChild(opt);
+    }
+    shaderSelect.value = prev;
   }
 
   _getAvailableLayers(config) {
@@ -353,6 +390,39 @@ export class LayersPanel {
     const msg = { msg: 'setLayerProps', layer };
     msg[prop] = value;
     scene.workers.renderer.postMessage(msg);
+  }
+
+  _setLayerShader(layerName, shaderName) {
+    const scene = this.debugUI.scene;
+    if (!scene?.workers?.renderer) return;
+    const layer = Layer.get(layerName);
+    if (!layer || layer.builtIn || !layer.hasRenderQueue) return;
+
+    const name = shaderName || '';
+    const source = name ? scene._loadedShaderSources?.[name] : null;
+    if (name && !source) {
+      console.warn(`LayersPanel: shader "${name}" not loaded`);
+      return;
+    }
+
+    const meta = Layer._metadata?.layers?.[layer.id];
+    if (meta) {
+      meta.shaderName = name || null;
+      meta.shaderFragment = source || null;
+      // Keep hasShader / uniforms UI — (none) is RT bypass, not "no layer shader pipeline".
+      if (source) meta.hasShader = true;
+    }
+    if (source && Layer._hasShader) Layer._hasShader[layer.id] = 1;
+
+    scene.workers.renderer.postMessage({
+      msg: 'setLayerProps',
+      layer: layerName,
+      shader: name,
+      shaderFragment: source || null,
+    });
+
+    const block = this.elements.layerDetails[layerName];
+    if (block && block.style.display !== 'none') this._populateLayerUniforms(layerName);
   }
 
   _buildBlendSelect(style, modes) {

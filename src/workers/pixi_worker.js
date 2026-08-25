@@ -2405,10 +2405,14 @@ UPDATE LIGHTING (NO ZOOM SCALING)
 
   /**
    * Handle layer property changes from debug UI
-   * @param {Object} data - { layer: string, visible: boolean, blendMode: string, zIndex: number }
+   * @param {Object} data - { layer, visible, blendMode, containerBlendMode, zIndex, shader, shaderFragment }
    */
   handleSetLayerProps(data) {
-    const { layer, visible, blendMode, containerBlendMode, zIndex } = data;
+    const { layer, visible, blendMode, containerBlendMode, zIndex, shader, shaderFragment } = data;
+
+    if (shader !== undefined || shaderFragment !== undefined) {
+      this._setCustomLayerShader(layer, shaderFragment || null, shader || null);
+    }
 
     const displayObject = this.layerRefs?.[layer];
     if (!displayObject) {
@@ -2436,6 +2440,144 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     if (zIndex !== undefined) {
       displayObject.zIndex = zIndex;
       this.pixiApp.stage.sortChildren();
+    }
+  }
+
+  _buildCustomLayerUniformDefs(layerId, uniformMap, uniformTypes) {
+    const uniformDefs = {};
+    if (!uniformMap) return uniformDefs;
+    const floats = Layer._uniformFloats[layerId];
+    for (const [uName, entry] of Object.entries(uniformMap)) {
+      const uType = uniformTypes?.[uName] || 'f32';
+      if (entry.size === 1) {
+        uniformDefs[uName] = { value: floats ? floats[entry.offset] : 0, type: uType };
+      } else {
+        const arr = new Float32Array(entry.size);
+        if (floats) {
+          for (let k = 0; k < entry.size; k++) arr[k] = floats[entry.offset + k];
+        }
+        uniformDefs[uName] = { value: arr, type: uType };
+      }
+    }
+    return uniformDefs;
+  }
+
+  _createLayerFullscreenGeometry() {
+    return new Geometry({
+      attributes: {
+        aPosition: { buffer: new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]), format: 'float32x2' },
+        aUV: { buffer: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), format: 'float32x2' },
+      },
+      indexBuffer: new Uint16Array([0, 1, 2, 0, 2, 3]),
+    });
+  }
+
+  _destroyCustomLayerPostProcess(cl) {
+    if (!cl) return;
+    if (cl.shaderMesh) {
+      cl.shaderMesh.destroy(true);
+      cl.shaderMesh = null;
+    }
+    cl.shader = null;
+    cl.uniformStore = null;
+  }
+
+  _ensureCustomLayerDensityRT(cl) {
+    const resolution = cl.resolution || 1.0;
+    const w = this.canvasWidth * resolution;
+    const h = this.canvasHeight * resolution;
+    if (cl.batch?.mesh?.parent) cl.batch.mesh.parent.removeChild(cl.batch.mesh);
+    if (!cl.rt) cl.rt = PIXI.RenderTexture.create({ width: w, height: h });
+    if (!cl.rtOut) cl.rtOut = PIXI.RenderTexture.create({ width: w, height: h });
+    if (!cl.displaySprite) {
+      cl.displaySprite = new PIXI.Sprite(cl.rtOut);
+      cl.displaySprite.anchor.set(0, 0);
+      cl.displaySprite.position.set(0, 0);
+      cl.displaySprite.scale.set(1.0 / resolution);
+      this.pixiApp.stage.addChild(cl.displaySprite);
+    } else {
+      cl.displaySprite.scale.set(1.0 / resolution);
+      if (!cl.displaySprite.parent) this.pixiApp.stage.addChild(cl.displaySprite);
+    }
+  }
+
+  /**
+   * Live-swap custom layer fragment, or bypass post-process (shader=null).
+   * Bypass keeps density RT at layer resolution and shows raw accumulation —
+   * avoids dumping tens of thousands of sprites onto the full-res stage.
+   */
+  _setCustomLayerShader(layerName, fragmentSource, shaderName) {
+    const layerObj = Layer.get(layerName);
+    if (!layerObj || layerObj.builtIn) return;
+    const cl = this._customLayers[layerObj.id];
+    if (!cl?.batch) return;
+
+    const meta = Layer._metadata?.layers?.[layerObj.id];
+    if (meta) {
+      meta.shaderName = shaderName || null;
+      meta.shaderFragment = fragmentSource || null;
+    }
+
+    const resolution = cl.resolution || 1.0;
+
+    // (none): keep half-res density RT, skip fullscreen frag, show raw cl.rt
+    if (!fragmentSource) {
+      if (!cl.rt) this._ensureCustomLayerDensityRT(cl);
+      this._destroyCustomLayerPostProcess(cl);
+      cl.shaderBypass = true;
+      if (cl.displaySprite && cl.rt) {
+        cl.displaySprite.texture = cl.rt;
+        cl.displaySprite.scale.set(1.0 / resolution);
+      }
+      this._registerLayerDisplayObject(layerName, cl.displaySprite);
+      this.pixiApp.stage.sortChildren();
+      this._syncLayerRefsFromRuntime();
+      return;
+    }
+
+    cl.shaderBypass = false;
+    this._ensureCustomLayerDensityRT(cl);
+    this._destroyCustomLayerPostProcess(cl);
+
+    if (meta) meta.hasShader = true;
+    if (Layer._hasShader) Layer._hasShader[layerObj.id] = 1;
+
+    const uniformMap = meta?.uniformMap || null;
+    const uniformTypes = meta?.uniformTypes || null;
+    cl.uniformEntries = uniformMap ? Object.entries(uniformMap) : null;
+    const uniformDefs = this._buildCustomLayerUniformDefs(cl.layerId, uniformMap, uniformTypes);
+
+    try {
+      cl.shader = new Shader({
+        glProgram: GlProgram.from({
+          vertex: PixiRenderer.FULLSCREEN_VERTEX,
+          fragment: fragmentSource,
+        }),
+        resources: {
+          uTexture: cl.rt.source,
+          customUniforms: uniformDefs,
+        },
+      });
+      cl.uniformStore = cl.shader.resources?.customUniforms?.uniforms || null;
+      cl.shaderMesh = new Mesh({ geometry: this._createLayerFullscreenGeometry(), shader: cl.shader });
+    } catch (err) {
+      console.error(`PIXI WORKER: Failed to apply shader "${shaderName}" on layer "${layerName}":`, err);
+      cl.shaderBypass = true;
+      if (cl.displaySprite && cl.rt) cl.displaySprite.texture = cl.rt;
+      this._registerLayerDisplayObject(layerName, cl.displaySprite);
+      this.pixiApp.stage.sortChildren();
+      this._syncLayerRefsFromRuntime();
+      return;
+    }
+
+    cl.displaySprite.texture = cl.rtOut;
+    cl.displaySprite.scale.set(1.0 / resolution);
+    this._registerLayerDisplayObject(layerName, cl.displaySprite);
+    this.pixiApp.stage.sortChildren();
+    this._syncLayerRefsFromRuntime();
+
+    if (Layer._uniformDirty?.[cl.layerId]) {
+      Atomics.store(Layer._uniformDirty[cl.layerId], 0, 1);
     }
   }
 
@@ -2485,7 +2627,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
 
     if (cl.displaySprite) {
-      cl.displaySprite.texture = cl.rtOut || cl.rt;
+      cl.displaySprite.texture = (cl.shaderBypass || !cl.rtOut) ? cl.rt : cl.rtOut;
       cl.displaySprite.scale.set(1.0 / resolution);
     }
   }
@@ -3328,6 +3470,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         displaySprite: null,
         uniformEntries: config.uniformMap ? Object.entries(config.uniformMap) : null,
         uniformStore: null,
+        shaderBypass: false,
       };
 
       if (hasShader && config.shaderFragment) {
@@ -3469,9 +3612,10 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       // Two-pass shader pipeline for shader layers:
       // 1. Render instanced Mesh (container-blend accumulation) → raw density RT
       // 2. Render fullscreen Mesh (threshold shader reads raw RT) → processed RT
+      // Bypass (debug UI "(none)"): skip pass 2, displaySprite shows cl.rt directly.
       if (cl.rt) {
         this.pixiApp.renderer.render({ container: cl.batch.mesh, target: cl.rt, clear: true });
-        if (cl.shaderMesh && cl.rtOut) {
+        if (!cl.shaderBypass && cl.shaderMesh && cl.rtOut) {
           this.pixiApp.renderer.render({ container: cl.shaderMesh, target: cl.rtOut, clear: true });
         }
       }

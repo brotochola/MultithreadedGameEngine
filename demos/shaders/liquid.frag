@@ -20,9 +20,11 @@ void main() {
         return;
     }
 
-    // Soft depth: lighter near the foam band, slightly darker in the dense core.
+    // Soft depth: bright cyan near foam, deep navy in dense core.
     float depth = smoothstep(uFoam, uFoam + max(uDepth, 0.001), dens);
-    vec3 col = mix(sample.rgb * 1.12, sample.rgb * 0.72, depth);
+    vec3 edgeCol = sample.rgb * vec3(0.85, 1.05, 1.35);
+    vec3 coreCol = sample.rgb * vec3(0.35, 0.55, 1.05);
+    vec3 col = mix(edgeCol, coreCol, depth);
     float a = mix(uEdgeAlpha, uBodyAlpha, depth);
 
     gl_FragColor = vec4(col, a);

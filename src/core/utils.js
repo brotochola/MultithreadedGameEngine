@@ -205,6 +205,8 @@ export function calculateCameraScreenBounds(
 }
 
 export const LIGHT_GRADIENT_TEXTURE_RADIUS = 100;
+/** Soft-disk for fluid / metaball density splat (smaller than light glow). */
+export const METABALL_TEXTURE_RADIUS = 32;
 /** World radius = sqrtIntensity * this. Used by lighting + shadow culls. */
 export const LIGHT_INFLUENCE_RADIUS_SCALE = 10;
 
@@ -1100,6 +1102,52 @@ export function createCircularGradientCanvas(radius = LIGHT_GRADIENT_TEXTURE_RAD
   ctx.arc(radius, radius, radius, 0, Math.PI * 2);
   ctx.fill();
 
+  return canvas;
+}
+
+/**
+ * Soft-disk RGBA into an existing ImageData buffer (length size*size*4).
+ * Alpha = max(0, 1 - d²), d = distance from center / radius.
+ */
+export function fillMetaballRgba(data, size, radius, color = 0xffffff) {
+  const r = (color >> 16) & 255;
+  const g = (color >> 8) & 255;
+  const b = color & 255;
+  const cx = radius - 0.5;
+  const cy = radius - 0.5;
+  const invR = 1 / radius;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x - cx) * invR;
+      const dy = (y - cy) * invR;
+      const d2 = dx * dx + dy * dy;
+      const a = d2 >= 1 ? 0 : 1 - d2;
+      const i = (y * size + x) * 4;
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+      data[i + 3] = (a * 255 + 0.5) | 0;
+    }
+  }
+}
+
+/**
+ * Soft disk for fluid / metaball accumulation. Alpha = max(0, 1 - d²)
+ * where d is distance from center normalized to [0, 1] by radius.
+ *
+ * @param {number} [radius=METABALL_TEXTURE_RADIUS]
+ * @param {number} [color=0xffffff] 0xRRGGBB
+ * @returns {HTMLCanvasElement|OffscreenCanvas}
+ */
+export function createMetaballCanvas(radius = METABALL_TEXTURE_RADIUS, color = 0xffffff) {
+  radius = Math.max(1, Math.round(radius));
+  const size = radius * 2;
+  const canvas = create2dCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  fillMetaballRgba(img.data, size, radius, color);
+  ctx.putImageData(img, 0, 0);
   return canvas;
 }
 
