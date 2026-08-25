@@ -32,6 +32,8 @@ import {
   LIGHTING_DEFAULTS,
   ShapeType,
   MAX_POLYGON_VERTICES,
+  LAYER_DENSITY_SOURCE,
+  LAYER_SCALE_MODE,
 } from '../core/ConfigDefaults.js';
 import {
   writeOrientedBoxVerts,
@@ -56,6 +58,8 @@ import {
   LIGHT_DATA_TEX_HEIGHT,
 } from '../core/utils.js';
 import { InstancedSpriteBatch, buildTextureLut } from './InstancedSpriteBatch.js';
+import { LiquidFunDensitySplat } from './LiquidFunDensitySplat.js';
+import { LiquidFun } from '../core/LiquidFun.js';
 
 // OPTIMIZED: Pre-defined comparator function for light sorting (avoids closure allocation per frame)
 function sortByDistSq(a, b) {
@@ -812,7 +816,8 @@ class PixiRenderer extends AbstractWorker {
 
         // Custom layer queues also swap with the same frame
         for (let i = 0; i < this._customLayerList.length; i++) {
-          this._customLayerList[i].readRef = this._customLayerList[i].buffers[readBufferIdx];
+          const cl = this._customLayerList[i];
+          if (cl.buffers) cl.readRef = cl.buffers[readBufferIdx];
         }
 
         // Signal that we've consumed this frame
@@ -2390,6 +2395,13 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       if (data.commandSab) {
         bindCommandRing(data.commandSab);
       }
+      if (data.liquidFunHeap) {
+        LiquidFun.bindHeapPose(data.liquidFunHeap);
+      }
+      return;
+    }
+    if (msg === 'liquidFunHeap' && data.liquidFunHeap) {
+      LiquidFun.bindHeapPose(data.liquidFunHeap);
       return;
     }
     console.log(`PIXI WORKER: handleCustomMessage called with msg: ${msg}`);
@@ -2408,22 +2420,22 @@ UPDATE LIGHTING (NO ZOOM SCALING)
    * @param {Object} data - { layer, visible, blendMode, containerBlendMode, zIndex, shader, shaderFragment }
    */
   handleSetLayerProps(data) {
-    const { layer, visible, blendMode, containerBlendMode, zIndex, shader, shaderFragment } = data;
+    const { layer, visible, blendMode, containerBlendMode, zIndex, shader, shaderFragment, splatRadius } = data;
 
     if (shader !== undefined || shaderFragment !== undefined) {
       this._setCustomLayerShader(layer, shaderFragment || null, shader || null);
     }
 
     const displayObject = this.layerRefs?.[layer];
-    if (!displayObject) {
+    if (!displayObject && splatRadius === undefined) {
       return;
     }
 
-    if (visible !== undefined) {
+    if (visible !== undefined && displayObject) {
       displayObject.visible = visible;
     }
 
-    if (blendMode !== undefined) {
+    if (blendMode !== undefined && displayObject) {
       displayObject.blendMode = blendMode;
     }
 
@@ -2434,10 +2446,24 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         if (cl?.batch?.mesh) {
           cl.batch.mesh.blendMode = containerBlendMode;
         }
+        if (cl?.splatBatch?.mesh) {
+          cl.splatBatch.mesh.blendMode = containerBlendMode;
+        }
       }
     }
 
-    if (zIndex !== undefined) {
+    if (splatRadius !== undefined) {
+      const layerObj = Layer.get(layer);
+      if (layerObj) {
+        const cl = this._customLayers[layerObj.id];
+        if (cl && splatRadius > 0) {
+          cl.splatRadius = splatRadius;
+          if (cl.splat) cl.splat.radius = splatRadius;
+        }
+      }
+    }
+
+    if (zIndex !== undefined && displayObject) {
       displayObject.zIndex = zIndex;
       this.pixiApp.stage.sortChildren();
     }
@@ -2482,6 +2508,24 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     cl.uniformStore = null;
   }
 
+  /**
+   * Pixi v8 TextureSource.scaleMode for RT upsample (LINEAR soft / NEAREST blocky).
+   * @param {import('../lib/pixi_8.16_.min.js').RenderTexture|null|undefined} rt
+   * @param {string} mode
+   */
+  _setRtScaleMode(rt, mode) {
+    if (!rt?.source) return;
+    const scaleMode = mode === LAYER_SCALE_MODE.NEAREST ? LAYER_SCALE_MODE.NEAREST : LAYER_SCALE_MODE.LINEAR;
+    rt.source.scaleMode = scaleMode;
+  }
+
+  _applyCustomLayerScaleMode(cl) {
+    if (!cl) return;
+    const mode = cl.scaleMode || LAYER_SCALE_MODE.LINEAR;
+    this._setRtScaleMode(cl.rt, mode);
+    this._setRtScaleMode(cl.rtOut, mode);
+  }
+
   _ensureCustomLayerDensityRT(cl) {
     const resolution = cl.resolution || 1.0;
     const w = this.canvasWidth * resolution;
@@ -2489,6 +2533,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     if (cl.batch?.mesh?.parent) cl.batch.mesh.parent.removeChild(cl.batch.mesh);
     if (!cl.rt) cl.rt = PIXI.RenderTexture.create({ width: w, height: h });
     if (!cl.rtOut) cl.rtOut = PIXI.RenderTexture.create({ width: w, height: h });
+    this._applyCustomLayerScaleMode(cl);
     if (!cl.displaySprite) {
       cl.displaySprite = new PIXI.Sprite(cl.rtOut);
       cl.displaySprite.anchor.set(0, 0);
@@ -2510,7 +2555,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     const layerObj = Layer.get(layerName);
     if (!layerObj || layerObj.builtIn) return;
     const cl = this._customLayers[layerObj.id];
-    if (!cl?.batch) return;
+    if (!cl || (!cl.batch && !cl.splatBatch)) return;
 
     const meta = Layer._metadata?.layers?.[layerObj.id];
     if (meta) {
@@ -2625,6 +2670,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       cl.rtOut.destroy(true);
       cl.rtOut = PIXI.RenderTexture.create({ width: lw, height: lh });
     }
+
+    this._applyCustomLayerScaleMode(cl);
 
     if (cl.displaySprite) {
       cl.displaySprite.texture = (cl.shaderBypass || !cl.rtOut) ? cl.rt : cl.rtOut;
@@ -3414,42 +3461,65 @@ UPDATE LIGHTING (NO ZOOM SCALING)
    * is picked up next frame with zero postMessage overhead.
    */
   initializeCustomLayers(data) {
-    if (!data.customLayerRenderQueues || !data.layerData) return;
+    if (!data.layerData) return;
 
     const metadata = data.layerData.metadata;
     if (!metadata?.layers) return;
 
+    const queues = data.customLayerRenderQueues || {};
+    const lfMax =
+      (data.liquidFunMaxCount | 0) ||
+      (this.config?.physics?.liquidFun?.maxCount | 0) ||
+      10000;
+
     const layerMetas = metadata.layers;
     for (let mi = 0; mi < layerMetas.length; mi++) {
       const config = layerMetas[mi];
-      if (!config || config.builtIn || !config.hasRenderQueue || config.id === metadata.entitiesId) continue;
+      if (!config || config.builtIn || config.id === metadata.entitiesId) continue;
+
+      const isLfDensity = config.densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN;
+      if (!config.hasRenderQueue && !isLfDensity) continue;
+
       const layerId = config.id;
       const layerName = config.name;
-      const lrq = data.customLayerRenderQueues[layerId];
-      if (!lrq) continue;
+      const lrq = queues[layerId];
+      if (!isLfDensity && !lrq) continue;
 
       const layerObj = Layer.getById(layerId);
       if (!layerObj) continue;
 
-      const maxItems = lrq.maxItems;
+      const maxItems = lrq?.maxItems || 0;
       const resolution = layerObj.resolution;
       const hasShader = layerObj.hasShader;
-
-      const buffers = [
-        createRenderQueueViews(lrq.dataA, maxItems),
-        createRenderQueueViews(lrq.dataB, maxItems),
-      ];
-
-      // Instanced Mesh batch for this layer (replaces per-sprite ParticleContainer)
       const containerBlend = layerObj.containerBlendMode;
       const layerYSort = !!layerObj.ySorting;
-      const batch = new InstancedSpriteBatch({
-        capacity: maxItems,
-        label: `custom-layer-${layerName}`,
-        atlasSource: this._resolveAtlasSource(),
-        depthTest: layerYSort,
-      });
-      batch.mesh.blendMode = containerBlend;
+      const splatCfg = config.splat || Layer._normalizeSplat({ splat: {} }, LAYER_DENSITY_SOURCE.LIQUID_FUN);
+
+      let buffers = null;
+      let batch = null;
+      if (lrq && maxItems > 0) {
+        buffers = [
+          createRenderQueueViews(lrq.dataA, maxItems),
+          createRenderQueueViews(lrq.dataB, maxItems),
+        ];
+        batch = new InstancedSpriteBatch({
+          capacity: maxItems,
+          label: `custom-layer-${layerName}`,
+          atlasSource: this._resolveAtlasSource(),
+          depthTest: layerYSort,
+        });
+        batch.mesh.blendMode = containerBlend;
+      }
+
+      let splatBatch = null;
+      if (isLfDensity) {
+        splatBatch = new LiquidFunDensitySplat({
+          capacity: Math.max(1, lfMax),
+          label: `lf-splat-${layerName}`,
+          blendMode: containerBlend,
+        });
+        splatBatch.mesh.blendMode = containerBlend;
+      }
 
       const cl = {
         layerId,
@@ -3459,14 +3529,19 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         baseResolution: resolution,
         resolution,
         buffers,
-        readRef: buffers[0],
+        readRef: buffers ? buffers[0] : null,
         prevCount: 0,
         batch,
+        splatBatch,
+        densitySource: isLfDensity ? LAYER_DENSITY_SOURCE.LIQUID_FUN : LAYER_DENSITY_SOURCE.SPRITES,
+        splat: splatCfg ? { ...splatCfg } : null,
+        splatRadius: splatCfg?.radius ?? 48,
+        scaleMode: Layer._normalizeScaleMode(config.scaleMode),
         containerBlend,
-        rt: null,          // Raw density RT (additive blend output)
-        rtOut: null,        // Post-processed RT (after threshold shader)
-        shaderMesh: null,   // Fullscreen quad Mesh with custom shader
-        shader: null,       // Shader instance for uniform updates
+        rt: null,
+        rtOut: null,
+        shaderMesh: null,
+        shader: null,
         displaySprite: null,
         uniformEntries: config.uniformMap ? Object.entries(config.uniformMap) : null,
         uniformStore: null,
@@ -3477,11 +3552,10 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         const w = this.canvasWidth * resolution;
         const h = this.canvasHeight * resolution;
 
-        // Two RTs: raw (density accumulation via instanced Mesh) and processed (after shader)
         cl.rt = PIXI.RenderTexture.create({ width: w, height: h });
         cl.rtOut = PIXI.RenderTexture.create({ width: w, height: h });
+        this._applyCustomLayerScaleMode(cl);
 
-        // Build fullscreen quad geometry (NDC -1..1 mapped to UV 0..1)
         const geometry = new Geometry({
           attributes: {
             aPosition: { buffer: new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]), format: 'float32x2' },
@@ -3490,7 +3564,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           indexBuffer: new Uint16Array([0, 1, 2, 0, 2, 3]),
         });
 
-        // Build uniform resources from the layer's SAB initial values
         const uniformDefs = {};
         if (config.uniformMap) {
           for (const [uName, entry] of Object.entries(config.uniformMap)) {
@@ -3524,7 +3597,6 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           console.error(`PIXI WORKER: Failed to compile shader for layer "${layerName}":`, err);
         }
 
-        // Display sprite shows the post-processed RT on the main stage
         cl.displaySprite = new PIXI.Sprite(cl.rtOut);
         cl.displaySprite.anchor.set(0, 0);
         cl.displaySprite.position.set(0, 0);
@@ -3532,18 +3604,22 @@ UPDATE LIGHTING (NO ZOOM SCALING)
         this._registerLayerDisplayObject(layerName, cl.displaySprite);
 
         this.pixiApp.stage.addChild(cl.displaySprite);
-        console.log(`PIXI WORKER: Custom shader layer "${layerName}" initialized (resolution=${resolution}, RT=${w}x${h})`);
-      } else {
-        // Non-shader layer: instanced Mesh goes directly on stage (world-space, container blend)
+        const densLabel = isLfDensity ? ', densitySource=liquidFun' : '';
+        console.log(
+          `PIXI WORKER: Custom shader layer "${layerName}" initialized (resolution=${resolution}, RT=${w}x${h}${densLabel})`
+        );
+      } else if (batch) {
         this._registerLayerDisplayObject(layerName, batch.mesh, true);
         this.pixiApp.stage.addChild(batch.mesh);
         console.log(`PIXI WORKER: Custom layer "${layerName}" initialized (no shader)`);
+      } else {
+        console.warn(`PIXI WORKER: Layer "${layerName}" skipped (no shader RT and no sprite batch)`);
+        continue;
       }
 
       this._customLayers[layerId] = cl;
     }
 
-    // Cache the list once -- layers never change at runtime
     this._customLayerList = Object.values(this._customLayers);
 
     if (this._customLayerList.length > 0) {
@@ -3559,69 +3635,88 @@ UPDATE LIGHTING (NO ZOOM SCALING)
   updateCustomLayers() {
     for (let li = 0; li < this._customLayerList.length; li++) {
       const cl = this._customLayerList[li];
-      const ref = cl.readRef;
-      if (!ref) continue;
-
-      const count = ref.count[0];
-      cl.prevCount = count;
       const renderToRT = !!cl.rt;
-      const useSortKey = !!(cl.ySorting && ref.sortKey);
-      const uploadBase = {
-        depthMode: useSortKey ? 'sortKey' : 'index',
-        depthDenom: cl.maxItems,
-        worldHeight: this.config?.worldHeight || 10000,
-        sortKey: useSortKey ? ref.sortKey : null,
-        texLut: this._texLut,
-        texLutCount: this._texLutCount,
-        textures: this.flatTextures,
-        type: ref.type,
-      };
+      let densityMesh = null;
 
-      cl.batch.upload(
-        {
-          count,
-          x: ref.x,
-          y: ref.y,
-          scaleX: ref.scaleX,
-          scaleY: ref.scaleY,
-          rotC: ref.rotC,
-          rotS: ref.rotS,
-          alpha: ref.alpha,
-          tint: ref.tint,
-          textureId: ref.textureId,
-          anchorX: ref.anchorX,
-          anchorY: ref.anchorY,
-          repeatX: ref.repeatX,
-          repeatY: ref.repeatY,
-        },
-        renderToRT
-          ? {
-            space: 'screen',
-            zoom: this._renderZoom,
-            cameraX: this._renderCameraX,
-            cameraY: this._renderCameraY,
-            resolution: cl.resolution || 1.0,
-            ...uploadBase,
-          }
-          : {
-            space: 'world',
-            ...uploadBase,
-          }
-      );
+      if (cl.densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN && cl.splatBatch) {
+        const views = LiquidFun.getViews();
+        cl.splatBatch.upload(views, {
+          layerId: cl.layerId,
+          zoom: this._renderZoom,
+          cameraX: this._renderCameraX,
+          cameraY: this._renderCameraY,
+          resolution: cl.resolution || 1.0,
+          radius: cl.splatRadius || cl.splat?.radius || 48,
+          intensity: cl.splat?.intensity ?? 1,
+          useParticleTint: cl.splat?.useParticleTint !== false,
+          canvasW: this.canvasWidth,
+          canvasH: this.canvasHeight,
+        });
+        densityMesh = cl.splatBatch.mesh;
+        cl.prevCount = views?.count ? views.count[0] | 0 : 0;
+      } else if (cl.batch && cl.readRef) {
+        const ref = cl.readRef;
+        const count = ref.count[0];
+        cl.prevCount = count;
+        const useSortKey = !!(cl.ySorting && ref.sortKey);
+        const uploadBase = {
+          depthMode: useSortKey ? 'sortKey' : 'index',
+          depthDenom: cl.maxItems,
+          worldHeight: this.config?.worldHeight || 10000,
+          sortKey: useSortKey ? ref.sortKey : null,
+          texLut: this._texLut,
+          texLutCount: this._texLutCount,
+          textures: this.flatTextures,
+          type: ref.type,
+        };
+
+        cl.batch.upload(
+          {
+            count,
+            x: ref.x,
+            y: ref.y,
+            scaleX: ref.scaleX,
+            scaleY: ref.scaleY,
+            rotC: ref.rotC,
+            rotS: ref.rotS,
+            alpha: ref.alpha,
+            tint: ref.tint,
+            textureId: ref.textureId,
+            anchorX: ref.anchorX,
+            anchorY: ref.anchorY,
+            repeatX: ref.repeatX,
+            repeatY: ref.repeatY,
+          },
+          renderToRT
+            ? {
+              space: 'screen',
+              zoom: this._renderZoom,
+              cameraX: this._renderCameraX,
+              cameraY: this._renderCameraY,
+              resolution: cl.resolution || 1.0,
+              ...uploadBase,
+            }
+            : {
+              space: 'world',
+              ...uploadBase,
+            }
+        );
+        densityMesh = cl.batch.mesh;
+      } else {
+        continue;
+      }
 
       // Two-pass shader pipeline for shader layers:
-      // 1. Render instanced Mesh (container-blend accumulation) → raw density RT
-      // 2. Render fullscreen Mesh (threshold shader reads raw RT) → processed RT
+      // 1. Render density mesh (container-blend accumulation) → raw density RT
+      // 2. Render fullscreen Mesh (look shader reads raw RT) → processed RT
       // Bypass (debug UI "(none)"): skip pass 2, displaySprite shows cl.rt directly.
-      if (cl.rt) {
-        this.pixiApp.renderer.render({ container: cl.batch.mesh, target: cl.rt, clear: true });
+      if (cl.rt && densityMesh) {
+        this.pixiApp.renderer.render({ container: densityMesh, target: cl.rt, clear: true });
         if (!cl.shaderBypass && cl.shaderMesh && cl.rtOut) {
           this.pixiApp.renderer.render({ container: cl.shaderMesh, target: cl.rtOut, clear: true });
         }
       }
-      // Non-shader layers: cl.batch.mesh is already on stage (camera transform applied in updateCameraTransform())
 
-      // Update shader uniforms from Layer SABs (cross-worker dirty flag)
       if (cl.shader && Layer._uniformDirty[cl.layerId]) {
         const dirtyRef = Layer._uniformDirty[cl.layerId];
         if (Atomics.load(dirtyRef, 0) === 1) {

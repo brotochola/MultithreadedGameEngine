@@ -41,8 +41,7 @@ export class WaterAndBoxesScene extends WEED.Scene {
     physics: {
       subStepCount: 4,
       noLimitFPS: false,
-      boundaryElasticity: 0.1,
-      collisionResponseStrength: 0.125,
+
       gravity: { x: 0, y: 3600 },
       sleeping: false,
     },

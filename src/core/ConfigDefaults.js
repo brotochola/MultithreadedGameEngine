@@ -64,6 +64,43 @@ export const BLEND_MODES = Object.freeze({
 });
 
 /**
+ * How a shader layer builds its density RT (pass 1 before the look fragment).
+ * String values — stored in layer metadata / compared on workers.
+ * @enum {string}
+ */
+export const LAYER_DENSITY_SOURCE = Object.freeze({
+  /** InstancedSpriteBatch + atlas kernels (default). */
+  SPRITES: 'sprites',
+  /** Procedural soft disks from LiquidFun HEAP pose (no type-7 sprite queue). */
+  LIQUID_FUN: 'liquidFun',
+});
+
+/**
+ * Soft-disk falloff for `LAYER_DENSITY_SOURCE.LIQUID_FUN` splat kernels.
+ * @enum {string}
+ */
+export const LAYER_SPLAT_FALLOFF = Object.freeze({
+  /** alpha = max(0, 1 - d*d) where d is normalized radius in [0,1]. Default / v1 active. */
+  QUADRATIC: 'quadratic',
+  /** alpha = 1 - smoothstep(0, 1, d). Reserved — falls back to quadratic until wired. */
+  SMOOTHSTEP: 'smoothstep',
+  /** alpha = exp(-4 * d*d). Reserved — falls back to quadratic until wired. */
+  GAUSSIAN: 'gaussian',
+});
+
+/**
+ * Pixi v8 TextureSource.scaleMode for low-res layer RT upsample (displaySprite stretch).
+ * Not MSAA / FXAA — only bilinear vs nearest when sampling the RT.
+ * @enum {string}
+ */
+export const LAYER_SCALE_MODE = Object.freeze({
+  /** Soft bilinear upsample (default; good for soft fluid looks at resolution < 1). */
+  LINEAR: 'linear',
+  /** Crisp / blocky upsample. */
+  NEAREST: 'nearest',
+});
+
+/**
  * Built-in layer definitions. Same shape as scene config.layers entries.
  * ySorting is false for all built-in layers; ENTITIES gets overridden
  * at runtime by the scene's renderer.ySorting config.
@@ -432,6 +469,8 @@ export const LAYER_DEFAULTS = Object.freeze({
   resolution: 1.0,
   alpha: 1.0,             // mutable at runtime via layer.alpha = v (SAB + Atomics)
   blendMode: BLEND_MODES.NORMAL,
+  /** Pixi scaleMode for custom shader RT upsample. */
+  scaleMode: LAYER_SCALE_MODE.LINEAR,
   // ySorting intentionally omitted: custom layers inherit the scene-level
   // renderer.ySorting setting (Layer._defaultYSorting) when not specified.
 });

@@ -52,8 +52,11 @@ Every renderable type supports a `layerId` field that routes it to a custom laye
 | 3 | Light Glow | `LightEmitter.layerIdOfGlowSprite`, falls back to `SpriteRenderer.layerId` | 0 (ENTITIES) |
 | 4 | Bullet | `BulletComponent.layerId` | 0 (ENTITIES) |
 | 5 | Bullet Trail | `BulletComponent.layerId` (same as parent bullet) | 0 (ENTITIES) |
+| 7 | LiquidFun | thin SAB `liquidFun.layerId` (emit-time) | 0 (ENTITIES) |
 
 When `layerId === 0` (or `Layer.ENTITIES_ID`), the renderable goes into the default Y-sorted ENTITIES render queue. Any other value routes it to that custom layer's dedicated collector.
+
+**LiquidFun buffer density:** if the target layer has `shader.densitySource: LAYER_DENSITY_SOURCE.LIQUID_FUN`, type-7 rows are **not** written to that layer’s sprite queue (and the layer usually has `hasRenderQueue: false` / `maxItems: 0`). Pixi splats HEAP pose into the density RT instead. See [LIQUIDFUN.md](./LIQUIDFUN.md) and the bible Layers section.
 
 ### Setting layerId
 
@@ -202,4 +205,5 @@ layers: {
 - Items routed to a custom layer only Y-sort with other items in that same layer. A particle on a custom layer won't interleave with entities on the ENTITIES layer -- it renders at the custom layer's zIndex.
 - Decal stamping (`stayOnTheFloor`) always stamps to the built-in DECALS layer, regardless of the particle's `layerId`. The particle's layer controls where it renders while alive; the decal destination is independent.
 - `layerId` values must correspond to registered custom layers that have render queues. Built-in layer IDs (BACKGROUND, DECALS, CASTED_SHADOWS, LIGHTING) won't work as routing targets because they don't have generic render queues.
+- Exception: `LAYER_DENSITY_SOURCE.LIQUID_FUN` layers intentionally have **no** sprite render queue; route LiquidFun there via `layerId` for buffer density only (v1 = LF-only density layer).
 - `Layer.MAX_LAYERS = 16`, so valid IDs are 0-15.

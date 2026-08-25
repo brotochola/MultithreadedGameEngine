@@ -25,7 +25,7 @@
 // - Uniform arrays use Atomics dirty flag for safe cross-worker writes
 // - _postToRenderer is a main-thread-only callback (not cross-worker)
 
-import { LAYER_DEFAULTS } from './ConfigDefaults.js';
+import { LAYER_DEFAULTS, LAYER_DENSITY_SOURCE, LAYER_SPLAT_FALLOFF, LAYER_SCALE_MODE } from './ConfigDefaults.js';
 
 export class Layer {
     static MAX_LAYERS = 16;
@@ -102,6 +102,8 @@ export class Layer {
 
     get zIndex() { return Layer._zIndex[this.id]; }
     get resolution() { return Layer._resolution[this.id]; }
+    /** Pixi upsample filter for shader RTs ({@link LAYER_SCALE_MODE}). */
+    get scaleMode() { return this._scaleMode || LAYER_SCALE_MODE.LINEAR; }
     /**
      * Layer opacity (0.0 = fully transparent, 1.0 = fully opaque).
      * Mutable from any worker — writes go through the config SAB and the
@@ -127,6 +129,33 @@ export class Layer {
     get hasRenderQueue() { return Layer._hasRenderQueue[this.id] === 1; }
     get builtIn() { return this._builtIn; }
     get layerType() { return this._layerType; }
+    /** {@link LAYER_DENSITY_SOURCE} value (`SPRITES` or `LIQUID_FUN`). */
+    get densitySource() { return this._densitySource || LAYER_DENSITY_SOURCE.SPRITES; }
+    /** Splat kernel controls when densitySource is liquidFun (read-only mirror). */
+    get splat() { return this._splat || null; }
+
+    /**
+     * Live-tune LiquidFun density splat radius (world px). Renderer picks up next frame.
+     * @param {number} worldPx
+     * @returns {this}
+     */
+    setSplatRadius(worldPx) {
+        if (!(worldPx > 0)) return this;
+        if (!this._splat) {
+            this._splat = Layer._normalizeSplat({}, LAYER_DENSITY_SOURCE.LIQUID_FUN);
+        }
+        this._splat.radius = worldPx;
+        const meta = Layer._metadata?.layers?.[this.id];
+        if (meta) meta.splat = { ...this._splat };
+        if (Layer._postToRenderer) {
+            Layer._postToRenderer({
+                msg: 'setLayerProps',
+                layer: this.name,
+                splatRadius: worldPx,
+            });
+        }
+        return this;
+    }
 
     // ========================================
     // UNIFORM ACCESS (cross-worker safe via SAB + Atomics)
@@ -285,7 +314,8 @@ export class Layer {
     }
 
     static getCustomLayers() {
-        return this._byId.filter(l => l && this._hasRenderQueue[l.id] === 1 && l.id !== this.ENTITIES_ID);
+        // All scene-defined custom layers (incl. densitySource:'liquidFun' with no sprite queue).
+        return this._byId.filter((l) => l && !l._builtIn);
     }
 
     static _ensureBackgroundLayer(layer) {
@@ -426,12 +456,18 @@ export class Layer {
 
         // Register custom layers from scene config
         for (const [name, config] of Object.entries(layersConfig)) {
+            const densitySource = Layer._normalizeDensitySource(config.shader);
             const layer = this._register(name, {
                 ...config,
                 _builtIn: false,
                 _layerType: config.layerType || this._deriveLayerType(name, false, !!config.shader),
+                _densitySource: densitySource,
+                _splat: densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN
+                    ? Layer._normalizeSplat(config.shader, densitySource)
+                    : null,
             });
-            this._hasRenderQueue[layer.id] = 1;
+            // Buffer-density LF layers skip the sprite render queue (engine splats HEAP pose).
+            this._hasRenderQueue[layer.id] = densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN ? 0 : 1;
 
             if (config.shader && config.shader.uniforms) {
                 this._allocateUniformSAB(layer.id, config.shader.uniforms);
@@ -454,6 +490,53 @@ export class Layer {
         return hasShader ? 'screenRT' : 'world';
     }
 
+    /** @param {object|null|undefined} shader */
+    static _normalizeDensitySource(shader) {
+        const src = shader?.densitySource;
+        return src === LAYER_DENSITY_SOURCE.LIQUID_FUN || src === 'liquidFun'
+            ? LAYER_DENSITY_SOURCE.LIQUID_FUN
+            : LAYER_DENSITY_SOURCE.SPRITES;
+    }
+
+    /**
+     * @param {object|null|undefined} shader
+     * @param {string} densitySource
+     */
+    static _normalizeSplat(shader, densitySource) {
+        if (densitySource !== LAYER_DENSITY_SOURCE.LIQUID_FUN) return null;
+        const s = shader?.splat || {};
+        let falloff = LAYER_SPLAT_FALLOFF.QUADRATIC;
+        if (
+            s.falloff === LAYER_SPLAT_FALLOFF.SMOOTHSTEP ||
+            s.falloff === LAYER_SPLAT_FALLOFF.GAUSSIAN ||
+            s.falloff === 'smoothstep' ||
+            s.falloff === 'gaussian'
+        ) {
+            falloff = s.falloff === 'smoothstep' || s.falloff === LAYER_SPLAT_FALLOFF.SMOOTHSTEP
+                ? LAYER_SPLAT_FALLOFF.SMOOTHSTEP
+                : LAYER_SPLAT_FALLOFF.GAUSSIAN;
+        }
+        return {
+            radius: Number.isFinite(s.radius) && s.radius > 0 ? s.radius : 48,
+            falloff,
+            useParticleTint: s.useParticleTint !== false,
+            intensity: Number.isFinite(s.intensity) ? s.intensity : 1,
+        };
+    }
+
+    /** True when layer uses HEAP pose splat (no type-7 sprite queue). */
+    static isLiquidFunDensityLayer(layerId) {
+        const layer = this._byId[layerId | 0];
+        return !!(layer && layer._densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN);
+    }
+
+    /** @param {string|undefined|null} mode */
+    static _normalizeScaleMode(mode) {
+        return mode === LAYER_SCALE_MODE.NEAREST || mode === 'nearest'
+            ? LAYER_SCALE_MODE.NEAREST
+            : LAYER_SCALE_MODE.LINEAR;
+    }
+
     static _register(name, config = {}) {
         if (this.count >= this.MAX_LAYERS) {
             console.error(`Layer: MAX_LAYERS (${this.MAX_LAYERS}) exceeded, cannot register "${name}"`);
@@ -464,6 +547,11 @@ export class Layer {
         const layer = new Layer(id, name);
         layer._builtIn = !!config._builtIn;
         layer._layerType = config._layerType || this._deriveLayerType(name, layer._builtIn, !!config.shader);
+        layer._densitySource = config._densitySource || LAYER_DENSITY_SOURCE.SPRITES;
+        layer._splat = config._splat || null;
+        layer._scaleMode = Layer._normalizeScaleMode(
+            config._scaleMode ?? config.scaleMode ?? LAYER_DEFAULTS.scaleMode
+        );
 
         this._zIndex[id] = config.zIndex !== undefined ? config.zIndex : id;
         this._blendModeId[id] = config.blendMode ?? LAYER_DEFAULTS.blendMode;
@@ -561,6 +649,12 @@ export class Layer {
                 ? (builtInLayers[name] || {})
                 : (layersConfig[name] || {});
 
+            const densitySource = layer._densitySource || LAYER_DENSITY_SOURCE.SPRITES;
+            const splat = layer._splat || (
+                densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN
+                    ? Layer._normalizeSplat(config.shader, densitySource)
+                    : null
+            );
             const meta = {
                 id: layer.id,
                 name,
@@ -572,14 +666,19 @@ export class Layer {
                 hasShader: this._hasShader[i] === 1,
                 ySorting: this._ySorting[i] === 1,
                 resolution: this._resolution[i],
+                scaleMode: layer._scaleMode || LAYER_SCALE_MODE.LINEAR,
                 alpha: this._alpha[i],
                 hasRenderQueue: this._hasRenderQueue[i] === 1,
-                maxItems: isBuiltIn ? 0 : (config.maxItems || LAYER_DEFAULTS.maxItemsPerLayer),
+                maxItems: isBuiltIn || densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN
+                    ? 0
+                    : (config.maxItems || LAYER_DEFAULTS.maxItemsPerLayer),
                 uniformMap: this._uniformMaps[layer.id] || null,
                 shaderFragment: config.shader?.fragment || null,
                 shaderName: null,
                 dynamicResolution: config.dynamicResolution || null,
                 uniformTypes: null,
+                densitySource,
+                splat,
             };
 
             if (config.shader?.uniforms) {
@@ -639,6 +738,9 @@ export class Layer {
             const layer = new Layer(i, layerMeta.name);
             layer._builtIn = !!layerMeta.builtIn;
             layer._layerType = layerMeta.layerType || 'world';
+            layer._densitySource = layerMeta.densitySource || LAYER_DENSITY_SOURCE.SPRITES;
+            layer._splat = layerMeta.splat || null;
+            layer._scaleMode = Layer._normalizeScaleMode(layerMeta.scaleMode);
             this._byName[layerMeta.name] = layer;
             this._byId[i] = layer;
         }

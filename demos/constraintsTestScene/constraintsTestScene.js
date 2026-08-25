@@ -42,8 +42,7 @@ export class ConstraintsTestScene extends Scene {
             subStepCount: 3, // Higher substeps for stable constraints
             noLimitFPS: false,
             maxJoints: 4096, // Enable constraint system
-            boundaryElasticity: 0,
-            collisionResponseStrength: 0.66,
+
             gravity: { x: 0, y: 1800 },
             sleeping: false,
         },

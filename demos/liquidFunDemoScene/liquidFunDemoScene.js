@@ -1,11 +1,12 @@
 // liquidFunDemoScene.js - LiquidFun Particle Physics Demo Scene in WeedJS
 // WASD pans. Q/E/R/F/G/T pick a liquid; LMB sprays at the cursor.
 // Dynamic Box bodies fall into the tank with the fluids.
+// Density: LAYER_DENSITY_SOURCE.LIQUID_FUN (procedural splat → dulceDeLeche look frag).
 
 import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Box } from '/demos/ballsAndRectanglesScene/gameObjects/box.js';
 import { Camera } from '/src/core/Camera.js';
-import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
+import { BLEND_MODES, LAYER_DENSITY_SOURCE, LAYER_SPLAT_FALLOFF, LAYER_SCALE_MODE } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
 
 const { Mouse, Keyboard, LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS, Layer } = WEED;
@@ -13,19 +14,20 @@ const { Mouse, Keyboard, LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS, Laye
 const F = LIQUIDFUN_FLAGS;
 const GF = LIQUIDFUN_GROUP_FLAGS;
 
+const LAYER = 'dulceDeLeche';
+
 // Keys avoid WASD. Jelly is elastic (a group per burst) so it sprays slower.
 // Ice = rigid+solid particle group (Google groupFlags), not a Box2D body.
 const LIQUID_TOOLS = [
-  { key: 'q', name: 'water', layer: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
-  { key: 'e', name: 'oil', layer: 'water', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
-  { key: 'r', name: 'cream', layer: 'water', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
-  { key: 'f', name: 'dulceDeLeche', layer: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 10, tint: 0xc6862a },
-  { key: 'g', name: 'jelly', layer: 'dulceDeLeche', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
-  { key: 't', name: 'sand', layer: 'water', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
+  { key: 'q', name: 'water', shape: 'circle', radius: 100, flags: F.WATER | F.TENSILE, viscousScale: 1, tint: 0x3399ff },
+  { key: 'e', name: 'oil', shape: 'circle', radius: 130, flags: F.VISCOUS, viscousScale: 1, tint: 0x6b3a1f },
+  { key: 'r', name: 'cream', shape: 'circle', radius: 130, flags: F.VISCOUS | F.TENSILE, viscousScale: 2, tint: 0xf5f0e1 },
+  { key: 'f', name: 'dulceDeLeche', shape: 'circle', radius: 110, flags: F.VISCOUS | F.TENSILE, viscousScale: 10, tint: 0xc6862a },
+  { key: 'g', name: 'jelly', shape: 'circle', radius: 70, flags: F.ELASTIC, strength: 0.55, viscousScale: 1, tint: 0x33ff66, grouped: true },
+  { key: 't', name: 'sand', shape: 'box', halfWidth: 80, halfHeight: 80, flags: F.POWDER, viscousScale: 1, tint: 0xffcc00 },
   {
     key: 'y',
     name: 'ice',
-    layer: 'water',
     shape: 'box',
     halfWidth: 90,
     halfHeight: 60,
@@ -88,35 +90,25 @@ export class LiquidFunDemoScene extends WEED.Scene {
     },
 
     layers: {
-      water: {
-        zIndex: 4,
-        blendMode: BLEND_MODES.NORMAL,
-        resolution: 1,
-        maxItems: 65534,
-        ySorting: false,
-        shader: {
-          fragment: 'liquid',
-          containerBlend: BLEND_MODES.NORMAL,
-          uniforms: {
-            uCutoff: { value: 0.3, type: 'f32' },
-            uFoam: { value: 0.42, type: 'f32' },
-            uDepth: { value: 0.55, type: 'f32' },
-            uBodyAlpha: { value: 0.4, type: 'f32' },
-            uEdgeAlpha: { value: 0.65, type: 'f32' },
-          },
-        },
-      },
       dulceDeLeche: {
         zIndex: 5,
         blendMode: BLEND_MODES.NORMAL,
         resolution: 1,
-        maxItems: 65534,
+        scaleMode: LAYER_SCALE_MODE.LINEAR,
+        maxItems: 0,
         ySorting: false,
         shader: {
           fragment: 'dulceDeLeche',
-          containerBlend: BLEND_MODES.NORMAL,
+          containerBlend: BLEND_MODES.ADD,
+          densitySource: LAYER_DENSITY_SOURCE.LIQUID_FUN,
+          splat: {
+            radius: 40,
+            falloff: LAYER_SPLAT_FALLOFF.QUADRATIC,
+            useParticleTint: true,
+            intensity: 0.166,
+          },
           uniforms: {
-            uCutoff: { value: 0.28, type: 'f32' },
+            uCutoff: { value: 0.29, type: 'f32' },
             uRim: { value: 0.4, type: 'f32' },
             uDepth: { value: 0.5, type: 'f32' },
             uBodyAlpha: { value: 0.85, type: 'f32' },
@@ -133,7 +125,6 @@ export class LiquidFunDemoScene extends WEED.Scene {
       ball: '/demos/img/bola.png',
     },
     shaders: {
-      liquid: '/demos/shaders/liquid.frag',
       dulceDeLeche: '/demos/shaders/dulceDeLeche.frag',
     },
   };
@@ -219,8 +210,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
   }
 
   spawnParticleGroups() {
-    const waterSprite = { texture: '_metaball', layerId: Layer.getId('water'), scale: 1, alpha: 0.25 };
-    const dulceSprite = { texture: '_metaball', layerId: Layer.getId('dulceDeLeche'), scale: 1, alpha: 0.25 };
+    const layerId = Layer.getId(LAYER);
     LiquidFun.emit({
       flags: F.VISCOUS,
       viscousScale: 1,
@@ -229,7 +219,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posX: 1600,
       posY: 500,
       radius: 120,
-      ...waterSprite,
+      layerId,
     });
     LiquidFun.emit({
       flags: F.VISCOUS | F.TENSILE,
@@ -240,7 +230,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posY: 500,
       radius: 400,
       trackGroup: true,
-      ...dulceSprite,
+      layerId,
     });
     LiquidFun.emit({
       flags: F.WATER,
@@ -251,7 +241,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       posY: 200,
       halfWidth: 120,
       halfHeight: 80,
-      ...waterSprite,
+      layerId,
     });
   }
 
@@ -311,10 +301,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
       shape: tool.shape,
       posX: Mouse.x,
       posY: Mouse.y,
-      texture: '_metaball',
-      layerId: Layer.getId(tool.layer || 'water'),
-      scale: 1,
-      alpha: 0.15,
+      layerId: Layer.getId(LAYER),
     };
     if (tool.shape === 'box') {
       emit.halfWidth = tool.halfWidth;

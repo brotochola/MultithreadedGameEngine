@@ -27,6 +27,21 @@ Box2D 3 (Erin Catto C, this fork) has opaque ids, SoA buffers, and no hook to in
 
 `WebAssembly.Memory({ shared: true })` — the WASM heap **is** a SharedArrayBuffer. Rigid bodies already bind `Transform.x/y` onto it. LiquidFun particle `count` / `x` / `y` / `alpha` / `weight` use the same pattern via `liquidFunHeap` on `box2dReady`. The thin LiquidFun render SAB keeps only emit fields C does not own (`tint`, `scale*`, `textureId`, `layerId`, …).
 
+### Rendering: sprite density vs buffer density
+
+| Mode | Config | Path |
+|------|--------|------|
+| **Sprite density** | omit `densitySource` or `LAYER_DENSITY_SOURCE.SPRITES` | Pre-render type-7 queue → `InstancedSpriteBatch` with atlas kernel (`_metaball` / `_lightGradient`) → layer look frag |
+| **Buffer density** | `LAYER_DENSITY_SOURCE.LIQUID_FUN` | Pixi reads HEAP pose + thin tint; procedural soft-disk splat ADD into density RT → same look frag. No texture/scale on emit. |
+
+Prefer buffer density for large particle counts. Sprite path still useful for non-LF soft disks or mixed sprite layers.
+
+**Pitfall (Main Fps collapse):** `_lightGradient` is ~200×200. With a large emit `scale`, each particle becomes a huge soft quad. Present/GPU fill tanks while Main STEP_MS stays tiny (CPU step is cheap; rAF waits on GPU). Prefer `_metaball` (small procedural atlas kernel) for sprite density, or `LAYER_DENSITY_SOURCE.LIQUID_FUN` (no atlas). Kernel `splat.radius` / layer `resolution` remain the main GPU knobs in buffer mode. Low `resolution` upscales with Pixi `scaleMode` (`LAYER_SCALE_MODE.LINEAR` default softens edges; `NEAREST` is blocky — not MSAA).
+
+Enums: `LAYER_DENSITY_SOURCE` (`SPRITES` \| `LIQUID_FUN`), `LAYER_SPLAT_FALLOFF` (`QUADRATIC` active; `SMOOTHSTEP` / `GAUSSIAN` reserved). Look uniforms (`uCutoff`, `uRim`/`uFoam`, `uDepth`, `uBodyAlpha`, `uEdgeAlpha`) are documented in the [bible Layers](./bible_of_weed_js.md#look-shader-uniforms-dulcedelechefrag--similar-fluid-looks) section.
+
+See [bible Layers](./bible_of_weed_js.md) for the full config example. Demo: [`demos/liquidFunDemoScene`](../demos/liquidFunDemoScene/liquidFunDemoScene.js).
+
 ### Group slabs (Google LiquidFun 1.1)
 
 Groups are contiguous `[firstIndex, lastIndex)`. `SolveZombie` is **order-preserving compact** (not swap-with-last). `RotateBuffer` supports Join. Membership for gameplay: loop the slab on HEAP views — O(members).

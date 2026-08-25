@@ -160,6 +160,20 @@ export class LayersPanel {
     resCont.appendChild(resVal);
     row.appendChild(resCont);
 
+    // Density source (sprite queue vs LiquidFun HEAP splat)
+    if (customLayer) {
+      const densCont = document.createElement('div'); densCont.style.cssText = cellStyle;
+      const densLbl = document.createElement('span'); densLbl.style.cssText = lblStyle; densLbl.textContent = 'Density:';
+      densCont.appendChild(densLbl);
+      const densVal = document.createElement('span');
+      densVal.style.cssText = `${lblStyle};color:rgba(255,255,255,0.8)`;
+      densVal.textContent = customLayer.densitySource === 'liquidFun'
+        ? 'liquidFun'
+        : 'sprites';
+      densCont.appendChild(densVal);
+      row.appendChild(densCont);
+    }
+
     // Z-Index
     const zCont = document.createElement('div'); zCont.style.cssText = cellStyle;
     const zLbl = document.createElement('span'); zLbl.style.cssText = lblStyle; zLbl.textContent = 'Z:';
@@ -320,7 +334,8 @@ export class LayersPanel {
       controls.zIndex.disabled = !isAvailable;
 
       const layer = Layer.initialized ? Layer.get(layerName) : null;
-      const canEditShader = !!(isAvailable && layer && !layer.builtIn && layer.hasRenderQueue);
+      // Shader RT layers (incl. liquidFun density, no sprite queue) stay editable.
+      const canEditShader = !!(isAvailable && layer && !layer.builtIn && (layer.hasRenderQueue || layer.hasShader));
       const shaderSelect = controls.shader;
       shaderSelect.disabled = !canEditShader;
       this._syncShaderOptions(shaderSelect, shaderNames);
@@ -396,7 +411,7 @@ export class LayersPanel {
     const scene = this.debugUI.scene;
     if (!scene?.workers?.renderer) return;
     const layer = Layer.get(layerName);
-    if (!layer || layer.builtIn || !layer.hasRenderQueue) return;
+    if (!layer || layer.builtIn || (!layer.hasRenderQueue && !layer.hasShader)) return;
 
     const name = shaderName || '';
     const source = name ? scene._loadedShaderSources?.[name] : null;

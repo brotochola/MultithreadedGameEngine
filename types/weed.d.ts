@@ -11,6 +11,41 @@ export const ShapeType: Readonly<{ Box: 0; Circle: 1; Polygon: 2 }>;
 export const MAX_POLYGON_VERTICES: 8;
 export const BLEND_MODES: Readonly<Record<string, number>>;
 
+/** How a shader layer builds density RT before the look fragment. */
+export const LAYER_DENSITY_SOURCE: Readonly<{
+  SPRITES: 'sprites';
+  LIQUID_FUN: 'liquidFun';
+}>;
+
+/** Soft-disk falloff for {@link LAYER_DENSITY_SOURCE}.LIQUID_FUN splat kernels. */
+export const LAYER_SPLAT_FALLOFF: Readonly<{
+  QUADRATIC: 'quadratic';
+  SMOOTHSTEP: 'smoothstep';
+  GAUSSIAN: 'gaussian';
+}>;
+
+/** Pixi v8 TextureSource.scaleMode for low-res custom layer RT upsample. */
+export const LAYER_SCALE_MODE: Readonly<{
+  LINEAR: 'linear';
+  NEAREST: 'nearest';
+}>;
+
+export type LayerDensitySource =
+  | typeof LAYER_DENSITY_SOURCE[keyof typeof LAYER_DENSITY_SOURCE]
+  | 'sprites'
+  | 'liquidFun';
+
+export type LayerSplatFalloff =
+  | typeof LAYER_SPLAT_FALLOFF[keyof typeof LAYER_SPLAT_FALLOFF]
+  | 'quadratic'
+  | 'smoothstep'
+  | 'gaussian';
+
+export type LayerScaleMode =
+  | typeof LAYER_SCALE_MODE[keyof typeof LAYER_SCALE_MODE]
+  | 'linear'
+  | 'nearest';
+
 export interface DefaultLayerEntry {
   zIndex: number;
   blendMode: number;
@@ -1672,6 +1707,8 @@ export interface LayerSceneConfigEntry {
   blendMode?: number;
   ySorting?: boolean;
   resolution?: number;
+  /** Pixi upsample filter when resolution &lt; 1. Default {@link LAYER_SCALE_MODE}.LINEAR. */
+  scaleMode?: LayerScaleMode;
   alpha?: number;
   layerType?: string;
   maxItems?: number;
@@ -1679,6 +1716,19 @@ export interface LayerSceneConfigEntry {
   shader?: {
     fragment?: string;
     containerBlend?: number;
+    /** Omit or {@link LAYER_DENSITY_SOURCE}.SPRITES = InstancedSpriteBatch. {@link LAYER_DENSITY_SOURCE}.LIQUID_FUN = HEAP splat. */
+    densitySource?: LayerDensitySource;
+    /** Kernel controls when densitySource is LIQUID_FUN. */
+    splat?: {
+      /** World-space soft-disk radius. Default 48. */
+      radius?: number;
+      /** {@link LAYER_SPLAT_FALLOFF}. Default QUADRATIC. */
+      falloff?: LayerSplatFalloff;
+      /** Multiply splat RGB by particle tint (default true). */
+      useParticleTint?: boolean;
+      /** Base opacity before ADD (default 1). */
+      intensity?: number;
+    };
     uniforms?: Record<string, LayerUniformDef>;
   };
 }
@@ -1711,6 +1761,7 @@ export interface LayerSerializableLayerMeta {
   hasShader: boolean;
   ySorting: boolean;
   resolution: number;
+  scaleMode: LayerScaleMode;
   alpha: number;
   hasRenderQueue: boolean;
   maxItems: number;
@@ -1719,6 +1770,13 @@ export interface LayerSerializableLayerMeta {
   shaderName: string | null;
   dynamicResolution: Record<string, unknown> | null;
   uniformTypes: Record<string, string> | null;
+  densitySource: LayerDensitySource;
+  splat: {
+    radius: number;
+    falloff: LayerSplatFalloff;
+    useParticleTint: boolean;
+    intensity: number;
+  } | null;
 }
 
 export interface LayerSerializableMetadata {
@@ -1753,6 +1811,7 @@ export declare class Layer {
 
   get zIndex(): number;
   get resolution(): number;
+  get scaleMode(): LayerScaleMode;
   get alpha(): number;
   set alpha(value: number);
   get hasShader(): boolean;
@@ -1765,9 +1824,17 @@ export declare class Layer {
   get hasRenderQueue(): boolean;
   get builtIn(): boolean;
   get layerType(): string;
+  get densitySource(): LayerDensitySource;
+  get splat(): {
+    radius: number;
+    falloff: LayerSplatFalloff;
+    useParticleTint: boolean;
+    intensity: number;
+  } | null;
 
   setUniform(name: string, value: number | number[]): this;
   getUniform(name: string): number | Float32Array | undefined;
+  setSplatRadius(worldPx: number): this;
 
   setStaticBackground(textureId: string): void;
   setTilingBackground(textureId: string, tileScale?: number): void;
@@ -1791,6 +1858,7 @@ export declare class Layer {
   static getId(name: string): number;
   static getName(id: number): string | null;
   static getCustomLayers(): Layer[];
+  static isLiquidFunDensityLayer(layerId: number): boolean;
 
   static initializeFromConfig(
     layersConfig?: Record<string, LayerSceneConfigEntry>,
@@ -2892,6 +2960,9 @@ export declare class AbstractWorker {
 export interface WeedEnums {
   ShapeType: typeof ShapeType;
   BLEND_MODES: typeof BLEND_MODES;
+  LAYER_DENSITY_SOURCE: typeof LAYER_DENSITY_SOURCE;
+  LAYER_SPLAT_FALLOFF: typeof LAYER_SPLAT_FALLOFF;
+  LAYER_SCALE_MODE: typeof LAYER_SCALE_MODE;
   DEFAULT_LAYERS: typeof DEFAULT_LAYERS;
   CAMERA_TYPES: typeof CAMERA_TYPES;
   DECAL_STAMPS_BLEND_MODE: typeof DECAL_STAMPS_BLEND_MODE;

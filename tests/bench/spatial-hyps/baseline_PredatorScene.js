@@ -110,8 +110,7 @@ export class PredatorScene extends WEED.Scene {
     physics: {
       subStepCount: 0,
       noLimitFPS: false,
-      boundaryElasticity: 0,
-      collisionResponseStrength: 0.9,
+
       gravity: { x: 0, y: 0 },
     },
 

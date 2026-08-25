@@ -349,7 +349,8 @@ static config = {
     water: {
       zIndex: 4,              // display order (higher = on top)
       blendMode: BLEND_MODES.NORMAL,    // final composite blend (numeric enum)
-      resolution: 0.33,                 // RT resolution multiplier (lower = cheaper, blurrier)
+      resolution: 0.33,                 // RT resolution multiplier (lower = cheaper)
+      // scaleMode: LAYER_SCALE_MODE.LINEAR, // default; NEAREST = blocky upsample (not MSAA)
       maxItems: 5000,                   // render queue capacity for this layer
       ySorting: false,                  // disable Y-sort if order doesn't matter
       shader: {
@@ -381,6 +382,97 @@ static config = {
 If `fragment` contains `/` or `.` it's treated as a direct URL (backward compat), but prefer named assets.
 
 Layers **without** a `shader` block are simple sorted ParticleContainers at their own zIndex. Layers **with** a `shader` use the two-RT pipeline (density pass + fragment shader post-process).
+
+### LiquidFun buffer density (`LAYER_DENSITY_SOURCE`)
+
+Two ways to fill a shader layer’s density RT:
+
+| Path | Enum | How density is built |
+|------|------|----------------------|
+| **Sprite density** (default) | `LAYER_DENSITY_SOURCE.SPRITES` | Route sprites / `LiquidFun.emit({ texture, scale, layerId })` into the layer queue; atlas kernel (`_metaball` / `_lightGradient`). |
+| **Buffer density** | `LAYER_DENSITY_SOURCE.LIQUID_FUN` | Engine reads live HEAP pose and draws procedural soft kernels (no atlas, no type-7 queue). |
+
+Look fragment is unchanged: samples `uTexture` (density) and applies threshold / foam / color. Author only the look frag + uniforms; engine owns the splat when configured.
+
+```javascript
+import { BLEND_MODES, LAYER_DENSITY_SOURCE, LAYER_SPLAT_FALLOFF, LAYER_SCALE_MODE } from '/src/core/ConfigDefaults.js';
+// or: WEED.enums.LAYER_DENSITY_SOURCE / LAYER_SPLAT_FALLOFF / LAYER_SCALE_MODE
+
+layers: {
+  dulceDeLeche: {
+    zIndex: 5,
+    blendMode: BLEND_MODES.NORMAL,
+    resolution: 0.25,
+    scaleMode: LAYER_SCALE_MODE.LINEAR, // soft RT upsample; NEAREST = pixelated
+    maxItems: 0, // unused for LIQUID_FUN density (no sprite queue)
+    ySorting: false,
+    shader: {
+      fragment: 'dulceDeLeche',
+      containerBlend: BLEND_MODES.ADD,
+      densitySource: LAYER_DENSITY_SOURCE.LIQUID_FUN,
+      splat: {
+        radius: 48,                              // world-space soft disk
+        falloff: LAYER_SPLAT_FALLOFF.QUADRATIC,   // alpha = max(0, 1 - d*d)
+        useParticleTint: true,
+        intensity: 1,
+      },
+      uniforms: {
+        uCutoff: { value: 0.28, type: 'f32' },
+        uRim: { value: 0.4, type: 'f32' },
+        uDepth: { value: 0.5, type: 'f32' },
+        uBodyAlpha: { value: 0.85, type: 'f32' },
+        uEdgeAlpha: { value: 0.7, type: 'f32' },
+      },
+    },
+  },
+},
+```
+
+```javascript
+// Physics + tint; no texture/scale required for buffer density
+LiquidFun.emit({
+  flags: F.WATER | F.TENSILE,
+  tint: 0x3399ff,
+  shape: 'circle',
+  posX: Mouse.x,
+  posY: Mouse.y,
+  radius: 100,
+  layerId: Layer.getId('dulceDeLeche'),
+});
+
+Layer.get('dulceDeLeche').setUniform('uCutoff', 0.35);
+Layer.get('dulceDeLeche').setSplatRadius(56); // live kernel size
+// Layer.get('dulceDeLeche').densitySource === LAYER_DENSITY_SOURCE.LIQUID_FUN
+```
+
+**Enums**
+
+| Enum | Values | Role |
+|------|--------|------|
+| `LAYER_DENSITY_SOURCE` | `SPRITES` (`'sprites'`), `LIQUID_FUN` (`'liquidFun'`) | Who fills the density RT |
+| `LAYER_SPLAT_FALLOFF` | `QUADRATIC` (active), `SMOOTHSTEP` / `GAUSSIAN` (reserved; normalize accepts, splat FS still uses quadratic in v1) | Soft-disk alpha curve |
+| `LAYER_SCALE_MODE` | `LINEAR` (`'linear'`), `NEAREST` (`'nearest'`) | Pixi upsample filter when `resolution < 1` (not MSAA/FXAA) |
+
+v1 is an LF-only density layer (mixed sprites on the same layer are ignored). Debug Layers panel shows **Density: liquidFun**; shader `(none)` still bypasses the look pass and shows the raw density RT.
+
+#### Look-shader uniforms (`dulceDeLeche.frag` / similar fluid looks)
+
+Density RT `uTexture.a` is the accumulated soft-disk coverage (ADD splat). The look fragment turns that scalar field into visible fluid. Demo uniforms (live-editable in Layers debug panel via `Layer.setUniform`):
+
+| Uniform | Typical range | What it does |
+|---------|---------------|--------------|
+| **`uCutoff`** | ~0.2–0.4 | Density below this is discarded. Raise → thinner / broken surface (more holes). Lower → fills more of the soft fringe (blobbier silhouette). |
+| **`uRim`** | must be `≥ uCutoff` | Upper bound of the **rim band** (`uCutoff` … `uRim`). In `dulceDeLeche.frag` this is a soft cream/amber edge (not white foam). Density in this band uses rim colors + `uEdgeAlpha`. In `liquid.frag` the same role is named **`uFoam`** (hard white foam when `dens < uFoam`). |
+| **`uDepth`** | ~0.2–0.8 | Width of the body gradient **above** the rim: `smoothstep(uRim, uRim + uDepth, dens)`. Larger → softer transition from edge color to burnt/core color. Smaller → sharper core. |
+| **`uBodyAlpha`** | 0–1 | Opacity of the **dense core** (high density). Mixed toward as `depth` increases. |
+| **`uEdgeAlpha`** | 0–1 | Opacity of **rim / near-threshold** fluid. Mixed from at the rim; also scales the rim-band alpha in dulce. |
+
+Pipeline reminder:
+
+1. Splat pass: each particle adds a soft disk → `cl.rt` (density).
+2. Look pass: fullscreen frag samples density → colors + alpha → `cl.rtOut` → stage.
+
+Tuning order that usually works: set `uCutoff` so the silhouette matches the physics blob, then `uRim` for edge width, then `uDepth` for core softness, then `uBodyAlpha` / `uEdgeAlpha` for transparency.
 
 ### DebugUI Layer Inspector
 
@@ -543,7 +635,7 @@ import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 ### Performance Tips
 
 - Set `maxItems` to a realistic cap. If exceeded, a console warning fires once.
-- Lower `resolution` for expensive shader layers (0.25-0.5 is usually fine for soft effects).
+- Lower `resolution` for expensive shader layers (0.25-0.5 is usually fine for soft effects). Pair with `scaleMode: LAYER_SCALE_MODE.LINEAR` (default) for soft upsample; `NEAREST` looks blocky. Neither is MSAA — the RT is just smaller then stretched.
 - Disable `ySorting` if visual order within the layer doesn't matter.
 - Uniform reads with `getUniform()` return `Float32Array.subarray()` views -- zero allocation, safe for hot paths.
 - The layer system uses the same `RenderQueueLayout.js` as the main queue. One definition, no drift.

@@ -461,6 +461,16 @@ class PreRenderWorker extends AbstractWorker {
                     console.log(`[PRE_RENDER WORKER] Custom layer ${layerId} render queue initialized (max ${layerMax} items)`);
                 }
             }
+
+            // Layers with LAYER_DENSITY_SOURCE.LIQUID_FUN skip type-7 sprite queues (pixi splats HEAP).
+            this._lfDensityLayerIds = new Uint8Array(Layer.MAX_LAYERS);
+            const metas = data.layerData?.metadata?.layers || [];
+            for (let mi = 0; mi < metas.length; mi++) {
+                const m = metas[mi];
+                if (m?.densitySource === 'liquidFun') {
+                    this._lfDensityLayerIds[m.id | 0] = 1;
+                }
+            }
         }
 
         // ========================================
@@ -933,11 +943,14 @@ class PreRenderWorker extends AbstractWorker {
         const count = lf.count[0] | 0;
         if (count <= 0) return;
 
+        const dens = this._lfDensityLayerIds;
         const x = lf.x;
         const y = lf.y;
+        const layerArr = lf.layerId;
         const bounds = this._frameCameraBoundsValid ? this.calculateCameraBounds() : null;
         if (!bounds) {
             for (let i = 0; i < count; i++) {
+                if (dens && layerArr && dens[layerArr[i] | 0]) continue;
                 this.collectRenderable(7, i, y[i] * Y_SORT_K);
                 this.visibleParticlesCount++;
             }
@@ -952,6 +965,7 @@ class PreRenderWorker extends AbstractWorker {
         const minY = bounds.minY;
         const maxY = bounds.maxY;
         for (let i = 0; i < count; i++) {
+            if (dens && layerArr && dens[layerArr[i] | 0]) continue;
             const sx = x[i] * camZoom - camOffX;
             const sy = y[i] * camZoom - camOffY;
             if (sx > minX && sx < maxX && sy > minY && sy < maxY) {
@@ -1363,7 +1377,10 @@ class PreRenderWorker extends AbstractWorker {
             let layerId = 0;
             if (type === 0) layerId = SpriteRenderer.layerId[index];
             else if (type === 1) layerId = ParticleComponent.layerId[index];
-            else if (type === 7) layerId = this.liquidFun?.layerId?.[index] || 0;
+            else if (type === 7) {
+                layerId = this.liquidFun?.layerId?.[index] || 0;
+                if (this._lfDensityLayerIds && this._lfDensityLayerIds[layerId]) return;
+            }
             else if (type === 2) layerId = DecorationComponent.layerId[index];
             else if (type === 3) layerId = LightEmitter.layerIdOfGlowSprite[index] || SpriteRenderer.layerId[index];
             else if (type === 4 || type === 5) layerId = BulletComponent.layerId[index];

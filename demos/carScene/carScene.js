@@ -78,8 +78,7 @@ export class CarScene extends WEED.Scene {
             subStepCount: 0,
             noLimitFPS: false,
             maxJoints: 0,
-            boundaryElasticity: 0.3,
-            collisionResponseStrength: 0.8,
+
             gravity: { x: 0, y: 0 },
             sleeping: true,
             // fixedFps: 60,
