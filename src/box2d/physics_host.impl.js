@@ -581,6 +581,8 @@
       entityCount: entityCount,
       subSteps: s.subStepCount,
       sleeping: state.sleepingEnabled !== false,
+      worldWidth: state.config.worldWidth | 0,
+      worldHeight: state.config.worldHeight | 0,
       commandSab: state.commandSab,
       queryAabbSab: state.queryAabbSab,
       liquidFunQuerySab: state.liquidFunQuerySab,

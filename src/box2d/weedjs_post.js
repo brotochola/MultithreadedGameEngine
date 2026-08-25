@@ -78,6 +78,9 @@
   let liquidFunPrevSyncedCount = 0;
   /** High-water of painted thin-SAB emit slots; wipe only this range on clear. */
   let liquidFunPaintedHighWater = 0;
+  /** Scene world AABB [0,w]×[0,h]; OOB particle centers get LF_ZOMBIE before step. */
+  let liquidFunWorldW = 0;
+  let liquidFunWorldH = 0;
   const LF_ZOMBIE = 1 << 0;
   /** Off-screen pose written into HEAP x/y on clear so mid-step readers never see old puddles. */
   const LF_CLEARED_XY = -1e8;
@@ -1560,6 +1563,37 @@
         : pendingParticleTuning.staticPressureIterations;
   }
 
+  /** Mark particles whose centers leave scene world AABB so SolveZombie compact removes them this step. */
+  function cullLiquidFunOutsideWorld() {
+    const w = liquidFunWorldW;
+    const h = liquidFunWorldH;
+    if (!(w > 0) || !(h > 0) || !Number.isFinite(w) || !Number.isFinite(h)) return;
+    if (!world || typeof world.getParticleCount !== 'function') return;
+    const count = world.getParticleCount() | 0;
+    if (count <= 0) return;
+    if (!resolveLiquidFunHeapPoseOffsets()) return;
+    if (
+      typeof world.getParticleFlagsByteOffset !== 'function' ||
+      typeof Module === 'undefined' ||
+      !Module.HEAPF32
+    ) {
+      return;
+    }
+    const flagsOff = world.getParticleFlagsByteOffset() | 0;
+    if (!(flagsOff > 0)) return;
+    const heap = Module.HEAPF32;
+    const xBase = liquidFunXFloatOffset;
+    const yBase = liquidFunYFloatOffset;
+    const flags = new Uint32Array(heap.buffer, flagsOff, count);
+    for (let i = 0; i < count; i++) {
+      const x = heap[xBase + i];
+      const y = heap[yBase + i];
+      if (x < 0 || y < 0 || x > w || y > h) {
+        flags[i] = (flags[i] | LF_ZOMBIE) >>> 0;
+      }
+    }
+  }
+
   function afterStep() {
     publishContactRingFromWasm();
     publishHitsFromWasm();
@@ -1721,6 +1755,7 @@
       serviceLiquidFunQuery();
       snapshotPrevPose(entityCount);
       applyForcesAndTorque();
+      cullLiquidFunOutsideWorld();
       world.step(dt, solverSteps);
       publishPose(entityCount);
       afterStep();
@@ -1738,6 +1773,7 @@
     snapshotPrevPose(entityCount);
     applyForcesAndTorque();
     const t4 = performance.now();
+    cullLiquidFunOutsideWorld();
     world.step(dt, solverSteps);
     const t5 = performance.now();
     publishPose(entityCount);
@@ -1761,6 +1797,8 @@
     const maxBodies = data.maxBodies | 0;
     verdletSubSteps = Math.max(1, data.subSteps | 0 || 4);
     sleepingEnabled = data.sleeping !== false;
+    liquidFunWorldW = data.worldWidth | 0;
+    liquidFunWorldH = data.worldHeight | 0;
     world = new PhysicsWorld(data.gravityX || 0, data.gravityY || 0, {
       lengthUnitsPerMeter: data.lengthUnitsPerMeter,
       contactHertz: data.contactHertz,

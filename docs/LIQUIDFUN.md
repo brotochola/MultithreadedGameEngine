@@ -20,7 +20,7 @@ Box2D 3 (Erin Catto C, this fork) has opaque ids, SoA buffers, and no hook to in
 | `wasm_wrapper.c` | sibling `box2d/src/` | `EMSCRIPTEN_KEEPALIVE` exports + global `g_particles` |
 | `physics-api.js` | this repo | `cwrap` + center+half → WASM AABB |
 | `box2dCommandRing` | this repo | Main/logic → physics worker (no `postMessage` blobs) |
-| `weedjs_post.js` | this repo | Drain ring, `world.step`; LiquidFun pose is **HEAP-bound** (no x/y/alpha memcpy) |
+| `weedjs_post.js` | this repo | Drain ring, `world.step`; LiquidFun pose is **HEAP-bound** (no x/y/alpha memcpy). Particles whose centers leave scene `worldWidth`×`worldHeight` are `LF_ZOMBIE`-destroyed each physics step |
 | `LiquidFun` | this repo | Scene-facing API; `bindSabs` + `bindHeapPose` + emit/query |
 
 ### Particle pose: HEAP SAB (like Transform)
