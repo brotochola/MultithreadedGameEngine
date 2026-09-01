@@ -26,16 +26,16 @@ Per entity, the snapshot packs SoA component fields (plus Transform pose and Rig
 
 ```text
 preload()
-create()                 // always â?? static world
-â??â?? createNewGame()       // new game only
-â??â?? restore (await restoreSaveComplete) + onLoadGame  // save load only
-startMainLoop / workers  // only after restore ack â?? workers stay paused until then
+create()                 // always — static world
+?? createNewGame()       // new game only
+?? restore (await restoreSaveComplete) + onLoadGame  // save load only
+startMainLoop / workers  // only after restore ack — workers stay paused until then
 ```
 
 | Hook | When | Put here |
 |------|------|----------|
 | `preload()` | Always | Tilemap, camera prep, nav |
-| `create()` | Always | Static world (lights, trash, trees, grass, â?¦) |
+| `create()` | Always | Static world (lights, trash, trees, grass, …) |
 | `createNewGame()` | No save restore | Serializable / dynamic spawns (soldiers, civilians, player) |
 | `onLoadGame(payload)` | After save applied | Load-only logic (UI, quests). Payload already restored entities + camera/sun |
 
@@ -51,11 +51,12 @@ Do not gate spawns with `if (!this._restorePayload)` inside `create()`.
 
 Save code lives under `src/core/save/`:
 
-- `SaveGame.js` ? orchestrate save/load
-- `SaveStore.js` ? IndexedDB + catalog
-- `entitySaveSnapshot.js` ? entity SoA pack/unpack
-- `liquidFunSave.js` ? LiquidFun snapshot helpers
-- `decalSave.js` ? sparse DECALS tile pack/unpack
+- `SaveGame.js` — orchestrate save/load
+- `SaveStore.js` — IndexedDB + catalog
+- `entitySaveSnapshot.js` — entity SoA pack/unpack + outer encode/decode
+- `binarySaveCodec.js` — sectioned little-endian body (sole wire codec)
+- `liquidFunSave.js` — LiquidFun typed-array snapshot helpers
+- `decalSave.js` — sparse DECALS tile pack/unpack
 
 ## Storage
 
@@ -64,7 +65,35 @@ Save code lives under `src/core/save/`:
 | IndexedDB (`weed-saves`) | Compressed save blobs |
 | `localStorage` (`weed.save.catalog`) | Slot metadata only (`id`, `scene`, `savedAt`, `bytes`, `engineVersion`, `entityCount`) |
 
-Encode: JSON payload after a `WEEDSAVE1` header, then `deflate` (`CompressionStream` in browser; `zlib` in Node tests).
+## Wire format (`SAVE_FORMAT_VERSION = 3`)
+
+Outer file (little-endian):
+
+```text
+magic (WEEDSAVE1) + u32 formatVersion + deflate(body)
+```
+
+Uncompressed body is a section list:
+
+```text
+u16 sectionCount
+repeat:
+  u16 tag
+  u32 byteLength
+  bytes[byteLength]
+```
+
+| Tag | Name | Contents |
+|-----|------|----------|
+| 1 | META | sceneName, engineVersion, layout hint |
+| 2 | CAMERA | raw camera floats |
+| 3 | SUN | enabled + f32[] + color |
+| 4 | ENTITIES | active serializable entities (grouped by typeName) |
+| 5 | JOINTS | packed joint records |
+| 6 | LIQUIDFUN | typed particle/group/pair/render buffers |
+| 7 | DECALS | sparse tiles as raw PNG or RGBA bytes |
+
+Empty optional sections (no LiquidFun / no decals) are omitted. There is no JSON payload and no base64 on the wire.
 
 Helpers: `SaveStore.put/get/list/listForScene/remove`, `downloadSave`, `parseUploadedFile`.
 
@@ -89,30 +118,30 @@ Load remounts the scene: `create()` builds statics, then logic worker `restoreSa
 
 ## Debug UI
 
-Debug overlay â?? **Saves** tab:
+Debug overlay ? **Saves** tab:
 
-- **Save** â?? new slot for the current scene
-- **Load** â?? selected row (remount + restore)
-- **Ã?** on each row â?? delete that slot (`SaveStore.remove`)
-- **List** â?? slots filtered to `scene.constructor.name`
+- **Save** — new slot for the current scene
+- **Load** — selected row (remount + restore)
+- **×** on each row — delete that slot (`SaveStore.remove`)
+- **List** — slots filtered to `scene.constructor.name`
 
 ## Joints + LiquidFun + Decals
 
-Payload keys (format version 2):
+Logical payload (after decode) includes:
 
 - `entities[]` — each record includes `entityIndex` (pre-restore free-list index) for joint remapping
 - `joints[]` — full SoA dump via `Joint.serializeActive()`, recreated after entity spawn
-- `liquidFun` — optional packed snapshot from the physics worker (`restore_particles` + `restore_particle_groups_and_pairs`)
-- `decals` — optional sparse DECALS tilemap (`tiles[]` with `fmt: 'png'|'raw'` + base64)
+- `liquidFun` — optional typed-array snapshot from the physics worker
+- `decals` — optional sparse DECALS tilemap (`tiles[]` with `fmt: 'png'|'raw'` + `bytes: Uint8Array`)
 
-LiquidFun WASM source: `D:\\xampp\\htdocs\\Box2d_3.2_C_-_liquidfun` (`wasm_wrapper.c` + `lf_particle_system.c`). Rebuild with `weedjs\\build_for_weed.bat`.
+LiquidFun WASM source: `D:\xampp\htdocs\Box2d_3.2_C_-_liquidfun` (`wasm_wrapper.c` + `lf_particle_system.c`). Rebuild with `weedjs\build_for_weed.bat`.
 
-## Limits (v2)
+## Limits
 
-- **Joints:** active Weed joint pool is saved/restored (distance / revolute / weld) with entity-index remapping. Box2D contact manifold dump is still not saved.
-- **LiquidFun:** particle pos/vel/flags, render tint/texture/scale/alpha, **plus** group slots, per-particle `groupIndex` / elastic `restOffset`, and spring/barrier pair graphs (jelly/elastic round-trips).
-- **Decals:** sparse non-empty DECALS tiles (PNG in browser, raw RGBA in Node) under `payload.decals`; layout mismatch skips restore
-- No decoration / CPU particle / bullet dumps
-- Schema fingerprint mismatch â?? warn / fail; no automatic migration
-- Cross-scene load rejected (`payload.sceneName` must match)
-- Save format version is `2` (`SAVE_FORMAT_VERSION`); older blobs are rejected
+- **Joints:** active Weed joint pool is saved/restored (distance / revolute / weld) with entity-index remapping. Box2D contact manifold dump is not saved.
+- **LiquidFun:** particle pos/vel/flags, render tint/texture/scale/alpha, plus group slots, per-particle `groupIndex` / elastic `restOffset`, and spring/barrier pair graphs.
+- **Decals:** sparse non-empty DECALS tiles (PNG in browser, raw RGBA in Node); layout mismatch skips restore.
+- No decoration / CPU particle / bullet dumps.
+- Schema fingerprint mismatch ? warn / best-effort apply.
+- Cross-scene load rejected (`payload.sceneName` must match).
+- Only format version `3` is accepted; other versions throw.

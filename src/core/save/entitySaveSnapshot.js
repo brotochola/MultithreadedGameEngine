@@ -10,9 +10,10 @@ import { Sun } from '../Sun.js';
 import { VERSION } from '../../version.js';
 import { BODY_DIRTY, markBodyDirty } from '../../box2d/box2dBodySync.js';
 import { Joint } from '../Joint.js';
+import { encodeBinarySaveBody, decodeBinarySaveBody } from './binarySaveCodec.js';
 
 export const SAVE_MAGIC = 'WEEDSAVE1';
-export const SAVE_FORMAT_VERSION = 2;
+export const SAVE_FORMAT_VERSION = 3;
 
 /** @param {Function} EntityClass */
 export function isEntityClassSerializable(EntityClass) {
@@ -256,7 +257,7 @@ export function applySunGlobals(sun) {
 }
 
 /**
- * Build an uncompressed save payload object (JSON-serializable).
+ * Build a logical save payload object (typed arrays OK; binary codec serializes).
  * @param {object} scene
  * @param {{ camera?: number[]|null, sun?: number[]|null }} [globals]
  */
@@ -301,13 +302,13 @@ function decodeUtf8(bytes) {
  * @returns {Uint8Array}
  */
 export function encodeSaveUncompressed(payload) {
-  const json = encodeUtf8(JSON.stringify(payload));
+  const body = encodeBinarySaveBody(payload);
   const magicBytes = encodeUtf8(SAVE_MAGIC);
-  const out = new Uint8Array(magicBytes.length + 4 + json.length);
+  const out = new Uint8Array(magicBytes.length + 4 + body.byteLength);
   out.set(magicBytes, 0);
   const view = new DataView(out.buffer);
   view.setUint32(magicBytes.length, SAVE_FORMAT_VERSION, true);
-  out.set(json, magicBytes.length + 4);
+  out.set(body, magicBytes.length + 4);
   return out;
 }
 
@@ -328,18 +329,15 @@ export function decodeSaveUncompressed(data) {
   if (formatVersion !== SAVE_FORMAT_VERSION) {
     throw new Error(`SaveGame: unsupported formatVersion ${formatVersion}`);
   }
-  const jsonBytes = bytes.subarray(magicBytes.length + 4);
-  const payload = JSON.parse(decodeUtf8(jsonBytes));
-  if (payload.magic !== SAVE_MAGIC) {
-    throw new Error('SaveGame: payload magic mismatch');
-  }
-  return payload;
+  const body = bytes.subarray(magicBytes.length + 4);
+  const decoded = decodeBinarySaveBody(body);
+  return {
+    magic: SAVE_MAGIC,
+    formatVersion: SAVE_FORMAT_VERSION,
+    ...decoded,
+  };
 }
 
-/**
- * @param {Uint8Array} input
- * @returns {Promise<Uint8Array>}
- */
 export async function deflateBytes(input) {
   if (typeof CompressionStream === 'undefined') {
     throw new Error('deflateBytes requires CompressionStream (browser or Node 18+)');
@@ -367,7 +365,14 @@ export async function inflateBytes(input) {
  * @returns {Promise<Uint8Array>}
  */
 export async function encodeSave(payload) {
-  return deflateBytes(encodeSaveUncompressed(payload));
+  const body = encodeBinarySaveBody(payload);
+  const compressed = await deflateBytes(body);
+  const magicBytes = encodeUtf8(SAVE_MAGIC);
+  const out = new Uint8Array(magicBytes.length + 4 + compressed.byteLength);
+  out.set(magicBytes, 0);
+  new DataView(out.buffer).setUint32(magicBytes.length, SAVE_FORMAT_VERSION, true);
+  out.set(compressed, magicBytes.length + 4);
+  return out;
 }
 
 /**
@@ -376,15 +381,26 @@ export async function encodeSave(payload) {
  */
 export async function decodeSave(compressed) {
   const bytes = compressed instanceof Uint8Array ? compressed : new Uint8Array(compressed);
-  return decodeSaveUncompressed(await inflateBytes(bytes));
+  const magicBytes = encodeUtf8(SAVE_MAGIC);
+  for (let i = 0; i < magicBytes.length; i++) {
+    if (bytes[i] !== magicBytes[i]) {
+      throw new Error('SaveGame: bad magic');
+    }
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const formatVersion = view.getUint32(magicBytes.length, true);
+  if (formatVersion !== SAVE_FORMAT_VERSION) {
+    throw new Error(`SaveGame: unsupported formatVersion ${formatVersion}`);
+  }
+  const body = await inflateBytes(bytes.subarray(magicBytes.length + 4));
+  const decoded = decodeBinarySaveBody(body);
+  return {
+    magic: SAVE_MAGIC,
+    formatVersion: SAVE_FORMAT_VERSION,
+    ...decoded,
+  };
 }
 
-/**
- * Filter helper for tests: would this entity be included?
- * @param {Function} EntityClass
- * @param {number} entityIndex
- * @param {{ active?: Uint8Array }} transformLike
- */
 export function shouldSaveEntity(EntityClass, entityIndex, transformLike = Transform) {
   if (!isEntityClassSerializable(EntityClass)) return false;
   const active = transformLike.active;

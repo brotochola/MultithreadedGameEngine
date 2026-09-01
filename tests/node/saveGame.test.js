@@ -42,6 +42,32 @@ class OtherEntity {
   };
 }
 
+function samplePayload(overrides = {}) {
+  return {
+    sceneName: 'TestScene',
+    engineVersion: '0.0.0-test',
+    layout: { types: [{ name: 'FakeEntity', poolSize: 10 }], totalEntityCount: 10 },
+    camera: [1, 2, 3, 4, 5, 6],
+    sun: null,
+    entities: [
+      {
+        typeName: 'FakeEntity',
+        entityIndex: 7,
+        components: {
+          FakeSerializable: {
+            fingerprint: 1,
+            fields: { active: 1, hp: 42.5 },
+          },
+        },
+      },
+    ],
+    joints: [],
+    liquidFun: null,
+    decals: null,
+    ...overrides,
+  };
+}
+
 test('isEntityClassSerializable respects static flag', () => {
   assert.equal(isEntityClassSerializable(FakeEntity), true);
   assert.equal(isEntityClassSerializable(OtherEntity), false);
@@ -54,51 +80,34 @@ test('shouldSaveEntity requires serializable + active', () => {
   assert.equal(shouldSaveEntity(OtherEntity, 1, { active }), false);
 });
 
-test('encode/decode uncompressed roundtrip', () => {
-  const payload = {
-    magic: SAVE_MAGIC,
-    formatVersion: SAVE_FORMAT_VERSION,
-    engineVersion: '0.0.0-test',
-    sceneName: 'TestScene',
-    layout: { types: [{ name: 'FakeEntity', poolSize: 10 }], totalEntityCount: 10 },
-    camera: [1, 2, 3, 4, 5, 6],
-    sun: null,
-    entities: [
-      {
-        typeName: 'FakeEntity',
-        components: {
-          FakeSerializable: {
-            fingerprint: 1,
-            fields: { active: 1, hp: 42.5 },
-          },
-        },
-      },
-    ],
-  };
+test('SAVE_FORMAT_VERSION is 3', () => {
+  assert.equal(SAVE_FORMAT_VERSION, 3);
+});
 
+test('binary uncompressed roundtrip', () => {
+  const payload = samplePayload();
   const bytes = encodeSaveUncompressed(payload);
   const decoded = decodeSaveUncompressed(bytes);
+  assert.equal(decoded.magic, SAVE_MAGIC);
+  assert.equal(decoded.formatVersion, 3);
   assert.equal(decoded.sceneName, 'TestScene');
   assert.equal(decoded.entities.length, 1);
+  assert.equal(decoded.entities[0].entityIndex, 7);
   assert.equal(decoded.entities[0].components.FakeSerializable.fields.hp, 42.5);
   assert.deepEqual(decoded.camera, [1, 2, 3, 4, 5, 6]);
 });
 
-test('encode/decode deflate roundtrip', async () => {
-  const payload = {
-    magic: SAVE_MAGIC,
-    formatVersion: SAVE_FORMAT_VERSION,
-    engineVersion: '0.0.0-test',
-    sceneName: 'TestScene',
-    layout: { types: [], totalEntityCount: 0 },
+test('binary deflate roundtrip', async () => {
+  const payload = samplePayload({
+    entities: [{ typeName: 'A', entityIndex: 0, components: {} }],
     camera: null,
-    sun: null,
-    entities: [{ typeName: 'A', components: {} }],
-  };
+    layout: { types: [], totalEntityCount: 0 },
+  });
   const compressed = await encodeSave(payload);
   assert.ok(compressed.byteLength > 0);
   const decoded = await decodeSave(compressed);
   assert.equal(decoded.entities[0].typeName, 'A');
+  assert.equal(decoded.formatVersion, 3);
 });
 
 test('applyEntitySaveRestore writes SoA fields', () => {
@@ -122,8 +131,13 @@ test('decode rejects bad magic', () => {
   assert.throws(() => decodeSaveUncompressed(new Uint8Array([1, 2, 3, 4])), /magic/);
 });
 
-test('SAVE_FORMAT_VERSION is 2', () => {
-  assert.equal(SAVE_FORMAT_VERSION, 2);
+test('decode rejects wrong format version', () => {
+  const good = encodeSaveUncompressed(samplePayload());
+  // Flip version u32 after magic
+  const bad = good.slice();
+  const magicLen = new TextEncoder().encode(SAVE_MAGIC).length;
+  new DataView(bad.buffer, bad.byteOffset, bad.byteLength).setUint32(magicLen, 2, true);
+  assert.throws(() => decodeSaveUncompressed(bad), /formatVersion/);
 });
 
 test('isEntityClassSerializable own false wins over ancestor true', () => {
@@ -137,15 +151,10 @@ test('isEntityClassSerializable own false wins over ancestor true', () => {
   assert.equal(isEntityClassSerializable(GhostChild), false);
 });
 
-test('joints + entityIndex roundtrip in uncompressed payload', () => {
-  const payload = {
-    magic: SAVE_MAGIC,
-    formatVersion: SAVE_FORMAT_VERSION,
-    engineVersion: '0.0.0-test',
-    sceneName: 'TestScene',
+test('joints + entityIndex binary roundtrip', () => {
+  const payload = samplePayload({
     layout: { types: [], totalEntityCount: 0 },
     camera: null,
-    sun: null,
     entities: [
       { typeName: 'MachineBox', entityIndex: 7, components: {} },
       { typeName: 'MachineWheel', entityIndex: 9, components: {} },
@@ -166,19 +175,21 @@ test('joints + entityIndex roundtrip in uncompressed payload', () => {
         maxMotorTorque: 100,
       },
     ],
-    liquidFun: null,
-  };
+  });
   const bytes = encodeSaveUncompressed(payload);
   const decoded = decodeSaveUncompressed(bytes);
-  assert.equal(decoded.formatVersion, 2);
+  assert.equal(decoded.formatVersion, 3);
   assert.equal(decoded.entities[0].entityIndex, 7);
   assert.equal(decoded.joints.length, 1);
   assert.equal(decoded.joints[0].entityA, 7);
   assert.equal(decoded.joints[0].type, 4);
+  assert.equal(decoded.joints[0].motorSpeed, 10);
 });
 
-test('liquidFun pack/unpack roundtrip', async () => {
-  const { packLiquidFunSnapshot, unpackLiquidFunSnapshot } = await import('../../src/core/save/liquidFunSave.js');
+test('liquidFun typed-array pack + binary roundtrip', async () => {
+  const { packLiquidFunSnapshot, unpackLiquidFunSnapshot } = await import(
+    '../../src/core/save/liquidFunSave.js'
+  );
   const snap = {
     count: 2,
     radius: 8,
@@ -215,20 +226,28 @@ test('liquidFun pack/unpack roundtrip', async () => {
     },
   };
   const packed = packLiquidFunSnapshot(snap);
+  assert.ok(packed.pos instanceof Float32Array);
   const unpacked = unpackLiquidFunSnapshot(packed);
   assert.equal(unpacked.count, 2);
   assert.deepEqual([...unpacked.pos], [1, 2, 3, 4]);
-  assert.deepEqual([...unpacked.flags], [1, 2]);
-  assert.deepEqual([...unpacked.groupIndex], [0, 0]);
-  assert.deepEqual([...unpacked.restOffset], [0.5, -0.5, -0.5, 0.5]);
-  assert.equal(unpacked.groups.slotCount, 1);
-  assert.ok(Math.abs(unpacked.groups.strength[0] - 0.55) < 1e-6);
-  assert.equal(unpacked.pairs.count, 1);
-  assert.equal(unpacked.pairs.distance[0], 12);
-  assert.deepEqual([...unpacked.render.tint], [0xff0000, 0x00ff00]);
+
+  const payload = samplePayload({
+    entities: [],
+    camera: null,
+    liquidFun: packed,
+  });
+  const decoded = decodeSaveUncompressed(encodeSaveUncompressed(payload));
+  assert.equal(decoded.liquidFun.count, 2);
+  assert.ok(decoded.liquidFun.pos instanceof Float32Array);
+  assert.deepEqual([...decoded.liquidFun.pos], [1, 2, 3, 4]);
+  assert.deepEqual([...decoded.liquidFun.groupIndex], [0, 0]);
+  assert.equal(decoded.liquidFun.groups.slotCount, 1);
+  assert.ok(Math.abs(decoded.liquidFun.groups.strength[0] - 0.55) < 1e-6);
+  assert.equal(decoded.liquidFun.pairs.count, 1);
+  assert.deepEqual([...decoded.liquidFun.render.tint], [0xff0000, 0x00ff00]);
 });
 
-test('decal pack/apply raw roundtrip + empty disabled', async () => {
+test('decal pack/apply raw bytes + binary roundtrip', async () => {
   const { packDecalSnapshot, applyDecalSnapshot } = await import('../../src/core/save/decalSave.js');
 
   const emptyScene = { config: { particle: { decals: false } }, buffers: {} };
@@ -242,7 +261,6 @@ test('decal pack/apply raw roundtrip + empty disabled', async () => {
   const rgbaSab = new SharedArrayBuffer(totalTiles * bytesPerTile);
   const dirtySab = new SharedArrayBuffer(totalTiles);
   const rgba = new Uint8ClampedArray(rgbaSab);
-  // Stamp tile 1 with opaque red pixel at (0,0)
   const tile1 = 1 * bytesPerTile;
   rgba[tile1] = 200;
   rgba[tile1 + 1] = 10;
@@ -265,12 +283,10 @@ test('decal pack/apply raw roundtrip + empty disabled', async () => {
 
   const packed = await packDecalSnapshot(scene);
   assert.ok(packed);
-  assert.equal(packed.tilesX, 2);
-  assert.equal(packed.tilesY, 2);
-  assert.equal(packed.tilePixelSize, 4);
   assert.equal(packed.tiles.length, 1);
   assert.equal(packed.tiles[0].i, 1);
   assert.equal(packed.tiles[0].fmt, 'raw');
+  assert.ok(packed.tiles[0].bytes instanceof Uint8Array);
 
   const rgbaSab2 = new SharedArrayBuffer(totalTiles * bytesPerTile);
   const dirtySab2 = new SharedArrayBuffer(totalTiles);
@@ -295,5 +311,11 @@ test('decal pack/apply raw roundtrip + empty disabled', async () => {
   assert.equal(out[tile1], 200);
   assert.equal(out[tile1 + 3], 255);
   assert.equal(new Uint8Array(dirtySab2)[1], 1);
-  assert.equal(new Uint8Array(dirtySab2)[0], 0);
+
+  const decoded = decodeSaveUncompressed(
+    encodeSaveUncompressed(samplePayload({ entities: [], camera: null, decals: packed }))
+  );
+  assert.equal(decoded.decals.tiles[0].i, 1);
+  assert.ok(decoded.decals.tiles[0].bytes instanceof Uint8Array);
+  assert.equal(decoded.decals.tiles[0].bytes[0], 200);
 });

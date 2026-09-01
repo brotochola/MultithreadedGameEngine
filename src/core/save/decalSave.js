@@ -1,30 +1,5 @@
 // Decal tilemap save helpers: sparse non-empty tiles as PNG (browser) or raw RGBA (Node).
 
-function bytesToBase64(bytes) {
-  if (!bytes || !bytes.length) return '';
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
-  }
-  let binary = '';
-  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const chunk = 0x8000;
-  for (let i = 0; i < u8.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(b64) {
-  if (!b64) return new Uint8Array(0);
-  if (typeof Buffer !== 'undefined') {
-    return new Uint8Array(Buffer.from(b64, 'base64'));
-  }
-  const binary = atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-  return out;
-}
-
 function tileHasContent(rgba, byteOffset, bytesPerTile) {
   const end = byteOffset + bytesPerTile;
   for (let i = byteOffset + 3; i < end; i += 4) {
@@ -45,13 +20,12 @@ async function encodeTilePng(rgba, byteOffset, tilePixelSize, bytesPerTile) {
   const imageData = new ImageData(copy, tilePixelSize, tilePixelSize);
   ctx.putImageData(imageData, 0, 0);
   const blob = await canvas.convertToBlob({ type: 'image/png' });
-  const ab = await blob.arrayBuffer();
-  return bytesToBase64(new Uint8Array(ab));
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
-async function decodeTilePng(b64, tilePixelSize, bytesPerTile) {
-  const bytes = base64ToBytes(b64);
-  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+async function decodeTilePng(bytes, tilePixelSize, bytesPerTile) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const bitmap = await createImageBitmap(new Blob([u8], { type: 'image/png' }));
   const canvas = new OffscreenCanvas(tilePixelSize, tilePixelSize);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(bitmap, 0, 0);
@@ -66,8 +40,8 @@ async function decodeTilePng(b64, tilePixelSize, bytesPerTile) {
 }
 
 /**
- * Pack non-empty decal tiles from scene SharedArrayBuffer into a JSON-friendly blob.
- * Browser: PNG per tile. Node / no OffscreenCanvas: raw RGBA.
+ * Pack non-empty decal tiles from scene SharedArrayBuffer.
+ * Browser: PNG bytes per tile. Node / no OffscreenCanvas: raw RGBA bytes.
  * @param {object} scene
  * @returns {Promise<object|null>}
  */
@@ -92,11 +66,14 @@ export async function packDecalSnapshot(scene) {
     const byteOffset = i * bytesPerTile;
     if (!tileHasContent(rgba, byteOffset, bytesPerTile)) continue;
     if (usePng) {
-      const b64 = await encodeTilePng(rgba, byteOffset, tilePixelSize, bytesPerTile);
-      tiles.push({ i, fmt: 'png', b64 });
+      const bytes = await encodeTilePng(rgba, byteOffset, tilePixelSize, bytesPerTile);
+      tiles.push({ i, fmt: 'png', bytes });
     } else {
-      const slice = rgba.subarray(byteOffset, byteOffset + bytesPerTile);
-      tiles.push({ i, fmt: 'raw', b64: bytesToBase64(slice) });
+      tiles.push({
+        i,
+        fmt: 'raw',
+        bytes: new Uint8Array(rgba.subarray(byteOffset, byteOffset + bytesPerTile)),
+      });
     }
   }
 
@@ -154,7 +131,7 @@ export async function applyDecalSnapshot(scene, blob) {
 
   for (const tile of blob.tiles) {
     const i = tile.i | 0;
-    if (i < 0 || i >= totalTiles || !tile.b64) continue;
+    if (i < 0 || i >= totalTiles || !tile.bytes) continue;
     const byteOffset = i * bytesPerTile;
     let pixels;
     if (tile.fmt === 'png') {
@@ -162,9 +139,9 @@ export async function applyDecalSnapshot(scene, blob) {
         console.warn('[DecalSave] PNG tile but OffscreenCanvas unavailable; skip tile', i);
         continue;
       }
-      pixels = await decodeTilePng(tile.b64, tilePixelSize, bytesPerTile);
+      pixels = await decodeTilePng(tile.bytes, tilePixelSize, bytesPerTile);
     } else {
-      pixels = base64ToBytes(tile.b64);
+      pixels = tile.bytes instanceof Uint8Array ? tile.bytes : new Uint8Array(tile.bytes);
       if (pixels.byteLength !== bytesPerTile) {
         console.warn('[DecalSave] raw tile size mismatch; skip tile', i);
         continue;
