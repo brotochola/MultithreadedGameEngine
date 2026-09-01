@@ -995,10 +995,6 @@ class PreRenderWorker extends AbstractWorker {
         const screenY = SpriteRenderer.screenY;
         const spriteRendererActive = SpriteRenderer.active;
         const renderVisible = SpriteRenderer.renderVisible;
-        const lightEmitterActive = LightEmitter.active;
-        const hasGlowSprite = LightEmitter.hasGlowSprite;
-        const lightIntensity = LightEmitter.lightIntensity;
-        const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
         const visualRange = Collider.visualRange;
         const srScaleX = SpriteRenderer.scaleX;
         const srScaleY = SpriteRenderer.scaleY;
@@ -1132,15 +1128,6 @@ class PreRenderWorker extends AbstractWorker {
                 this.collectRenderable(0, i, y[i] * Y_SORT_K);
                 this.visibleEntitiesCount++;
             }
-            if (
-                lightEmitterActive &&
-                lightEmitterActive[i] &&
-                hasGlowSprite[i] &&
-                lightIntensity[i] >= MIN_GLOW_INTENSITY &&
-                (visualRange[i] || sqrtLightIntensity[i] || 200) >= MIN_GLOW_RANGE
-            ) {
-                this.collectRenderable(3, i, y[i] * Y_SORT_K + ENTITY_GLOW_SORT_BIAS);
-            }
 
             // Sun shadows (fused)
             if (doSunShadows && sunShadowWriteIdx < maxItems && sunShadowCount < maxShadowSprites) {
@@ -1181,6 +1168,26 @@ class PreRenderWorker extends AbstractWorker {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // PRE-HOT: glow collect in a separate pass over LightEmitter actives only
+        if (this._queryLightEmitter && LightEmitter.active && LightEmitter.hasGlowSprite) {
+            const lights = this.queryActiveEntities(this._queryLightEmitter);
+            if (lights && lights.length > 0) {
+                const leActive = LightEmitter.active;
+                const leGlow = LightEmitter.hasGlowSprite;
+                const leIntensity = LightEmitter.lightIntensity;
+                const leSqrt = LightEmitter.sqrtLightIntensity;
+                const onScreen = SpriteRenderer.isItOnScreen || Transform.isItOnScreen;
+                for (let li = 0; li < lights.length; li++) {
+                    const i = lights[li];
+                    if (!leActive[i] || !leGlow[i]) continue;
+                    if (leIntensity[i] < MIN_GLOW_INTENSITY) continue;
+                    if ((visualRange[i] || leSqrt[i] || 200) < MIN_GLOW_RANGE) continue;
+                    if (onScreen && !onScreen[i]) continue;
+                    this.collectRenderable(3, i, y[i] * Y_SORT_K + ENTITY_GLOW_SORT_BIAS);
                 }
             }
         }

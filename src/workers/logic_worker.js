@@ -23,7 +23,7 @@ import { AbstractWorker } from './AbstractWorker.js';
 
 import { LOGIC_STATS, createMultiWorkerStatsWriter } from './workers-utils.js';
 import { Ray } from '../core/Ray.js';
-import { cantorPair, cantorUnpair, _cantorResult } from '../core/utils.js';
+import { _cantorResult } from '../core/utils.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
@@ -46,6 +46,16 @@ import {
   initialJointBreakCursor,
 } from '../box2d/box2dJointBreakRing.js';
 import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
+
+/** Pair key for entity indices < 65536. Replaces Cantor on contact hot path (LOG-PAIR). */
+function collisionPairKey(minE, maxE) {
+  return ((minE & 0xffff) << 16) | (maxE & 0xffff);
+}
+function collisionPairUnpack(key, out) {
+  out.a = (key >>> 16) & 0xffff;
+  out.b = key & 0xffff;
+  return out;
+}
 
 // Note: Core engine classes (GameObject, Mouse, Keyboard, etc.) and components
 // (Transform, RigidBody, etc.) are now registered automatically by AbstractWorker
@@ -80,9 +90,7 @@ class LogicWorker extends AbstractWorker {
     // Collision tracking (Unity-style Enter/Stay/Exit from Box2D contacts)
 
     // Optimized collision tracking using numeric keys instead of strings
-    // Uses Cantor pairing function: key = (a + b) * (a + b + 1) / 2 + b
-    // This eliminates string allocation and GC pressure
-    // Reverse lookups use cantorUnpair() - no Map needed (zero GC)
+    // LOG-PAIR: (min<<16)|max for entity indices < 65536 (zero GC unpack)
     this.previousCollisions = new Set(); // Track collisions from last frame (numeric keys)
     this.currentCollisions = new Set(); // Track collisions in current frame (numeric keys)
     // Stable reference to the latest COMPLETED frame's collision set.
@@ -90,7 +98,7 @@ class LogicWorker extends AbstractWorker {
     // (which run after processCollisionCallbacks) must query through this alias.
     this.frameCollisions = this.currentCollisions;
     this._beginSet = new Set();
-    /** @type {Map<number, bigint>} cantor key → packed gens */
+    /** @type {Map<number, bigint>} collisionPairKey → packed gens */
     this._collisionGens = new Map();
 
     // Box2D sequenced contact ring (msg box2dReady)
@@ -817,7 +825,7 @@ class LogicWorker extends AbstractWorker {
   _applyContactEnd(rawA, rawB, genA, genB) {
     const minE = rawA < rawB ? rawA : rawB;
     const maxE = rawA < rawB ? rawB : rawA;
-    const key = cantorPair(minE, maxE);
+    const key = collisionPairKey(minE, maxE);
     if (!this.previousCollisions.has(key)) return;
     if (!this._gensMatch(key, genA, genB)) {
       this.previousCollisions.delete(key);
@@ -845,7 +853,7 @@ class LogicWorker extends AbstractWorker {
 
     const minE = rawA < rawB ? rawA : rawB;
     const maxE = rawA < rawB ? rawB : rawA;
-    const key = cantorPair(minE, maxE);
+    const key = collisionPairKey(minE, maxE);
     const isNew = !this.previousCollisions.has(key);
     this.previousCollisions.add(key);
     this._collisionGens.set(key, this._packGens(genA, genB));
@@ -902,7 +910,7 @@ class LogicWorker extends AbstractWorker {
 
     // Purge pairs whose generation changed or entities went inactive
     for (const key of active) {
-      cantorUnpair(key, _cantorResult);
+      collisionPairUnpack(key, _cantorResult);
       const minE = _cantorResult.a;
       const maxE = _cantorResult.b;
       if (!this._pairStillValid(minE, maxE, key)) {

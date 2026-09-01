@@ -381,6 +381,11 @@ class ParticleWorker extends AbstractWorker {
       minY: 0,
       maxY: 0,
     };
+    // PAR-CAM: one camera bounds compute per particle update()
+    this._frameCamValid = false;
+    this._frameCamZoom = NaN;
+    this._frameCamX = NaN;
+    this._frameCamY = NaN;
     this._worldBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
     this._gridQueryResult = null;
 
@@ -579,6 +584,7 @@ class ParticleWorker extends AbstractWorker {
     // Writes to: activeParticlesData SAB, visibleParticlesData SAB, isItOnScreen flags
     const shouldProfile = this.collectDetailedStats;
     let startTime = shouldProfile ? performance.now() : 0;
+    this._frameCamValid = false;
     this.buildActiveAndVisibleParticleLists();
     if (shouldProfile) {
       this.buildActiveVisibleTimeThisFrame += performance.now() - startTime;
@@ -645,6 +651,37 @@ class ParticleWorker extends AbstractWorker {
   }
 
   /**
+   * PAR-CAM: calculateCameraScreenBounds once per update(); reuse for particles/decos/bullets.
+   */
+  _frameCameraBounds() {
+    if (!this.cameraData) return null;
+    const zoom = this.cameraData[0];
+    const cameraX = this.cameraData[1];
+    const cameraY = this.cameraData[2];
+    if (
+      this._frameCamValid &&
+      this._frameCamZoom === zoom &&
+      this._frameCamX === cameraX &&
+      this._frameCamY === cameraY
+    ) {
+      return this._cameraBounds;
+    }
+    this._frameCamZoom = zoom;
+    this._frameCamX = cameraX;
+    this._frameCamY = cameraY;
+    this._frameCamValid = true;
+    return calculateCameraScreenBounds(
+      zoom,
+      cameraX,
+      cameraY,
+      this.canvasWidth,
+      this.canvasHeight,
+      this.cullingRatio,
+      this._cameraBounds
+    );
+  }
+
+  /**
    * Build active particle list AND calculate screen visibility in a single fused pass.
    * Writes to:
    * - activeParticlesData SAB: [count, idx0, idx1, ...] - all active particles
@@ -681,19 +718,11 @@ class ParticleWorker extends AbstractWorker {
     }
 
     // Calculate camera bounds
-    const zoom = this.cameraData[0];
-    const cameraX = this.cameraData[1];
-    const cameraY = this.cameraData[2];
-
-    const cameraBounds = calculateCameraScreenBounds(
-      zoom,
-      cameraX,
-      cameraY,
-      this.canvasWidth,
-      this.canvasHeight,
-      this.cullingRatio,
-      this._cameraBounds
-    );
+    const cameraBounds = this._frameCameraBounds();
+    if (!cameraBounds) return;
+    const zoom = this._frameCamZoom;
+    const cameraX = this._frameCamX;
+    const cameraY = this._frameCamY;
 
     const { activeCount } = buildActiveAndVisibleListBuffers({
       maxParticles,
@@ -852,16 +881,9 @@ class ParticleWorker extends AbstractWorker {
       return;
     }
 
-    // Calculate camera bounds (reuses _cameraBounds object)
-    const zoom = this.cameraData[0];
-    const cameraX = this.cameraData[1];
-    const cameraY = this.cameraData[2];
+    const cameraBounds = this._frameCameraBounds();
+    if (!cameraBounds) return;
 
-    const cameraBounds = calculateCameraScreenBounds(
-      zoom, cameraX, cameraY,
-      this.canvasWidth, this.canvasHeight, this.cullingRatio,
-      this._cameraBounds
-    );
 
     const x = DecorationComponent.x;
     const y = DecorationComponent.y;
@@ -989,11 +1011,8 @@ class ParticleWorker extends AbstractWorker {
 
     if (activeWrite <= 1 || !this.cameraData || !visibleData) return;
 
-    const cameraBounds = calculateCameraScreenBounds(
-      this.cameraData[0], this.cameraData[1], this.cameraData[2],
-      this.canvasWidth, this.canvasHeight, this.cullingRatio,
-      this._cameraBounds
-    );
+    const cameraBounds = this._frameCameraBounds();
+    if (!cameraBounds) return;
     const camZoom = cameraBounds.zoom;
     const camOffX = cameraBounds.cameraOffsetX;
     const camOffY = cameraBounds.cameraOffsetY;
