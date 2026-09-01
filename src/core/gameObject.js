@@ -1559,7 +1559,7 @@ export class GameObject {
     const EntityClass = this.constructor;
     const entityType = EntityClass.entityType;
     const hadPhysicsBody =
-      !!(RigidBody.active?.[i] && Collider.active?.[i]);
+      !!(RigidBody.active?.[i] || Collider.active?.[i]);
 
     // ========================================
     // LIFECYCLE HOOKS (SAFE - local call)
@@ -2147,7 +2147,7 @@ export class GameObject {
     // Activate the entity - this enables spatial_worker to add it to Grid
     // and physics to process it. Must happen AFTER component setup.
     Transform.active[i] = 1;
-    if (has.RigidBody && has.Collider) {
+    if (has.RigidBody || has.Collider) {
       bumpBodyGeneration(i);
     }
 
@@ -2296,7 +2296,7 @@ export class GameObject {
 
       if (isAnyComponentActive) {
         const hadPhysicsBody =
-          !!(rigidBodyActive?.[i] && colliderActive?.[i]);
+          !!(rigidBodyActive?.[i] || colliderActive?.[i]);
         const instance = EntityClass.instances[i - startIndex];
 
         // Call lifecycle hook (same as individual despawn)

@@ -10,6 +10,33 @@ Related: [Spatial hashing & neighbors](./SPATIAL_HASHING.md), [Workers architect
 
 ---
 
+## RigidBody / Collider composition
+
+Box2D always attaches **shapes to a body**. Weed maps ECS components like Unity:
+
+| Components | Box2D body | Contacts / rays (Box2D) | Notes |
+| ---------- | ---------- | ----------------------- | ----- |
+| **RigidBody + Collider** | Dynamic or static (`RigidBody.static`) + shape | Yes | Same as classic Weed path |
+| **RigidBody only** | Body **without shapes** (WASM `create_body`) | No | Solver still integrates `vx/vy`, damping, gravity, joints. Ghost projectiles / flight FX. Unit mass when shapeless. |
+| **Collider only** | **Implicit static** body + shape | Yes | Walls, triggers, occluders. No force response. |
+| **Neither** | No Box2D body | — | Transform (+ optional sprite bounds in spatial) |
+
+Host sync (`weedjs_post.syncBodySlot`):
+
+- `wantBody = entityActive && (rbActive || colActive)`
+- Create: RB-only → `world.create()` / `create_body`; Col-only → static `create_*` with shape; both → existing `createBox` / `createCircle` / `createPolygon`
+- Geometry dirty with Collider on a shapeless body → `body_set_shape_*` **creates** the shape (`body_add_shape_*`)
+- Collider removed while RigidBody stays → `body_clear_shapes`; body keeps integrating
+- Spawn / despawn / save restore: `bumpBodyGeneration` / body dirty if **either** component is present (not only both)
+
+WASM sibling (`Box2d_3.2_C_-_liquidfun`): `create_body`, `body_add_shape_{box,circle,polygon}`, `body_clear_shapes`. Rebuild: `weedjs\build_for_weed.bat` → copies into `src/box2d/`. Correctness: `tests/node/rbColliderComposition.wasm.test.js`.
+
+**Not in v1:** kinematic type exposure (enum exists, Weed still passes static/dynamic only); Collider as Weed-grid-only without a Box2D body (would let dynamics tunnel “walls”).
+
+Command ring `setVelocity` works once `hasBody` (RB-only included). Col-only static: velocity commands are no-ops in the solver.
+
+---
+
 ## Responsibilities (per frame)
 
 1. **Box2D step** — classic WASM host advances bodies in-process (`weedjsDoStep`); hot pose/vel (`Transform.x/y/rotation/rotC/rotS`, `RigidBody.vx/vy/angularVelocity/sleeping`) live on HEAP. World `maximumLinearSpeed` clamps in the solver. Body damping: `linearDamping` / `angularDamping`. Before `world.step`, physics snapshots prev pose into `RigidBody.px/py/pRotation`. After the step, it **publishes** live `Transform.x/y/rotC/rotS` for dense bodies into double-buffered `poseDataA/B` and bumps `poseSync[readyFrame]` (same Atomics idiom as the render queue).

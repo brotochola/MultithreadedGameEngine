@@ -18,7 +18,7 @@ This folder contains the engine notes that are closest to the code. The docs are
 | ------------------------------------------------------ | --------------------------------------------------------------------------- |
 | [`COMPONENT_STORAGE.md`](./COMPONENT_STORAGE.md)       | Dense component storage policy and when to consider sparse storage          |
 | [`SPATIAL_HASHING.md`](./SPATIAL_HASHING.md)           | Spatial worker grid rebuilds, neighbor reuse, and collision-candidate lists |
-| [`PHYSICS.md`](./PHYSICS.md)                           | Box2D 3.0 nested WASM worker, contacts, joints, sleep |
+| [`PHYSICS.md`](./PHYSICS.md)                           | Box2D 3.0 nested WASM worker, RigidBody/Collider composition, contacts, joints, sleep |
 | [`LIQUIDFUN.md`](./LIQUIDFUN.md)                       | liquidfun-c on Box2D 3 C, WASM/SAB fluids, flags, body collision |
 | [`PHYSICS_KERNEL_STUDY.md`](./PHYSICS_KERNEL_STUDY.md) | Historical JS kernel microbench (pre–Box2D 3.0)       |
 | [`LAYER_ROUTING.md`](./LAYER_ROUTING.md)               | Render layer routing, layer-owned backgrounds, and custom layer constraints |

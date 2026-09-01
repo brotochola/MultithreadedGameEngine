@@ -99,6 +99,42 @@ function createPhysicsApi(Module) {
     "number",
     "number",
   ]);
+  const createBody = wrap("create_body", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const bodyAddShapeBox = wrap("body_add_shape_box", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const bodyAddShapeCircle = wrap("body_add_shape_circle", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const bodyAddShapePolygon = wrap("body_add_shape_polygon", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const bodyClearShapes = wrap("body_clear_shapes", null, ["number"]);
   const destroyBody = wrap("destroy_body", null, ["number"]);
   const bodySetTransform = wrap("body_set_transform", null, [
     "number",
@@ -819,6 +855,33 @@ function createPhysicsApi(Module) {
     setSleepThreshold(value) {
       bodySetSleepThreshold(this.slot, value);
     }
+
+    addShapeBox(hx, hy, offsetX = 0, offsetY = 0) {
+      bodyAddShapeBox(this.slot, hx, hy, offsetX, offsetY);
+    }
+
+    addShapeCircle(radius, offsetX = 0, offsetY = 0) {
+      bodyAddShapeCircle(this.slot, radius, offsetX, offsetY);
+    }
+
+    addShapePolygon(verts, offsetX = 0, offsetY = 0) {
+      if (!Array.isArray(verts) || verts.length < 6 || verts.length % 2 !== 0) {
+        throw new Error("addShapePolygon requires verts as [x0,y0,...] length >= 6");
+      }
+      const vertCount = verts.length / 2;
+      const bytes = vertCount * 2 * 4;
+      const ptr = Module._malloc(bytes);
+      Module.HEAPF32.set(verts, ptr >> 2);
+      try {
+        bodyAddShapePolygon(this.slot, ptr, vertCount, offsetX, offsetY);
+      } finally {
+        Module._free(ptr);
+      }
+    }
+
+    clearShapes() {
+      bodyClearShapes(this.slot);
+    }
   }
 
   class PhysicsWorld {
@@ -866,6 +929,30 @@ function createPhysicsApi(Module) {
 
     getMaxBodySlots() {
       return getMaxBodySlots();
+    }
+
+    /** Shapeless body (RigidBody-only). No contacts until addShape*. */
+    create(options = {}) {
+      const o = { ...DEFAULT_MATERIAL, ...options };
+      const slot = createBody(
+        this.worldId,
+        o.type ?? BODY_TYPE.DYNAMIC,
+        o.x ?? 0,
+        o.y ?? 0,
+        o.angle ?? 0,
+        o.linearDamping,
+        o.angularDamping,
+        o.gravityScale,
+        o.vx,
+        o.vy,
+        o.angularVelocity,
+        o.fixedRotation ? 1 : 0,
+        o.entity ?? o.entityIndex ?? -1,
+      );
+      if (slot < 0) {
+        throw new Error("create failed");
+      }
+      return new BodyHandle(this, slot);
     }
 
     createBox(options = {}) {

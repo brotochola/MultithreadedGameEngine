@@ -450,7 +450,10 @@
   }
 
   function createBodyForEntity(i) {
-    const isStatic = views.rbStatic[i] !== 0;
+    const rb = views.rbActive[i] !== 0;
+    const col = views.colActive[i] !== 0;
+    // Collider-only → implicit static. RB-only / both → honor rbStatic.
+    const isStatic = !rb || views.rbStatic[i] !== 0;
     const type = isStatic ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC;
     const shape = views.shapeType[i] | 0;
     const rawFriction = views.friction[i];
@@ -486,6 +489,12 @@
     };
 
     try {
+      // RigidBody without Collider: shapeless body (moves, no contacts).
+      if (rb && !col) {
+        world.create(opts);
+        return true;
+      }
+      if (!col) return false;
       if (shape === ShapeType.Circle) {
         const r = views.radius[i];
         if (!(r > 0)) return false;
@@ -548,10 +557,13 @@
   }
 
   function syncBodyProperties(i, flags) {
+    const rb = views.rbActive[i] !== 0;
+    const col = views.colActive[i] !== 0;
     if (flags & BODY_DIRTY.BODY_TYPE) {
+      // Collider-only stays static even if rbStatic SoA is stale.
       bodySetTypeFn(
         i,
-        views.rbStatic[i] ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC,
+        !rb || views.rbStatic[i] ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC,
       );
     }
     if (flags & BODY_DIRTY.DAMPING) {
@@ -559,12 +571,16 @@
       bodySetAngularDampingFn(i, views.angularDamping[i]);
     }
     if (flags & BODY_DIRTY.GEOMETRY) {
-      syncBodyGeometry(i);
+      if (col) {
+        syncBodyGeometry(i);
+      } else if (bodyClearShapesFn) {
+        bodyClearShapesFn(i);
+      }
     }
-    if (flags & (BODY_DIRTY.MASS | BODY_DIRTY.GEOMETRY)) {
+    if (col && flags & (BODY_DIRTY.MASS | BODY_DIRTY.GEOMETRY)) {
       bodySetDensityFn(i, densityForEntity(i, views.shapeType[i] | 0));
     }
-    if (flags & BODY_DIRTY.FILTER) {
+    if (col && flags & BODY_DIRTY.FILTER) {
       bodySetFilterFn(
         i,
         categoryBitsFor(i) >>> 0,
@@ -572,7 +588,7 @@
         views.collisionGroupIndex[i] | 0,
       );
     }
-    if (flags & BODY_DIRTY.FRICTION) {
+    if (col && flags & BODY_DIRTY.FRICTION) {
       const friction = views.friction[i];
       bodySetFrictionFn(i, friction >= 0 ? friction : 0);
       bodySetRestitutionFn(i, views.restitution[i] || 0);
@@ -602,8 +618,7 @@
     let created = false;
     const want =
       views.entityActive[i] !== 0 &&
-        views.rbActive[i] !== 0 &&
-        views.colActive[i] !== 0
+        (views.rbActive[i] !== 0 || views.colActive[i] !== 0)
         ? 1
         : 0;
     let have = hasBody[i];
@@ -886,6 +901,7 @@
   let bodySetShapeBoxFn = null;
   let bodySetShapeCircleFn = null;
   let bodySetShapePolygonFn = null;
+  let bodyClearShapesFn = null;
 
   // Teleports skip b2BodyMoveEvent — accumulate and merge into moved SAB after step
   let pendingTeleportBits = null;
@@ -1938,6 +1954,7 @@
       'number',
       'number',
     ]);
+    bodyClearShapesFn = Module.cwrap('body_clear_shapes', null, ['number']);
     weedjsHeapBytesUsed =
       typeof Module._weedjs_heap_bytes_used === 'function'
         ? Module._weedjs_heap_bytes_used

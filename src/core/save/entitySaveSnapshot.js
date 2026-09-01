@@ -176,7 +176,7 @@ export function applyEntitySaveRestore(entityIndex, EntityClass, components) {
   // Ensure entity stays active after restore overwrite
   if (Transform.active) Transform.active[entityIndex] = 1;
 
-  if (RigidBody.active?.[entityIndex] && Collider.active?.[entityIndex]) {
+  if (RigidBody.active?.[entityIndex] || Collider.active?.[entityIndex]) {
     markBodyDirty(entityIndex, BODY_DIRTY.LIFECYCLE | BODY_DIRTY.GEOMETRY | BODY_DIRTY.DAMPING);
   }
 }
