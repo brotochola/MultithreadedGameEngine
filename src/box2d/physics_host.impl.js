@@ -874,7 +874,11 @@
     state.frameNumber++;
     var now = performance.now();
     var deltaTime = now - state.lastFrameTime;
-    if (!(deltaTime > 0) || deltaTime > 1000) {
+    // Reject sub-ms deltas too. startGameLoop() sets lastFrameTime then calls
+    // gameLoop() synchronously, so the first dt is often << 1ms. LiquidFun
+    // pressure scales with (diameter/dt)^2 — that micro-step explodes a
+    // restored settled puddle upward on the first frame after load.
+    if (!(deltaTime >= 1) || deltaTime > 1000) {
       deltaTime = 1000 / 60;
     }
     state.lastFrameTime = now;

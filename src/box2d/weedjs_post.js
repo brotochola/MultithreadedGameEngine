@@ -2180,6 +2180,19 @@
   function weedjsRestoreLiquidFun(payload) {
     if (!world || typeof world.restoreParticles !== "function") return { ok: false, reason: "no-world" };
     if (!payload) return { ok: false, reason: "no-payload" };
+    // Materialize queued floors/walls/boxes before injecting settled particles.
+    // Bodies normally appear on the first doStep syncBodies; if particles are
+    // restored first, that same first step also builds contacts against brand-new
+    // geometry and can amplify the cold-start kick.
+    const entityCount = hostEntityCount | 0;
+    if (entityCount > 0) {
+      try {
+        syncBodies(entityCount);
+      } catch (_) {
+        /* dirty buffers may not be bound yet during very early restore */
+      }
+    }
+    drainCommands();
     const n = payload.count | 0;
     const pos = payload.pos instanceof Float32Array ? payload.pos : new Float32Array(payload.pos || []);
     const vel = payload.vel instanceof Float32Array ? payload.vel : new Float32Array(payload.vel || []);

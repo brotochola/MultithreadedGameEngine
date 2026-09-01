@@ -64,7 +64,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
     physics: {
       subStepCount: 1,
       noLimitFPS: false,
-      gravity: { x: 0, y: 980 },
+      gravity: { x: 0, y: 2000 },
       sleeping: false,
       liquidFun: {
         enabled: true,
