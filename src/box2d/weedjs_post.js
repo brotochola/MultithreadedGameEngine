@@ -660,6 +660,9 @@
         console.warn('[weedjs-box2d] createBody failed; wait for next dirty', i);
       }
     }
+    // LIFECYCLE alone = create/destroy above. Property sync (clear shapes /
+    // BODY_TYPE / mass) needs other dirty bits — collider/rb `.active` setters
+    // publish LIFECYCLE|GEOMETRY|MASS or LIFECYCLE|BODY_TYPE|MASS so this runs.
     if (hasBody[i] && !created && flags !== BODY_DIRTY.LIFECYCLE) {
       syncBodyProperties(i, flags);
     }

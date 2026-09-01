@@ -197,6 +197,23 @@ export class RigidBody extends Component {
   }
 
   /**
+   * Toggle RigidBody participation. Off + Collider still on → implicit static
+   * body with shape. Host applies BODY_TYPE; mass from collider density.
+   */
+  get active() {
+    return RigidBody.active[this.index];
+  }
+  set active(value) {
+    const next = value ? 1 : 0;
+    if (RigidBody.active[this.index] === next) return;
+    RigidBody.active[this.index] = next;
+    markBodyDirty(
+      this.index,
+      BODY_DIRTY.LIFECYCLE | BODY_DIRTY.BODY_TYPE | BODY_DIRTY.MASS,
+    );
+  }
+
+  /**
    * Static property - custom setter that sets invMass = 0 for static entities
    * Static entities have infinite mass (invMass = 0) and don't move
    *

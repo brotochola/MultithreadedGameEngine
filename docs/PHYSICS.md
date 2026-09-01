@@ -29,7 +29,18 @@ Host sync (`weedjs_post.syncBodySlot`):
 - Collider removed while RigidBody stays → `body_clear_shapes`; body keeps integrating
 - Spawn / despawn / save restore: `bumpBodyGeneration` / body dirty if **either** component is present (not only both)
 
-WASM sibling (`Box2d_3.2_C_-_liquidfun`): `create_body`, `body_add_shape_{box,circle,polygon}`, `body_clear_shapes`. Rebuild: `weedjs\build_for_weed.bat` → copies into `src/box2d/`. Correctness: `tests/node/rbColliderComposition.wasm.test.js`.
+**Weed game API** (do not call WASM `addShape` / `clearShapes` from gameplay):
+
+```js
+this.collider.active = 0;  // RB stays: body kept, shapes cleared (no contacts)
+this.collider.active = 1;  // restore shape on existing body
+this.rigidBody.active = 0; // Collider stays: implicit static body + shape
+this.rigidBody.active = 1; // restore dynamic/static from rigidBody.static
+```
+
+Setters write SoA and `markBodyDirty` with `LIFECYCLE|GEOMETRY|MASS` (Collider) or `LIFECYCLE|BODY_TYPE|MASS` (RigidBody) so `syncBodySlot` runs property sync (not LIFECYCLE-only, which only create/destroys).
+
+WASM sibling (`Box2d_3.2_C_-_liquidfun`): `create_body`, `body_add_shape_{box,circle,polygon}`, `body_clear_shapes`. Rebuild: `weedjs\build_for_weed.bat` → copies into `src/box2d/`. Correctness: `tests/node/rbColliderComposition.wasm.test.js` (WASM attach/detach); dirty-flag publish: `tests/node/box2dBodyJointSync.test.js`.
 
 **Not in v1:** kinematic type exposure (enum exists, Weed still passes static/dynamic only); Collider as Weed-grid-only without a Box2D body (would let dynamics tunnel “walls”).
 

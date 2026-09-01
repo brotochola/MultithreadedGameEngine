@@ -8,6 +8,8 @@ import {
 } from '../../src/box2d/box2dBodySync.js';
 import { Joint } from '../../src/core/Joint.js';
 import { resetFreeList } from '../../src/core/atomicFreeList.js';
+import { Collider } from '../../src/components/Collider.js';
+import { RigidBody } from '../../src/components/RigidBody.js';
 
 test('body dirty: coalesces flags and publishes dirty words', () => {
   const entityCount = 64;
@@ -87,4 +89,60 @@ test('joint revision: bumps on add, update, remove; slot reuse gets new rev', ()
   assert.ok(revReuse > revAfterRemove);
 
   Joint.reset();
+});
+
+test('collider/rigidBody.active setters publish combined dirty flags', () => {
+  const entityCount = 8;
+  const buffers = {
+    bodyDirtyFlags: new SharedArrayBuffer(entityCount * 4),
+    bodyDirtyWords: new SharedArrayBuffer(Math.ceil(entityCount / 32) * 4),
+    bodyGeneration: new SharedArrayBuffer(entityCount * 4),
+  };
+  bindBodySyncBuffers(buffers);
+  const flags = new Int32Array(buffers.bodyDirtyFlags);
+
+  Collider.initializeArrays(
+    new SharedArrayBuffer(Collider.getBufferSize(entityCount)),
+    entityCount,
+  );
+  RigidBody.initializeArrays(
+    new SharedArrayBuffer(RigidBody.getBufferSize(entityCount)),
+    entityCount,
+  );
+  Collider.active[1] = 1;
+  RigidBody.active[2] = 1;
+
+  const col = Object.create(Collider.prototype);
+  col.index = 1;
+  const rb = Object.create(RigidBody.prototype);
+  rb.index = 2;
+
+  const colMask =
+    BODY_DIRTY.LIFECYCLE | BODY_DIRTY.GEOMETRY | BODY_DIRTY.MASS;
+  const rbMask =
+    BODY_DIRTY.LIFECYCLE | BODY_DIRTY.BODY_TYPE | BODY_DIRTY.MASS;
+
+  col.active = 0;
+  assert.equal(Collider.active[1], 0);
+  assert.equal(flags[1] & colMask, colMask);
+
+  flags[1] = 0;
+  col.active = 0; // noop
+  assert.equal(flags[1], 0);
+
+  col.active = 1;
+  assert.equal(Collider.active[1], 1);
+  assert.equal(flags[1] & colMask, colMask);
+
+  rb.active = 0;
+  assert.equal(RigidBody.active[2], 0);
+  assert.equal(flags[2] & rbMask, rbMask);
+
+  flags[2] = 0;
+  rb.active = 0; // noop
+  assert.equal(flags[2], 0);
+
+  rb.active = 1;
+  assert.equal(RigidBody.active[2], 1);
+  assert.equal(flags[2] & rbMask, rbMask);
 });

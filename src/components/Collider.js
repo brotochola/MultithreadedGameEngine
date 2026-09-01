@@ -226,6 +226,23 @@ class Collider extends Component {
   // CUSTOM GETTERS/SETTERS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /**
+   * Toggle Collider participation. Off + RigidBody still on → shapeless body
+   * (moves, no Box2D contacts). Host clears/adds shapes via GEOMETRY dirty.
+   */
+  get active() {
+    return Collider.active[this.index];
+  }
+  set active(value) {
+    const next = value ? 1 : 0;
+    if (Collider.active[this.index] === next) return;
+    Collider.active[this.index] = next;
+    markBodyDirty(
+      this.index,
+      BODY_DIRTY.LIFECYCLE | BODY_DIRTY.GEOMETRY | BODY_DIRTY.MASS,
+    );
+  }
+
   get shapeType() {
     return Collider.shapeType[this.index];
   }
