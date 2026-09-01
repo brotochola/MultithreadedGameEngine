@@ -422,8 +422,8 @@ function initializeLightingAndRenderBuffers(scene) {
     const totalTiles = tilesX * tilesY;
     const bytesPerTile = tilePixelSize * tilePixelSize * 4;
 
-    buffers.bloodTilesRGBA = new SharedArrayBuffer(totalTiles * bytesPerTile);
-    buffers.bloodTilesDirty = new SharedArrayBuffer(totalTiles);
+    buffers.decalsTilesRGBA = new SharedArrayBuffer(totalTiles * bytesPerTile);
+    buffers.decalsTilesDirty = new SharedArrayBuffer(totalTiles);
     scene.decalsTilesX = tilesX;
     scene.decalsTilesY = tilesY;
     scene.decalsTotalTiles = totalTiles;

@@ -1,15 +1,15 @@
 // Sparse entity save snapshot: pack/unpack SoA fields for serializable active entities.
 // Used by SaveGame encode/decode and by GameObject.spawn(_saveRestore).
 
-import { Component } from './Component.js';
-import { Transform } from '../components/Transform.js';
-import { RigidBody } from '../components/RigidBody.js';
-import { Collider } from '../components/Collider.js';
-import { Camera } from './Camera.js';
-import { Sun } from './Sun.js';
-import { VERSION } from '../version.js';
-import { BODY_DIRTY, markBodyDirty } from '../box2d/box2dBodySync.js';
-import { Joint } from './Joint.js';
+import { Component } from '../Component.js';
+import { Transform } from '../../components/Transform.js';
+import { RigidBody } from '../../components/RigidBody.js';
+import { Collider } from '../../components/Collider.js';
+import { Camera } from '../Camera.js';
+import { Sun } from '../Sun.js';
+import { VERSION } from '../../version.js';
+import { BODY_DIRTY, markBodyDirty } from '../../box2d/box2dBodySync.js';
+import { Joint } from '../Joint.js';
 
 export const SAVE_MAGIC = 'WEEDSAVE1';
 export const SAVE_FORMAT_VERSION = 2;
@@ -278,6 +278,9 @@ export function buildSavePayload(scene, globals = {}) {
     payload.liquidFun = globals.liquidFun;
   } else if (scene._liquidFunSaveSnapshot) {
     payload.liquidFun = scene._liquidFunSaveSnapshot;
+  }
+  if (globals.decals !== undefined) {
+    payload.decals = globals.decals;
   }
   return payload;
 }

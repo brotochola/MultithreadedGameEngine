@@ -415,7 +415,7 @@ All navigation state lives in one SAB. Size comes from `NavGrid.calculateSABSize
 
 Persistent decals (blood, scorch marks, etc.) are stamped onto tile-based RGBA buffers.
 
-### `bloodTilesRGBA`
+### `decalsTilesRGBA`
 
 | Property           | Value                                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------------------- |
@@ -424,7 +424,7 @@ Persistent decals (blood, scorch marks, etc.) are stamped onto tile-based RGBA b
 | **Total size**     | `totalTiles * bytesPerTile`                                                                             |
 | **Typed array**    | `Uint8ClampedArray` (particle worker writes pixels), GPU texture upload (pixi worker)                   |
 
-### `bloodTilesDirty`
+### `decalsTilesDirty`
 
 | Property        | Value                              |
 | --------------- | ---------------------------------- |

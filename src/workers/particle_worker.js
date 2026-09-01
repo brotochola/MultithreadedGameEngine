@@ -325,8 +325,8 @@ class ParticleWorker extends AbstractWorker {
     this.decalsTilesX = 0;
     this.decalsTilesY = 0;
     this.decalsTotalTiles = 0;
-    this.bloodTilesRGBA = null;
-    this.bloodTilesDirty = null;
+    this.decalsTilesRGBA = null;
+    this.decalsTilesDirty = null;
     this.particlesToStamp = null;
     this.particlesToStampCount = 0;
     this.decalTextures = {};
@@ -446,8 +446,8 @@ class ParticleWorker extends AbstractWorker {
       this.decalsTilesY = data.decals.tilesY;
       this.decalsTotalTiles = data.decals.totalTiles;
 
-      this.bloodTilesRGBA = new Uint8ClampedArray(data.decals.tilesRGBA);
-      this.bloodTilesDirty = new Uint8Array(data.decals.tilesDirty);
+      this.decalsTilesRGBA = new Uint8ClampedArray(data.decals.tilesRGBA);
+      this.decalsTilesDirty = new Uint8Array(data.decals.tilesDirty);
 
       if (data.decals.textures) {
         for (const [textureId, textureData] of Object.entries(data.decals.textures)) {
@@ -1153,8 +1153,8 @@ class ParticleWorker extends AbstractWorker {
       textureRgba: texture.rgba,
       texWidth: texture.width,
       texHeight: texture.height,
-      bloodTiles: this.bloodTilesRGBA,
-      bloodTilesDirty: this.bloodTilesDirty,
+      decalsTiles: this.decalsTilesRGBA,
+      decalsTilesDirty: this.decalsTilesDirty,
       decalsTileSize: this.decalsTileSize,
       decalsTilePixelSize: this.decalsTilePixelSize,
       decalsTilesX: this.decalsTilesX,

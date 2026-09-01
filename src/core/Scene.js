@@ -931,7 +931,7 @@ class Scene {
     // before play starts (workers stay paused until start below).
     if (this._restorePayload) {
       const payload = this._restorePayload;
-      const { applySavePayloadToScene } = await import('./SaveGame.js');
+      const { applySavePayloadToScene } = await import('./save/SaveGame.js');
       await applySavePayloadToScene(this, payload);
       await this.onLoadGame(payload);
     } else {
@@ -2131,7 +2131,7 @@ class Scene {
    * @param {string} [slotId]
    */
   async saveGame(slotId) {
-    const { saveGame } = await import('./SaveGame.js');
+    const { saveGame } = await import('./save/SaveGame.js');
     return saveGame(this, slotId);
   }
 
@@ -2140,7 +2140,7 @@ class Scene {
    * @param {string} slotId
    */
   async loadGame(slotId) {
-    const { loadGame } = await import('./SaveGame.js');
+    const { loadGame } = await import('./save/SaveGame.js');
     return loadGame(this.game, this.constructor, slotId);
   }
 

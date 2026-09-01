@@ -22,7 +22,8 @@ import {
   requestLiquidFunSnapshot,
   requestLiquidFunRestore,
 } from './liquidFunSave.js';
-import { VERSION } from '../version.js';
+import { packDecalSnapshot, applyDecalSnapshot } from './decalSave.js';
+import { VERSION } from '../../version.js';
 
 export {
   SaveStore,
@@ -56,7 +57,16 @@ export async function saveGame(scene, slotId) {
       console.warn('[SaveGame] LiquidFun snapshot failed:', err);
     }
   }
-  const payload = buildSavePayload(scene, liquidFun ? { liquidFun } : {});
+  let decals = null;
+  try {
+    decals = await packDecalSnapshot(scene);
+  } catch (err) {
+    console.warn('[SaveGame] Decal snapshot failed:', err);
+  }
+  const globals = {};
+  if (liquidFun) globals.liquidFun = liquidFun;
+  if (decals) globals.decals = decals;
+  const payload = buildSavePayload(scene, globals);
   const compressed = await encodeSave(payload);
   const id =
     slotId ||
@@ -143,6 +153,13 @@ export function applySavePayloadToScene(scene, payload) {
         await requestLiquidFunRestore(scene.workers.physics, unpacked);
       } catch (err) {
         console.warn('[SaveGame] LiquidFun restore failed:', err);
+      }
+    }
+    if (payload.decals) {
+      try {
+        await applyDecalSnapshot(scene, payload.decals);
+      } catch (err) {
+        console.warn('[SaveGame] Decal restore failed:', err);
       }
     }
     return result;

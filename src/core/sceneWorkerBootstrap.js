@@ -263,8 +263,8 @@ function buildSceneWorkerInitData(scene, sharedBuffers, scriptsToLoad) {
           tilesX: scene.decalsTilesX,
           tilesY: scene.decalsTilesY,
           totalTiles: scene.decalsTotalTiles,
-          tilesRGBA: scene.buffers.bloodTilesRGBA,
-          tilesDirty: scene.buffers.bloodTilesDirty,
+          tilesRGBA: scene.buffers.decalsTilesRGBA,
+          tilesDirty: scene.buffers.decalsTilesDirty,
           textures: scene.decalTextureData,
         }
       : null,

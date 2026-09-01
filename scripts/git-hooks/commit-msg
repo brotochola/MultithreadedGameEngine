@@ -1,0 +1,10 @@
+#!/bin/sh
+# Strip Cursor attribution trailers injected into commit messages.
+msg_file="$1"
+if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+  exit 0
+fi
+tmp="${msg_file}.strip"
+# portable sed: delete Cursor co-author / Made-with lines
+sed -e '/^Co-authored-by:.*[Cc]ursor/d' -e '/^Made-with:.*[Cc]ursor/d' -e '/^Made with Cursor/d' "$msg_file" > "$tmp" && mv "$tmp" "$msg_file"
+exit 0

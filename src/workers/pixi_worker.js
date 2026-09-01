@@ -309,8 +309,8 @@ class PixiRenderer extends AbstractWorker {
     this._nextDecalTileScanIndex = 0;
 
     // SharedArrayBuffer views (shared with particle_worker)
-    this.decalTilesRGBA = null; // Uint8ClampedArray - RGBA pixel data
-    this.decalTilesDirty = null; // Uint8Array - dirty flags (0=clean, 1=modified)
+    this.decalsTilesRGBA = null; // Uint8ClampedArray - RGBA pixel data
+    this.decalsTilesDirty = null; // Uint8Array - dirty flags (0=clean, 1=modified)
 
     // PIXI rendering
     this.decalTileContainer = null; // Container for decal tile sprites
@@ -1004,19 +1004,19 @@ class PixiRenderer extends AbstractWorker {
 
     while (scanned < totalTiles && processed < maxUploads) {
       // Check if this tile was modified by particle_worker
-      if (this.decalTilesDirty[tileIndex] === 0) {
+      if (this.decalsTilesDirty[tileIndex] === 0) {
         tileIndex = (tileIndex + 1) % totalTiles;
         scanned++;
         continue;
       }
 
       // Clear dirty flag immediately (particle_worker may set it again)
-      this.decalTilesDirty[tileIndex] = 0;
+      this.decalsTilesDirty[tileIndex] = 0;
 
       // Get the RGBA data for this tile from SharedArrayBuffer
       const tileByteOffset = tileIndex * bytesPerTile;
       const tileRGBAShared = new Uint8ClampedArray(
-        this.decalTilesRGBA.buffer,
+        this.decalsTilesRGBA.buffer,
         tileByteOffset,
         bytesPerTile
       );
@@ -3279,8 +3279,8 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       this.decalsTotalTiles = data.decals.totalTiles;
 
       // Create typed array views over SharedArrayBuffers
-      this.decalTilesRGBA = new Uint8ClampedArray(data.decals.tilesRGBA);
-      this.decalTilesDirty = new Uint8Array(data.decals.tilesDirty);
+      this.decalsTilesRGBA = new Uint8ClampedArray(data.decals.tilesRGBA);
+      this.decalsTilesDirty = new Uint8Array(data.decals.tilesDirty);
 
       // Create decal tile container (renders between background and entities)
       this.decalTileContainer = new PIXI.Container();

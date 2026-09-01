@@ -1,6 +1,6 @@
 # Save Game (sparse serializable entities)
 
-WeedJS saves **active, opt-in entities** plus tiny globals (camera / sun). It does **not** dump whole `SharedArrayBuffer` pools, decorations, particles, or the Box2D WASM heap.
+WeedJS saves **active, opt-in entities** plus tiny globals (camera / sun). It does **not** dump whole entity SharedArrayBuffer pools, decorations, CPU particles, bullets, or the Box2D WASM heap. Camera, sun, joints, LiquidFun, and sparse DECALS tiles are included.
 
 ## Opt-in
 
@@ -26,16 +26,16 @@ Per entity, the snapshot packs SoA component fields (plus Transform pose and Rig
 
 ```text
 preload()
-create()                 // always â€” static world
-â”œâ”€ createNewGame()       // new game only
-â””â”€ restore (await restoreSaveComplete) + onLoadGame  // save load only
-startMainLoop / workers  // only after restore ack â€” workers stay paused until then
+create()                 // always â?? static world
+â??â?? createNewGame()       // new game only
+â??â?? restore (await restoreSaveComplete) + onLoadGame  // save load only
+startMainLoop / workers  // only after restore ack â?? workers stay paused until then
 ```
 
 | Hook | When | Put here |
 |------|------|----------|
 | `preload()` | Always | Tilemap, camera prep, nav |
-| `create()` | Always | Static world (lights, trash, trees, grass, â€¦) |
+| `create()` | Always | Static world (lights, trash, trees, grass, â?¦) |
 | `createNewGame()` | No save restore | Serializable / dynamic spawns (soldiers, civilians, player) |
 | `onLoadGame(payload)` | After save applied | Load-only logic (UI, quests). Payload already restored entities + camera/sun |
 
@@ -46,6 +46,16 @@ Load awaits logic0 `restoreSaveComplete` (entities spawned + active lists flushe
 **PredatorScene example:** static setup stays in `create()`; `spawnCivilians` / `spawnMySoldiers` live in `createNewGame()`.
 
 Do not gate spawns with `if (!this._restorePayload)` inside `create()`.
+
+## Module layout
+
+Save code lives under `src/core/save/`:
+
+- `SaveGame.js` ? orchestrate save/load
+- `SaveStore.js` ? IndexedDB + catalog
+- `entitySaveSnapshot.js` ? entity SoA pack/unpack
+- `liquidFunSave.js` ? LiquidFun snapshot helpers
+- `decalSave.js` ? sparse DECALS tile pack/unpack
 
 ## Storage
 
@@ -79,20 +89,21 @@ Load remounts the scene: `create()` builds statics, then logic worker `restoreSa
 
 ## Debug UI
 
-Debug overlay â†’ **Saves** tab:
+Debug overlay â?? **Saves** tab:
 
-- **Save** â€” new slot for the current scene
-- **Load** â€” selected row (remount + restore)
-- **Ã—** on each row â€” delete that slot (`SaveStore.remove`)
-- **List** â€” slots filtered to `scene.constructor.name`
+- **Save** â?? new slot for the current scene
+- **Load** â?? selected row (remount + restore)
+- **Ã?** on each row â?? delete that slot (`SaveStore.remove`)
+- **List** â?? slots filtered to `scene.constructor.name`
 
-## Joints + LiquidFun
+## Joints + LiquidFun + Decals
 
 Payload keys (format version 2):
 
-- `entities[]` ï¿½ each record includes `entityIndex` (pre-restore free-list index) for joint remapping
-- `joints[]` ï¿½ full SoA dump via `Joint.serializeActive()`, recreated after entity spawn
-- `liquidFun` â€” optional packed snapshot from the physics worker (`restore_particles` + `restore_particle_groups_and_pairs`)
+- `entities[]` — each record includes `entityIndex` (pre-restore free-list index) for joint remapping
+- `joints[]` — full SoA dump via `Joint.serializeActive()`, recreated after entity spawn
+- `liquidFun` — optional packed snapshot from the physics worker (`restore_particles` + `restore_particle_groups_and_pairs`)
+- `decals` — optional sparse DECALS tilemap (`tiles[]` with `fmt: 'png'|'raw'` + base64)
 
 LiquidFun WASM source: `D:\\xampp\\htdocs\\Box2d_3.2_C_-_liquidfun` (`wasm_wrapper.c` + `lf_particle_system.c`). Rebuild with `weedjs\\build_for_weed.bat`.
 
@@ -100,7 +111,8 @@ LiquidFun WASM source: `D:\\xampp\\htdocs\\Box2d_3.2_C_-_liquidfun` (`wasm_wrapp
 
 - **Joints:** active Weed joint pool is saved/restored (distance / revolute / weld) with entity-index remapping. Box2D contact manifold dump is still not saved.
 - **LiquidFun:** particle pos/vel/flags, render tint/texture/scale/alpha, **plus** group slots, per-particle `groupIndex` / elastic `restOffset`, and spring/barrier pair graphs (jelly/elastic round-trips).
-- No decoration / CPU particle / bullet / decal dumps
-- Schema fingerprint mismatch â†’ warn / fail; no automatic migration
+- **Decals:** sparse non-empty DECALS tiles (PNG in browser, raw RGBA in Node) under `payload.decals`; layout mismatch skips restore
+- No decoration / CPU particle / bullet dumps
+- Schema fingerprint mismatch â?? warn / fail; no automatic migration
 - Cross-scene load rejected (`payload.sceneName` must match)
 - Save format version is `2` (`SAVE_FORMAT_VERSION`); older blobs are rejected

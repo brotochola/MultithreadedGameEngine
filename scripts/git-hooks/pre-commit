@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+# Auto-increment patch version on every commit.
+# Keep stderr visible so a failed bump fails the commit loudly.
+npm version patch --no-git-tag-version
+node scripts/sync-version.js
+git add package.json package-lock.json src/version.js

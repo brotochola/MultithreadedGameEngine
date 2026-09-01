@@ -19,8 +19,8 @@ import { calculateDecalTileBounds, calculateTileClipRegion, _decalTileBounds, _t
  * @param {Uint8ClampedArray|Uint8Array} params.textureRgba - Source decal texture RGBA pixels
  * @param {number} params.texWidth - Source texture width in pixels
  * @param {number} params.texHeight - Source texture height in pixels
- * @param {Uint8ClampedArray|Uint8Array} params.bloodTiles - Destination tile atlas RGBA pixels
- * @param {Uint8Array} params.bloodTilesDirty - Per-tile dirty flags (written to 1 on touch)
+ * @param {Uint8ClampedArray|Uint8Array} params.decalsTiles - Destination tile atlas RGBA pixels
+ * @param {Uint8Array} params.decalsTilesDirty - Per-tile dirty flags (written to 1 on touch)
  * @param {number} params.decalsTileSize - Tile size in world units
  * @param {number} params.decalsTilePixelSize - Tile size in pixels
  * @param {number} params.decalsTilesX - Number of tiles horizontally
@@ -38,8 +38,8 @@ export function stampParticleToTileBuffers({
   textureRgba,
   texWidth,
   texHeight,
-  bloodTiles,
-  bloodTilesDirty,
+  decalsTiles,
+  decalsTilesDirty,
   decalsTileSize,
   decalsTilePixelSize,
   decalsTilesX,
@@ -134,15 +134,15 @@ export function stampParticleToTileBuffers({
             if (effectiveAlpha < 2) continue;
 
             const invEffectiveAlpha = 255 - effectiveAlpha;
-            const dstR = bloodTiles[dstOffset];
-            const dstG = bloodTiles[dstOffset + 1];
-            const dstB = bloodTiles[dstOffset + 2];
-            const dstA = bloodTiles[dstOffset + 3];
+            const dstR = decalsTiles[dstOffset];
+            const dstG = decalsTiles[dstOffset + 1];
+            const dstB = decalsTiles[dstOffset + 2];
+            const dstA = decalsTiles[dstOffset + 3];
 
-            bloodTiles[dstOffset] = (dstR * invEffectiveAlpha + 127) >> 8;
-            bloodTiles[dstOffset + 1] = (dstG * invEffectiveAlpha + 127) >> 8;
-            bloodTiles[dstOffset + 2] = (dstB * invEffectiveAlpha + 127) >> 8;
-            bloodTiles[dstOffset + 3] = effectiveAlpha + ((dstA * invEffectiveAlpha + 127) >> 8);
+            decalsTiles[dstOffset] = (dstR * invEffectiveAlpha + 127) >> 8;
+            decalsTiles[dstOffset + 1] = (dstG * invEffectiveAlpha + 127) >> 8;
+            decalsTiles[dstOffset + 2] = (dstB * invEffectiveAlpha + 127) >> 8;
+            decalsTiles[dstOffset + 3] = effectiveAlpha + ((dstA * invEffectiveAlpha + 127) >> 8);
           } else {
             // NORMAL BLEND
             const srcA = (texAlpha * alpha) | 0;
@@ -154,20 +154,20 @@ export function stampParticleToTileBuffers({
             const finalB = (srcB * tintB + 127) >> 8;
 
             const invSrcA = 255 - srcA;
-            const dstR = bloodTiles[dstOffset];
-            const dstG = bloodTiles[dstOffset + 1];
-            const dstB = bloodTiles[dstOffset + 2];
-            const dstA = bloodTiles[dstOffset + 3];
+            const dstR = decalsTiles[dstOffset];
+            const dstG = decalsTiles[dstOffset + 1];
+            const dstB = decalsTiles[dstOffset + 2];
+            const dstA = decalsTiles[dstOffset + 3];
 
-            bloodTiles[dstOffset] = dstR + (((finalR - dstR) * srcA + 127) >> 8);
-            bloodTiles[dstOffset + 1] = dstG + (((finalG - dstG) * srcA + 127) >> 8);
-            bloodTiles[dstOffset + 2] = dstB + (((finalB - dstB) * srcA + 127) >> 8);
-            bloodTiles[dstOffset + 3] = srcA + ((dstA * invSrcA + 127) >> 8);
+            decalsTiles[dstOffset] = dstR + (((finalR - dstR) * srcA + 127) >> 8);
+            decalsTiles[dstOffset + 1] = dstG + (((finalG - dstG) * srcA + 127) >> 8);
+            decalsTiles[dstOffset + 2] = dstB + (((finalB - dstB) * srcA + 127) >> 8);
+            decalsTiles[dstOffset + 3] = srcA + ((dstA * invSrcA + 127) >> 8);
           }
         }
       }
 
-      bloodTilesDirty[tileIndex] = 1;
+      decalsTilesDirty[tileIndex] = 1;
     }
   }
 }

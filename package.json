@@ -33,6 +33,7 @@
     "doc": "docs"
   },
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.js",
     "sync:version": "node scripts/sync-version.js",
     "dev": "node server/node_server.js",
     "pretest:node": "node scripts/sync-version.js",

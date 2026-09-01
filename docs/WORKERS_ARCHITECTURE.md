@@ -169,8 +169,8 @@ The multitasker. Handles particles, bullets, decals, navigation computation, vis
 | `visibleBulletsData`           | **Write**      | Visible bullet index list                                          |
 | `impactBuffer`                 | **Write**      | `[count, seq, targetId, damage, hitX, hitY, ownerId, shooterType, ...]` |
 | `cellSleepingBuffer`           | **Write**      | Per-cell sleeping state                                            |
-| `bloodTilesRGBA`               | **Write**      | Decal pixel data                                                   |
-| `bloodTilesDirty`              | **Write**      | Dirty tile flags                                                   |
+| `decalsTilesRGBA`               | **Write**      | Decal pixel data                                                   |
+| `decalsTilesDirty`              | **Write**      | Dirty tile flags                                                   |
 | `navigationData`               | Read/**Write** | Flowfields, A\* paths, walkability                                 |
 | Transform, RigidBody, Collider | Read           | Entity state for visibility/bullet checks                          |
 | `cameraData`                   | Read           | Camera bounds for visibility                                       |
@@ -291,8 +291,8 @@ This enables effects like metaball water, fog accumulation, heat distortion -- a
 | `renderQueueSync`          | Read/**Write** | Atomics: consume frame + notify                                   |
 | `Layer._configSAB`         | Read           | Layer properties (zIndex, blendMode, hasShader, resolution, etc.) |
 | `Layer._uniformSABs[id]`   | Read           | Shader uniform values + dirty flag (Atomics)                      |
-| `bloodTilesRGBA`           | Read           | Decal tile pixels                                                 |
-| `bloodTilesDirty`          | Read           | Which tiles to re-upload                                          |
+| `decalsTilesRGBA`           | Read           | Decal tile pixels                                                 |
+| `decalsTilesDirty`          | Read           | Which tiles to re-upload                                          |
 | `entityTextureData`        | Read           | Texture IDs                                                       |
 | `visibleLightsData`        | Read           | Light indices                                                     |
 | `cameraData`               | Read           | Fallback only when renderQueue camera snapshots are unavailable   |

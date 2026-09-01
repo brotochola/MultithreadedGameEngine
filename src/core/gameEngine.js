@@ -213,7 +213,7 @@ class GameEngine {
     try {
       let restorePayload = options.restorePayload || null;
       if (!restorePayload && options.restoreSlot) {
-        const { SaveStore, decodeSave } = await import('./SaveGame.js');
+        const { SaveStore, decodeSave } = await import('./save/SaveGame.js');
         const blob = await SaveStore.get(options.restoreSlot);
         if (!blob) throw new Error(`Save slot not found: ${options.restoreSlot}`);
         restorePayload = await decodeSave(blob);

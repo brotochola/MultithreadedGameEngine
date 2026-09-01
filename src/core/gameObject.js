@@ -22,7 +22,7 @@ import {
   pushFreeIndex,
   getFreeListCount,
 } from './atomicFreeList.js';
-import { applyEntitySaveRestore } from './entitySaveSnapshot.js';
+import { applyEntitySaveRestore } from './save/entitySaveSnapshot.js';
 import {
   addToActiveEntities,
   removeFromActiveEntities,

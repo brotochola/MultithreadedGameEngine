@@ -11,7 +11,7 @@ import {
   decodeSave,
   applyEntitySaveRestore,
   componentSchemaFingerprint,
-} from '../../src/core/entitySaveSnapshot.js';
+} from '../../src/core/save/entitySaveSnapshot.js';
 import { Component } from '../../src/core/Component.js';
 
 class FakeSerializable extends Component {
@@ -178,7 +178,7 @@ test('joints + entityIndex roundtrip in uncompressed payload', () => {
 });
 
 test('liquidFun pack/unpack roundtrip', async () => {
-  const { packLiquidFunSnapshot, unpackLiquidFunSnapshot } = await import('../../src/core/liquidFunSave.js');
+  const { packLiquidFunSnapshot, unpackLiquidFunSnapshot } = await import('../../src/core/save/liquidFunSave.js');
   const snap = {
     count: 2,
     radius: 8,
@@ -226,4 +226,74 @@ test('liquidFun pack/unpack roundtrip', async () => {
   assert.equal(unpacked.pairs.count, 1);
   assert.equal(unpacked.pairs.distance[0], 12);
   assert.deepEqual([...unpacked.render.tint], [0xff0000, 0x00ff00]);
+});
+
+test('decal pack/apply raw roundtrip + empty disabled', async () => {
+  const { packDecalSnapshot, applyDecalSnapshot } = await import('../../src/core/save/decalSave.js');
+
+  const emptyScene = { config: { particle: { decals: false } }, buffers: {} };
+  assert.equal(await packDecalSnapshot(emptyScene), null);
+
+  const tilesX = 2;
+  const tilesY = 2;
+  const tilePixelSize = 4;
+  const bytesPerTile = tilePixelSize * tilePixelSize * 4;
+  const totalTiles = tilesX * tilesY;
+  const rgbaSab = new SharedArrayBuffer(totalTiles * bytesPerTile);
+  const dirtySab = new SharedArrayBuffer(totalTiles);
+  const rgba = new Uint8ClampedArray(rgbaSab);
+  // Stamp tile 1 with opaque red pixel at (0,0)
+  const tile1 = 1 * bytesPerTile;
+  rgba[tile1] = 200;
+  rgba[tile1 + 1] = 10;
+  rgba[tile1 + 2] = 10;
+  rgba[tile1 + 3] = 255;
+
+  const scene = {
+    config: {
+      particle: {
+        decals: true,
+        decalsTileSize: 256,
+        decalsTilePixelSize: tilePixelSize,
+      },
+    },
+    buffers: { decalsTilesRGBA: rgbaSab, decalsTilesDirty: dirtySab },
+    decalsTilesX: tilesX,
+    decalsTilesY: tilesY,
+    decalsTotalTiles: totalTiles,
+  };
+
+  const packed = await packDecalSnapshot(scene);
+  assert.ok(packed);
+  assert.equal(packed.tilesX, 2);
+  assert.equal(packed.tilesY, 2);
+  assert.equal(packed.tilePixelSize, 4);
+  assert.equal(packed.tiles.length, 1);
+  assert.equal(packed.tiles[0].i, 1);
+  assert.equal(packed.tiles[0].fmt, 'raw');
+
+  const rgbaSab2 = new SharedArrayBuffer(totalTiles * bytesPerTile);
+  const dirtySab2 = new SharedArrayBuffer(totalTiles);
+  const scene2 = {
+    config: {
+      particle: {
+        decals: true,
+        decalsTileSize: 256,
+        decalsTilePixelSize: tilePixelSize,
+      },
+    },
+    buffers: { decalsTilesRGBA: rgbaSab2, decalsTilesDirty: dirtySab2 },
+    decalsTilesX: tilesX,
+    decalsTilesY: tilesY,
+    decalsTotalTiles: totalTiles,
+  };
+
+  const result = await applyDecalSnapshot(scene2, packed);
+  assert.equal(result.ok, true);
+  assert.equal(result.restored, 1);
+  const out = new Uint8ClampedArray(rgbaSab2);
+  assert.equal(out[tile1], 200);
+  assert.equal(out[tile1 + 3], 255);
+  assert.equal(new Uint8Array(dirtySab2)[1], 1);
+  assert.equal(new Uint8Array(dirtySab2)[0], 0);
 });

@@ -151,8 +151,8 @@ function stampFromPool(tiles, pool, idx) {
   const p = paramsFromPool(pool, idx);
   stampParticleToTileBuffers({
     ...p,
-    bloodTiles: tiles.rgba,
-    bloodTilesDirty: tiles.dirty,
+    decalsTiles: tiles.rgba,
+    decalsTilesDirty: tiles.dirty,
     decalsTileSize: TILE_SIZE_WORLD,
     decalsTilePixelSize: TILE_PIXEL_SIZE,
     decalsTilesX: TILES_X,
@@ -182,24 +182,24 @@ const refClipScratch = {
   valid: false,
 };
 
-function blendNormalPixel(bloodTiles, dstOffset, srcR, srcG, srcB, texAlpha, alpha, tintR, tintG, tintB) {
+function blendNormalPixel(decalsTiles, dstOffset, srcR, srcG, srcB, texAlpha, alpha, tintR, tintG, tintB) {
   const srcA = (texAlpha * alpha) | 0;
   if (srcA < 1) return;
   const mixedR = (srcR * tintR + 127) >> 8;
   const mixedG = (srcG * tintG + 127) >> 8;
   const mixedB = (srcB * tintB + 127) >> 8;
   const keep = 255 - srcA;
-  const dstR = bloodTiles[dstOffset];
-  const dstG = bloodTiles[dstOffset + 1];
-  const dstB = bloodTiles[dstOffset + 2];
-  const dstA = bloodTiles[dstOffset + 3];
-  bloodTiles[dstOffset] = dstR + (((mixedR - dstR) * srcA + 127) >> 8);
-  bloodTiles[dstOffset + 1] = dstG + (((mixedG - dstG) * srcA + 127) >> 8);
-  bloodTiles[dstOffset + 2] = dstB + (((mixedB - dstB) * srcA + 127) >> 8);
-  bloodTiles[dstOffset + 3] = srcA + ((dstA * keep + 127) >> 8);
+  const dstR = decalsTiles[dstOffset];
+  const dstG = decalsTiles[dstOffset + 1];
+  const dstB = decalsTiles[dstOffset + 2];
+  const dstA = decalsTiles[dstOffset + 3];
+  decalsTiles[dstOffset] = dstR + (((mixedR - dstR) * srcA + 127) >> 8);
+  decalsTiles[dstOffset + 1] = dstG + (((mixedG - dstG) * srcA + 127) >> 8);
+  decalsTiles[dstOffset + 2] = dstB + (((mixedB - dstB) * srcA + 127) >> 8);
+  decalsTiles[dstOffset + 3] = srcA + ((dstA * keep + 127) >> 8);
 }
 
-function blendMultiplyPixel(bloodTiles, dstOffset, srcR, srcG, srcB, texAlpha, alpha, tintR, tintG, tintB) {
+function blendMultiplyPixel(decalsTiles, dstOffset, srcR, srcG, srcB, texAlpha, alpha, tintR, tintG, tintB) {
   const mixedR = (srcR * tintR + 127) >> 8;
   const mixedG = (srcG * tintG + 127) >> 8;
   const mixedB = (srcB * tintB + 127) >> 8;
@@ -208,14 +208,14 @@ function blendMultiplyPixel(bloodTiles, dstOffset, srcR, srcG, srcB, texAlpha, a
   const effAlpha = (((texAlpha * darkness) >> 8) * alpha) | 0;
   if (effAlpha < 2) return;
   const keep = 255 - effAlpha;
-  const dstR = bloodTiles[dstOffset];
-  const dstG = bloodTiles[dstOffset + 1];
-  const dstB = bloodTiles[dstOffset + 2];
-  const dstA = bloodTiles[dstOffset + 3];
-  bloodTiles[dstOffset] = (dstR * keep + 127) >> 8;
-  bloodTiles[dstOffset + 1] = (dstG * keep + 127) >> 8;
-  bloodTiles[dstOffset + 2] = (dstB * keep + 127) >> 8;
-  bloodTiles[dstOffset + 3] = effAlpha + ((dstA * keep + 127) >> 8);
+  const dstR = decalsTiles[dstOffset];
+  const dstG = decalsTiles[dstOffset + 1];
+  const dstB = decalsTiles[dstOffset + 2];
+  const dstA = decalsTiles[dstOffset + 3];
+  decalsTiles[dstOffset] = (dstR * keep + 127) >> 8;
+  decalsTiles[dstOffset + 1] = (dstG * keep + 127) >> 8;
+  decalsTiles[dstOffset + 2] = (dstB * keep + 127) >> 8;
+  decalsTiles[dstOffset + 3] = effAlpha + ((dstA * keep + 127) >> 8);
 }
 
 function referenceStamp(tiles, p) {
@@ -310,8 +310,8 @@ function runCorrectnessCheck() {
 
     stampParticleToTileBuffers({
       ...params,
-      bloodTiles: actualTiles.rgba,
-      bloodTilesDirty: actualTiles.dirty,
+      decalsTiles: actualTiles.rgba,
+      decalsTilesDirty: actualTiles.dirty,
       decalsTileSize: TILE_SIZE_WORLD,
       decalsTilePixelSize: TILE_PIXEL_SIZE,
       decalsTilesX: TILES_X,
