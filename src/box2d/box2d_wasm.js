@@ -1676,7 +1676,7 @@ if ((!(ENVIRONMENT_IS_PTHREAD))) {
 }
 
 // end include: postamble.js
-// include: D:/xampp/htdocs/box2d_3.0_wasm_sab/wasm/../weed_post.js
+// include: D:/xampp/htdocs/Box2d_3.2_C_-_liquidfun/wasm/../weedjs/weed_post.js
 // Appended to box2d_wasm.js via --post-js when building for WeedJS.
 // Worker entry must be box2d_wasm.js so Emscripten pthread pool spawns this file.
 // Pthread pool workers (name "em-pthread") must NOT run app glue.

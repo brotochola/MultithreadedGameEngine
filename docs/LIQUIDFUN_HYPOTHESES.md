@@ -1,8 +1,8 @@
 # LiquidFun particle-step optimization hypotheses
 
 Falsifiable claims for speeding up `lfParticleSystem_Step` — the sibling
-`box2d_3.0_wasm_sab` repo's [`box2d+liquidfun/src/lf_particle_system.c`](../../box2d_3.0_wasm_sab/box2d+liquidfun/src/lf_particle_system.c),
-wired into this repo via [`src/box2d/wasm_wrapper.c`](../../box2d_3.0_wasm_sab/box2d/src/wasm_wrapper.c)
+`Box2d_3.2_C_-_liquidfun` repo's [`box2d+liquidfun/src/lf_particle_system.c`](../../Box2d_3.2_C_-_liquidfun/box2d+liquidfun/src/lf_particle_system.c),
+wired into this repo via [`box2d/src/wasm_wrapper.c`](../../Box2d_3.2_C_-_liquidfun/box2d/src/wasm_wrapper.c)
 → [`src/box2d/physics-api.js`](../src/box2d/physics-api.js) → [`src/box2d/weedjs_post.js`](../src/box2d/weedjs_post.js).
 Same protocol family as [`PARTICLE_HYPOTHESES.md`](./PARTICLE_HYPOTHESES.md) /
 [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) (Wave family in
@@ -20,7 +20,7 @@ repo, not attempted here), so this campaign is **L2 + correctness gate only**.
 | **L2 query** | `pnpm bench:feature:liquidfun-query` (`LiquidFunQueryStressScene`) | physics `STEP_MS` / `BOX2D_MS` / `LIQUIDFUN_MS` + logic `STEP_MS` under sync QueryAABB/RayCast churn |
 | **L3** | `demos/liquidFunDemoScene` (manual) | Visual: still stable, no explosions/tunneling |
 
-Every C change: edit sibling repo → `build_for_weed.bat` (incremental, ~10-15s once configured) → copies `box2d_wasm.js`/`.wasm` into `src/box2d/` → correctness gate → L2 ×2 → record here → stop for manual sanity check before the next hypothesis.
+Every C change: edit sibling repo → `weedjs\build_for_weed.bat` (incremental, ~10-15s once configured) → copies `box2d_wasm.js`/`.wasm` into `src/box2d/` → correctness gate → L2 ×2 → record here → stop for manual sanity check before the next hypothesis.
 
 **Caveat (known going in):** the harness measures steady-state `STEP_MS` after warmup. One-time creation-time costs (`CapturePairs`'s O(n²) group pairing) happen *during* warmup and won't move this number even if the code-level fix is real.
 
@@ -425,5 +425,5 @@ pack and `weedjs_post.js`'s unpack. Regression test:
 - Feature pyramid: [`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md), [`FEATURE_BENCHMARKS.md`](./FEATURE_BENCHMARKS.md)
 - Sibling campaigns: [`PARTICLE_HYPOTHESES.md`](./PARTICLE_HYPOTHESES.md), [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md), [`DECAL_HYPOTHESES.md`](./DECAL_HYPOTHESES.md)
 - LiquidFun architecture/algorithm docs: [`LIQUIDFUN.md`](./LIQUIDFUN.md)
-- Sibling repo roadmap: `box2d_3.0_wasm_sab/box2d+liquidfun/ROADMAP.md`
+- Sibling repo roadmap: `Box2d_3.2_C_-_liquidfun/box2d+liquidfun/ROADMAP.md`
 - L2 scene: [`tests/bench/stressScenes/LiquidFunStressScene.js`](../tests/bench/stressScenes/LiquidFunStressScene.js)

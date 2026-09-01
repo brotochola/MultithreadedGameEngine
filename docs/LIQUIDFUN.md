@@ -2,7 +2,7 @@
 
 Weed fluids are **not** Google LiquidFun C++ pasted into Box2D. They are **`liquidfun-c`**: a from-scratch C17 sidecar on Box2D 3.x’s public C API, compiled into the same WASM as rigid bodies, then driven from JS with a command ring and SharedArrayBuffer views. No GC on the step path.
 
-Sibling source of truth: `d:\xampp\htdocs\box2d_3.0_wasm_sab` (`box2d+liquidfun/`, `box2d/src/wasm_wrapper.c`). Rebuild copies artifacts into [`src/box2d/`](../src/box2d/).
+Sibling source of truth: `d:\xampp\htdocs\Box2d_3.2_C_-_liquidfun` (`box2d+liquidfun/`, `box2d/src/wasm_wrapper.c`). Rebuild copies artifacts into [`src/box2d/`](../src/box2d/).
 
 Related: [Physics pipeline](./PHYSICS.md), [CPU particles](./PARTICLES.md), [Workers](./WORKERS_ARCHITECTURE.md), [Memory](./MEMORY_STRUCTURE.md), [`src/box2d/README.md`](../src/box2d/README.md), [LiquidFun optimization campaign + benchmarks](./LIQUIDFUN_HYPOTHESES.md).
 
@@ -297,10 +297,10 @@ before/after numbers for every optimization: [LIQUIDFUN_HYPOTHESES.md](./LIQUIDF
 
 ## Rebuild
 
-From `box2d_3.0_wasm_sab`:
+From `Box2d_3.2_C_-_liquidfun`:
 
 ```bat
-build_for_weed.bat
+weedjs\build_for_weed.bat
 ```
 
 Copies `box2d_wasm.js` + `.wasm` into `src/box2d/`. Do not copy a plain `build_wasm.bat` output (lab `game-constants.js` / missing `weedjs_post.js`).

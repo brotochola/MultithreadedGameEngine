@@ -30,12 +30,12 @@ At runtime `getBox2dWorkerUrl()` creates one blob URL; that blob **is** the phys
 
 ## Rebuild from sibling Box2D tree
 
-From `box2d_3.0_wasm_sab`:
+From `Box2d_3.2_C_-_liquidfun`:
 
 ```bat
-build_for_weed.bat
+weedjs\build_for_weed.bat
 ```
 
-Default: **4 pthreads + `-flto=full`** (`build_for_weed.bat` / `build_for_weed.bat 4 full`). Use `4 1` for plain `-flto`. Builds with `weed_post.js` (`importScripts('weedjs_post.js')` then `physics_host.impl.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.
+Default: **4 pthreads + `-flto=full`** (`weedjs\build_for_weed.bat` / `weedjs\build_for_weed.bat 4 full`). Use `4 1` for plain `-flto`. Builds with `weedjs/weed_post.js` (`importScripts('weedjs_post.js')` then `physics_host.impl.js`), runs a post-link `wasm-opt` size pass (threads + SIMD features enabled), and copies `box2d_wasm.js` + `.wasm` into this folder.
 
 Fluids: `liquidfun-c` is compiled into this WASM. Integration and SAB rules: [`docs/LIQUIDFUN.md`](../../docs/LIQUIDFUN.md).
