@@ -59,7 +59,9 @@
     "bench:feature:decal": "node tests/bench/run-integrated-worker-benchmark.mjs --scene /tests/bench/stressScenes/DecalStampStressScene.js --scene-export DecalStampStressScene --output tests/results/decal-stress.json",
     "bench:decal:tournament": "node tests/bench/run-decal-hyp-tournament.mjs",
     "bench:micro:particle-emit": "node tests/bench/particle-emit-microbench.mjs",
+    "bench:micro:particle-ease": "node tests/bench/particle-ease-microbench.mjs",
     "bench:micro:particle-integrate": "node tests/bench/particle-integrate-microbench.mjs",
+
     "bench:feature:particle-emit": "node tests/bench/run-integrated-worker-benchmark.mjs --scene /tests/bench/stressScenes/ParticleEmitStressScene.js --scene-export ParticleEmitStressScene --output tests/results/particle-emit-stress.json",
     "bench:feature:particle-integrate": "node tests/bench/run-integrated-worker-benchmark.mjs --scene /tests/bench/stressScenes/ParticleIntegrateStressScene.js --scene-export ParticleIntegrateStressScene --output tests/results/particle-integrate-stress.json",
     "bench:particle:tournament": "node tests/bench/run-particle-hyp-tournament.mjs",

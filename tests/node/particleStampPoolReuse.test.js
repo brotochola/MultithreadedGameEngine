@@ -51,9 +51,7 @@ function spawnFloorStamp() {
   ParticleComponent.timeOnFloor[i] = 0;
   ParticleComponent.initialAlpha[i] = 0;
   ParticleComponent.stayOnTheFloor[i] = 1;
-  ParticleComponent.despawnOnGroundContact[i] = 0;
-  ParticleComponent.tweenToAlpha0[i] = 0;
-  ParticleComponent.flat[i] = 0;
+  ParticleComponent.despawnOnGroundContact[i] = 0;  ParticleComponent.flat[i] = 0;
   ParticleComponent.textureId[i] = 7;
   return i;
 }
@@ -91,7 +89,6 @@ test('stayOnTheFloor stamp holds the pool slot until the caller recycles', { con
         initialAlpha: ParticleComponent.initialAlpha,
         stayOnTheFloor: ParticleComponent.stayOnTheFloor,
         despawnOnGroundContact: ParticleComponent.despawnOnGroundContact,
-        tweenToAlpha0: ParticleComponent.tweenToAlpha0,
         flat: ParticleComponent.flat,
       },
     });
@@ -138,7 +135,6 @@ test('stayOnTheFloor without a stamp list still returns the slot', { concurrency
         initialAlpha: ParticleComponent.initialAlpha,
         stayOnTheFloor: ParticleComponent.stayOnTheFloor,
         despawnOnGroundContact: ParticleComponent.despawnOnGroundContact,
-        tweenToAlpha0: ParticleComponent.tweenToAlpha0,
         flat: ParticleComponent.flat,
       },
     });

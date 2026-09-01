@@ -45,6 +45,12 @@ import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { SharedAtomicPool } from './SharedAtomicPool.js';
 import { CAMERA_TYPES } from './ConfigDefaults.js';
 import { randomRange, randomColor, rng } from './utils.js';
+import { PARTICLE_EASE } from './ConfigDefaults.js';
+import {
+  PARTICLE_TWEEN,
+  resolveParticleOp,
+  resolveParticleColorOp,
+} from './particleTween.js';
 export const DECAL_STAMPS_BLEND_MODE = Object.freeze({
   normal: 0,
   multiply: 1,
@@ -143,7 +149,7 @@ export class ParticleEmitter extends SharedAtomicPool {
     let textureId = 0;
     let textureName = cfg.texture;
 
-    if (cfg.spritesheet && cfg.animation !== undefined) {
+    if (cfg.spritesheet && cfg.animation !== undefined && !Array.isArray(cfg.frame)) {
       textureName = SpriteSheetRegistry.getFrameName(
         cfg.spritesheet,
         cfg.animation,
@@ -183,7 +189,24 @@ export class ParticleEmitter extends SharedAtomicPool {
     const initialAlpha = ParticleComponent.initialAlpha;
     const stayOnTheFloor = ParticleComponent.stayOnTheFloor;
     const despawnOnGroundContact = ParticleComponent.despawnOnGroundContact;
-    const tweenToAlpha0 = ParticleComponent.tweenToAlpha0;
+    const tweenMask = ParticleComponent.tweenMask;
+    const easeIdArr = ParticleComponent.easeId;
+    const alphaFrom = ParticleComponent.alphaFrom;
+    const alphaTo = ParticleComponent.alphaTo;
+    const scaleXFrom = ParticleComponent.scaleXFrom;
+    const scaleXTo = ParticleComponent.scaleXTo;
+    const scaleYFrom = ParticleComponent.scaleYFrom;
+    const scaleYTo = ParticleComponent.scaleYTo;
+    const tintFrom = ParticleComponent.tintFrom;
+    const tintTo = ParticleComponent.tintTo;
+    const rotFrom = ParticleComponent.rotFrom;
+    const rotTo = ParticleComponent.rotTo;
+    const angularVelFrom = ParticleComponent.angularVelFrom;
+    const angularVelTo = ParticleComponent.angularVelTo;
+    const hasAngularVel = ParticleComponent.hasAngularVel;
+    const animCountArr = ParticleComponent.animCount;
+    const animModeArr = ParticleComponent.animMode;
+    const animFrames = ParticleComponent.animFrames;
     const rotC = ParticleComponent.rotC;
     const rotS = ParticleComponent.rotS;
     const flipX = ParticleComponent.flipX;
@@ -256,45 +279,112 @@ export class ParticleEmitter extends SharedAtomicPool {
 
       gravity[i] = cfg.gravity ?? 0.15;
 
-      // Uniform scale unless stamp/muzzle pass both axes with no `scale`.
+      // Visual ops: number | {min,max} | {from,to[,ease]} (endpoints may nest {min,max})
+      let mask = 0;
+      let ease = PARTICLE_EASE.LERP;
+
       if (cfg.scale == null && cfg.scaleX != null && cfg.scaleY != null) {
-        scaleX[i] = randomRange(cfg.scaleX, 1);
-        scaleY[i] = randomRange(cfg.scaleY, 1);
+        const ox = resolveParticleOp(cfg.scaleX, 1);
+        const oy = resolveParticleOp(cfg.scaleY, 1);
+        scaleX[i] = ox.from;
+        scaleY[i] = oy.from;
+        scaleXFrom[i] = ox.from;
+        scaleXTo[i] = ox.to;
+        scaleYFrom[i] = oy.from;
+        scaleYTo[i] = oy.to;
+        if (ox.tween) { mask |= PARTICLE_TWEEN.SCALEX; ease = ox.ease; }
+        if (oy.tween) { mask |= PARTICLE_TWEEN.SCALEY; ease = oy.ease; }
       } else {
-        const s = randomRange(cfg.scale ?? cfg.scaleX ?? cfg.scaleY, 1);
-        scaleX[i] = s;
-        scaleY[i] = s;
+        const os = resolveParticleOp(cfg.scale ?? cfg.scaleX ?? cfg.scaleY, 1);
+        scaleX[i] = os.from;
+        scaleY[i] = os.from;
+        scaleXFrom[i] = os.from;
+        scaleXTo[i] = os.to;
+        scaleYFrom[i] = os.from;
+        scaleYTo[i] = os.to;
+        if (os.tween) {
+          mask |= PARTICLE_TWEEN.SCALEX | PARTICLE_TWEEN.SCALEY;
+          ease = os.ease;
+        }
       }
-      alpha[i] = randomRange(cfg.alpha, 1);
-      const particleColor = randomColor(cfg.tint);
-      tint[i] = particleColor;
-      baseTint[i] = particleColor;
-      particleTextureId[i] = textureId;
+
+      const oa = resolveParticleOp(cfg.alpha, 1);
+      alpha[i] = oa.from;
+      alphaFrom[i] = oa.from;
+      alphaTo[i] = oa.to;
+      if (oa.tween) { mask |= PARTICLE_TWEEN.ALPHA; ease = oa.ease; }
+
+      const oc = resolveParticleColorOp(cfg.tint, 0xffffff);
+      tint[i] = oc.from;
+      baseTint[i] = oc.from;
+      tintFrom[i] = oc.from;
+      tintTo[i] = oc.to;
+      if (oc.tween) { mask |= PARTICLE_TWEEN.TINT; ease = oc.ease; }
 
       if (cfg.rotC != null && cfg.rotS != null) {
         rotC[i] = cfg.rotC;
         rotS[i] = cfg.rotS;
-      } else if (cfg.rotation == null) {
-        rotC[i] = 1;
-        rotS[i] = 0;
+        rotFrom[i] = 0;
+        rotTo[i] = 0;
       } else {
-        const rotationDeg = randomRange(cfg.rotation, 0);
-        if (rotationDeg === 0) {
-          rotC[i] = 1;
-          rotS[i] = 0;
-        } else {
-          const rotationRad = (rotationDeg * Math.PI) / 180;
-          rotC[i] = Math.cos(rotationRad);
-          rotS[i] = Math.sin(rotationRad);
-        }
+        const or = resolveParticleOp(cfg.rotation, 0);
+        rotFrom[i] = or.from;
+        rotTo[i] = or.to;
+        const rad = (or.from * Math.PI) / 180;
+        rotC[i] = Math.cos(rad);
+        rotS[i] = Math.sin(rad);
+        if (or.tween) { mask |= PARTICLE_TWEEN.ROT; ease = or.ease; }
       }
+
+      if (cfg.angularVelocity != null) {
+        const ov = resolveParticleOp(cfg.angularVelocity, 0);
+        angularVelFrom[i] = ov.from;
+        angularVelTo[i] = ov.tween ? ov.to : ov.from;
+        hasAngularVel[i] = 1;
+        if (ov.tween) ease = ov.ease;
+      } else {
+        angularVelFrom[i] = 0;
+        angularVelTo[i] = 0;
+        hasAngularVel[i] = 0;
+      }
+
       flipX[i] = cfg.flipX ? 1 : 0;
       flipY[i] = cfg.flipY ? 1 : 0;
       fadeOnTheFloor[i] = flatMode ? 0 : (cfg.fadeOnTheFloor ?? 0);
       timeOnFloor[i] = 0;
+      initialAlpha[i] = 0;
 
-      tweenToAlpha0[i] = cfg.tweenToAlpha0 ? 1 : 0;
-      initialAlpha[i] = cfg.tweenToAlpha0 ? alpha[i] : 0;
+      tweenMask[i] = mask;
+      easeIdArr[i] = ease;
+
+      animCountArr[i] = 0;
+      animModeArr[i] = 0;
+      const animBase = i * 8;
+      for (let f = 0; f < 8; f++) animFrames[animBase + f] = 0;
+
+      if (Array.isArray(cfg.frame) && cfg.spritesheet && cfg.animation !== undefined) {
+        const frames = cfg.frame;
+        const n = Math.min(8, frames.length);
+        let wrote = 0;
+        for (let f = 0; f < n; f++) {
+          const fname = SpriteSheetRegistry.getFrameName(cfg.spritesheet, cfg.animation, frames[f]);
+          if (!fname) continue;
+          animFrames[animBase + wrote] = SpriteSheetRegistry.getTextureId(fname);
+          wrote++;
+        }
+        if (wrote > 1 && cfg.anim !== 'random') {
+          animCountArr[i] = wrote;
+          animModeArr[i] = 1;
+          particleTextureId[i] = animFrames[animBase];
+        } else if (wrote > 0) {
+          const pick = wrote === 1 ? 0 : ((rng() * wrote) | 0);
+          particleTextureId[i] = animFrames[animBase + pick];
+        } else {
+          particleTextureId[i] = textureId;
+        }
+      } else {
+        particleTextureId[i] = textureId;
+      }
 
       stayOnTheFloor[i] = flatMode ? 0 : (cfg.stayOnTheFloor ? 1 : 0);
       despawnOnGroundContact[i] = flatMode ? 0 : (cfg.despawnOnGroundContact ? 1 : 0);

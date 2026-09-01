@@ -911,10 +911,10 @@ class PreRenderWorker extends AbstractWorker {
         if (!visibleData) return;
 
         const visibleCount = visibleData[0];
-        if (visibleCount > 0 && visibleCount !== this._lastLoggedVisibleParticles) {
-            this._lastLoggedVisibleParticles = visibleCount;
-            console.log(`[pre_render_worker] Collecting ${visibleCount} visible particles into render queue`);
-        }
+        // if (visibleCount > 0 && visibleCount !== this._lastLoggedVisibleParticles) {
+        //     this._lastLoggedVisibleParticles = visibleCount;
+        //     console.log(`[pre_render_worker] Collecting ${visibleCount} visible particles into render queue`);
+        // }
         const y = ParticleComponent.y;
         const z = ParticleComponent.z;
         const flat = ParticleComponent.flat;
@@ -1841,6 +1841,8 @@ class PreRenderWorker extends AbstractWorker {
         const particleZ = ParticleComponent.z;
         const particleScaleX = ParticleComponent.scaleX;
         const particleScaleY = ParticleComponent.scaleY;
+        const particleFlipX = ParticleComponent.flipX;
+        const particleFlipY = ParticleComponent.flipY;
         const particleRotC = ParticleComponent.rotC;
         const particleRotS = ParticleComponent.rotS;
         const particleAlpha = ParticleComponent.alpha;
@@ -2015,8 +2017,8 @@ class PreRenderWorker extends AbstractWorker {
                     rqY[out] = particleY[idx];
                     const height = -particleZ[idx];
                     const heightFactor = 1 + (height / this.zenithalMaxHeight) * this.zenithalScaleFactor;
-                    rqScaleX[out] = particleScaleX[idx] * heightFactor;
-                    rqScaleY[out] = particleScaleY[idx] * heightFactor;
+                    rqScaleX[out] = particleScaleX[idx] * heightFactor * (particleFlipX[idx] ? -1 : 1);
+                    rqScaleY[out] = particleScaleY[idx] * heightFactor * (particleFlipY[idx] ? -1 : 1);
                     let a = particleAlpha[idx];
                     if (this.zenithalAlphaFade > 0) {
                         const alphaFade = Math.min(1, (height / this.zenithalMaxHeight) * this.zenithalAlphaFade);
@@ -2025,13 +2027,13 @@ class PreRenderWorker extends AbstractWorker {
                     rqAlpha[out] = a;
                 } else if (particleFlat && particleFlat[idx]) {
                     rqY[out] = particleY[idx];
-                    rqScaleX[out] = particleScaleX[idx];
-                    rqScaleY[out] = particleScaleY[idx];
+                    rqScaleX[out] = particleScaleX[idx] * (particleFlipX[idx] ? -1 : 1);
+                    rqScaleY[out] = particleScaleY[idx] * (particleFlipY[idx] ? -1 : 1);
                     rqAlpha[out] = particleAlpha[idx];
                 } else {
                     rqY[out] = particleY[idx] + particleZ[idx];
-                    rqScaleX[out] = particleScaleX[idx];
-                    rqScaleY[out] = particleScaleY[idx];
+                    rqScaleX[out] = particleScaleX[idx] * (particleFlipX[idx] ? -1 : 1);
+                    rqScaleY[out] = particleScaleY[idx] * (particleFlipY[idx] ? -1 : 1);
                     rqAlpha[out] = particleAlpha[idx];
                 }
                 rqRotC[out] = particleRotC[idx];
@@ -2240,6 +2242,8 @@ class PreRenderWorker extends AbstractWorker {
         const particleZ = ParticleComponent.z;
         const particleScaleX = ParticleComponent.scaleX;
         const particleScaleY = ParticleComponent.scaleY;
+        const particleFlipX = ParticleComponent.flipX;
+        const particleFlipY = ParticleComponent.flipY;
         const particleRotC = ParticleComponent.rotC;
         const particleRotS = ParticleComponent.rotS;
         const particleAlpha = ParticleComponent.alpha;

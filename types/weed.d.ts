@@ -565,6 +565,29 @@ export interface SceneAssetsManifest {
 /** Single value or `{ min, max }` range (engine `randomRange`). */
 export type WeedNumOrRange = number | { min: number; max: number };
 
+/** Over-life op: endpoints sampled once at spawn (number or nested {min,max}). */
+export type WeedParticleOp =
+  | WeedNumOrRange
+  | {
+      from?: WeedNumOrRange;
+      to?: WeedNumOrRange;
+      start?: WeedNumOrRange;
+      end?: WeedNumOrRange;
+      ease?: number | string;
+    };
+
+/** Tint: number | spawn {min,max} | from/to over life. */
+export type WeedParticleColorOp =
+  | number
+  | { min: number; max: number }
+  | {
+      from?: number | { min: number; max: number };
+      to?: number | { min: number; max: number };
+      start?: number | { min: number; max: number };
+      end?: number | { min: number; max: number };
+      ease?: number | string;
+    };
+
 export interface ParticleEmitConfig {
   count?: WeedNumOrRange;
   x: WeedNumOrRange;
@@ -572,6 +595,9 @@ export interface ParticleEmitConfig {
   z?: WeedNumOrRange;
   angleXY?: WeedNumOrRange;
   speed?: WeedNumOrRange;
+  dirX?: number;
+  dirY?: number;
+  spread?: WeedNumOrRange;
   vx?: WeedNumOrRange;
   vy?: WeedNumOrRange;
   vz?: WeedNumOrRange;
@@ -580,22 +606,46 @@ export interface ParticleEmitConfig {
   texture?: string;
   spritesheet?: string;
   animation?: string;
-  frame?: number;
-  tint?: WeedNumOrRange;
-  scale?: WeedNumOrRange;
-  scaleX?: WeedNumOrRange;
-  scaleY?: WeedNumOrRange;
-  alpha?: WeedNumOrRange;
-  rotation?: WeedNumOrRange;
+  /** Frame index, spawn range, or indices cycled over life. */
+  frame?: number | { min: number; max: number } | number[];
+  /** How to use `frame` arrays: cycle over life (default) or pick one at spawn. */
+  anim?: 'cycle' | 'random';
+  tint?: WeedParticleColorOp;
+  scale?: WeedParticleOp;
+  scaleX?: WeedParticleOp;
+  scaleY?: WeedParticleOp;
+  alpha?: WeedParticleOp;
+  rotation?: WeedParticleOp;
+  /** Degrees per millisecond (constant or from/to over life). */
+  angularVelocity?: WeedParticleOp;
+  rotC?: number;
+  rotS?: number;
   flipX?: boolean;
   flipY?: boolean;
   fadeOnTheFloor?: number;
   stayOnTheFloor?: boolean;
   despawnOnGroundContact?: boolean;
-  tweenToAlpha0?: boolean;
   blendMode?: number;
   layerId?: number;
 }
+
+/** Particle ease ids (`PARTICLE_EASE` / `WEED.enums.PARTICLE_EASE`). */
+export declare const PARTICLE_EASE: {
+  readonly LERP: 0;
+  readonly QUAD_IN: 1;
+  readonly QUAD_OUT: 2;
+  readonly QUAD_INOUT: 3;
+  readonly CUBIC_IN: 4;
+  readonly CUBIC_OUT: 5;
+  readonly CUBIC_INOUT: 6;
+  readonly EXPO_IN: 7;
+  readonly EXPO_OUT: 8;
+  readonly EXPO_INOUT: 9;
+  readonly BACK_IN: 10;
+  readonly BACK_OUT: 11;
+  readonly BACK_INOUT: 12;
+  readonly BOUNCE_OUT: 13;
+};
 
 export interface FlashCreateConfig {
   x: number;
@@ -2416,8 +2466,24 @@ export declare class ParticleComponent extends Component {
     initialAlpha: typeof Float32Array;
     stayOnTheFloor: typeof Uint8Array;
     despawnOnGroundContact: typeof Uint8Array;
-    tweenToAlpha0: typeof Uint8Array;
-    isItOnScreen: typeof Uint8Array;
+    tweenMask: typeof Uint16Array;
+    easeId: typeof Uint8Array;
+    alphaFrom: typeof Float32Array;
+    alphaTo: typeof Float32Array;
+    scaleXFrom: typeof Float32Array;
+    scaleXTo: typeof Float32Array;
+    scaleYFrom: typeof Float32Array;
+    scaleYTo: typeof Float32Array;
+    tintFrom: typeof Uint32Array;
+    tintTo: typeof Uint32Array;
+    rotFrom: typeof Float32Array;
+    rotTo: typeof Float32Array;
+    angularVelFrom: typeof Float32Array;
+    angularVelTo: typeof Float32Array;
+    hasAngularVel: typeof Uint8Array;
+    animCount: typeof Uint8Array;
+    animMode: typeof Uint8Array;
+    animFrames: typeof Uint16Array;    isItOnScreen: typeof Uint8Array;
     blendMode: typeof Uint8Array;
     layerId: typeof Uint8Array;
     flat: typeof Uint8Array;
@@ -2448,8 +2514,24 @@ export declare class ParticleComponent extends Component {
   static initialAlpha: Float32Array;
   static stayOnTheFloor: Uint8Array;
   static despawnOnGroundContact: Uint8Array;
-  static tweenToAlpha0: Uint8Array;
-  static isItOnScreen: Uint8Array;
+  static tweenMask: Uint16Array;
+  static easeId: Uint8Array;
+  static alphaFrom: Float32Array;
+  static alphaTo: Float32Array;
+  static scaleXFrom: Float32Array;
+  static scaleXTo: Float32Array;
+  static scaleYFrom: Float32Array;
+  static scaleYTo: Float32Array;
+  static tintFrom: Uint32Array;
+  static tintTo: Uint32Array;
+  static rotFrom: Float32Array;
+  static rotTo: Float32Array;
+  static angularVelFrom: Float32Array;
+  static angularVelTo: Float32Array;
+  static hasAngularVel: Uint8Array;
+  static animCount: Uint8Array;
+  static animMode: Uint8Array;
+  static animFrames: Uint16Array;  static isItOnScreen: Uint8Array;
   static blendMode: Uint8Array;
   static layerId: Uint8Array;
   static flat: Uint8Array;

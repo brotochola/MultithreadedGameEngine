@@ -20,7 +20,7 @@ import { ParticleEmitter } from './ParticleEmitter.js';
  * @param {Uint16Array|null} p.particlesToStamp - Output buffer for stayOnTheFloor indices (may be null)
  * @param {Object} p.components - ParticleComponent-shaped SoA views: active, x, y, z, vx, vy, vz,
  *   lifespan, currentLife, gravity, alpha, fadeOnTheFloor, timeOnFloor, initialAlpha,
- *   stayOnTheFloor, despawnOnGroundContact, tweenToAlpha0, flat
+ *   stayOnTheFloor, despawnOnGroundContact, tweenMask, flat
  * @returns {{ activeCount: number, stampedCount: number }}
  */
 export function updateParticlePhysicsBuffers({
@@ -49,7 +49,6 @@ export function updateParticlePhysicsBuffers({
     initialAlpha,
     stayOnTheFloor,
     despawnOnGroundContact,
-    tweenToAlpha0,
     flat,
   } = components;
 
@@ -66,12 +65,6 @@ export function updateParticlePhysicsBuffers({
       ParticleEmitter.returnToPool(i);
       continue;
     }
-
-    if (tweenToAlpha0[i]) {
-      const lifeProgress = currentLife[i] / lifespan[i];
-      alpha[i] = initialAlpha[i] * (1 - lifeProgress);
-    }
-
     // Flat: screen-plane only — always integrate XY (ignore z / floor flags)
     if (flat[i]) {
       x[i] += vx[i] * dtRatio;

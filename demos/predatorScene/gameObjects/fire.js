@@ -180,8 +180,8 @@ export class Fire extends GameObject {
       },
       texture: 'smoke',
       tint: { min: 0xaaaaaa, max: 0x666666 },
-      alpha: { min: 0.15 * fadeFactor, max: 0.3 * fadeFactor },
-      tweenToAlpha0: true,
+      alpha: { from: { min: 0.15 * fadeFactor, max: 0.3 * fadeFactor }, to: 0 },
+
     });
   }
 }

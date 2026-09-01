@@ -4,6 +4,11 @@
 // particle_worker.js calls these as thin wrappers (this.* -> plain params).
 
 import { ParticleEmitter } from './ParticleEmitter.js';
+import {
+  PARTICLE_TWEEN,
+  applyParticleEase,
+  lerpRgb,
+} from './particleTween.js';
 
 // P4: reused across calls (single-threaded per worker module instance, same
 // non-reentrancy assumption as ParticleEmitter's other hot-path scratches).
@@ -28,7 +33,7 @@ const _heightedScratch = new Uint16Array(65536);
  * @param {Uint16Array|null} p.particlesToStamp - Output buffer for stayOnTheFloor indices (may be null)
  * @param {Object} p.components - ParticleComponent-shaped SoA views: active, x, y, z, vx, vy, vz,
  *   lifespan, currentLife, gravity, alpha, fadeOnTheFloor, timeOnFloor, initialAlpha,
- *   stayOnTheFloor, despawnOnGroundContact, tweenToAlpha0, flat
+ *   stayOnTheFloor, despawnOnGroundContact, flat
  * @returns {{ activeCount: number, stampedCount: number }}
  */
 export function updateParticlePhysicsBuffers({
@@ -57,8 +62,32 @@ export function updateParticlePhysicsBuffers({
     initialAlpha,
     stayOnTheFloor,
     despawnOnGroundContact,
-    tweenToAlpha0,
     flat,
+    tweenMask,
+    easeId,
+    alphaFrom,
+    alphaTo,
+    scaleX,
+    scaleY,
+    scaleXFrom,
+    scaleXTo,
+    scaleYFrom,
+    scaleYTo,
+    tint,
+    baseTint,
+    tintFrom,
+    tintTo,
+    rotC,
+    rotS,
+    rotFrom,
+    rotTo,
+    angularVelFrom,
+    angularVelTo,
+    hasAngularVel,
+    animCount,
+    animMode,
+    animFrames,
+    textureId,
   } = components;
 
   let stampedCount = 0;
@@ -79,9 +108,52 @@ export function updateParticlePhysicsBuffers({
       continue;
     }
 
-    if (tweenToAlpha0[i]) {
-      const lifeProgress = currentLife[i] / lifespan[i];
-      alpha[i] = initialAlpha[i] * (1 - lifeProgress);
+    {
+      const lifeProgress = lifespan[i] > 0 ? currentLife[i] / lifespan[i] : 1;
+      const mask = tweenMask ? tweenMask[i] : 0;
+      const needEase =
+        mask ||
+        (hasAngularVel && hasAngularVel[i]) ||
+        (animMode && animMode[i]);
+      const eased = needEase
+        ? applyParticleEase(lifeProgress, easeId ? easeId[i] : 0)
+        : lifeProgress;
+
+      if (mask & PARTICLE_TWEEN.ALPHA) {
+        alpha[i] = alphaFrom[i] + (alphaTo[i] - alphaFrom[i]) * eased;
+      }
+      if (mask & PARTICLE_TWEEN.SCALEX) {
+        scaleX[i] = scaleXFrom[i] + (scaleXTo[i] - scaleXFrom[i]) * eased;
+      }
+      if (mask & PARTICLE_TWEEN.SCALEY) {
+        scaleY[i] = scaleYFrom[i] + (scaleYTo[i] - scaleYFrom[i]) * eased;
+      }
+      if (mask & PARTICLE_TWEEN.TINT) {
+        const c = lerpRgb(tintFrom[i], tintTo[i], eased);
+        tint[i] = c;
+        baseTint[i] = c;
+      }
+
+      let angleDeg = rotFrom ? rotFrom[i] : 0;
+      if (mask & PARTICLE_TWEEN.ROT) {
+        angleDeg = rotFrom[i] + (rotTo[i] - rotFrom[i]) * eased;
+      }
+      if (hasAngularVel && hasAngularVel[i]) {
+        const av = angularVelFrom[i] + (angularVelTo[i] - angularVelFrom[i]) * eased;
+        angleDeg += av * currentLife[i];
+      }
+      if ((mask & PARTICLE_TWEEN.ROT) || (hasAngularVel && hasAngularVel[i])) {
+        const rad = (angleDeg * Math.PI) / 180;
+        rotC[i] = Math.cos(rad);
+        rotS[i] = Math.sin(rad);
+      }
+
+      if (animMode && animMode[i] === 1 && animCount && animCount[i] > 0) {
+        const n = animCount[i];
+        let fi = (lifeProgress * n) | 0;
+        if (fi >= n) fi = n - 1;
+        textureId[i] = animFrames[i * 8 + fi];
+      }
     }
 
     if (flat[i]) {

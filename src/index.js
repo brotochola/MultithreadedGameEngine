@@ -159,6 +159,7 @@ export {
   LAYER_SCALE_MODE,
   DEFAULT_LAYERS,
   CAMERA_TYPES,
+  PARTICLE_EASE,
 } from './core/ConfigDefaults.js';
 
 // Worker files (logic_worker, pixi_worker, spatial_worker, …)
@@ -268,6 +269,7 @@ import {
   LAYER_SCALE_MODE,
   DEFAULT_LAYERS,
   CAMERA_TYPES,
+  PARTICLE_EASE,
 } from './core/ConfigDefaults.js';
 
 const enums = Object.freeze({
@@ -281,6 +283,7 @@ const enums = Object.freeze({
   LAYER_SCALE_MODE,
   DEFAULT_LAYERS,
   CAMERA_TYPES,
+  PARTICLE_EASE,
   DECAL_STAMPS_BLEND_MODE,
   DEBUG_FLAGS,
   DEBUG_SELECTED_ENTITY_OFFSET,

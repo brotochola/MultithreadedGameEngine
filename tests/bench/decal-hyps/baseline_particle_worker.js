@@ -1078,7 +1078,6 @@ class ParticleWorker extends AbstractWorker {
         initialAlpha: ParticleComponent.initialAlpha,
         stayOnTheFloor: ParticleComponent.stayOnTheFloor,
         despawnOnGroundContact: ParticleComponent.despawnOnGroundContact,
-        tweenToAlpha0: ParticleComponent.tweenToAlpha0,
         flat: ParticleComponent.flat,
       },
     });

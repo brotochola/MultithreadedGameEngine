@@ -1,7 +1,7 @@
 // ParticleComponent.js - Self-contained particle data
 // Particles are NOT GameObjects - they have their own separate pool
 // This component contains ALL data needed for particles (position, velocity, visuals)
-// Particles are static sprites with fixed anchor (0.5, 0.5) - no animation support
+// Particles have fixed anchor (0.5, 0.5); optional over-life tweens + short frame cycle
 
 import { Component } from '../core/Component.js';
 
@@ -53,9 +53,28 @@ export class ParticleComponent extends Component {
     // When despawnOnGroundContact=1, particle will despawn immediately when touching the ground (no decal stamping)
     despawnOnGroundContact: Uint8Array, // 0 = normal behavior, 1 = despawn on ground contact
 
-    // === Alpha Tweening ===
-    // When tweenToAlpha0=1, particle alpha linearly fades from initialAlpha to 0 over its lifespan
-    tweenToAlpha0: Uint8Array, // 0 = no tween, 1 = fade to alpha 0 over lifespan
+    // === Over-life tweens (from/to) ===
+    // tweenMask bits: ALPHA=1 SCALEX=2 SCALEY=4 TINT=8 ROT=16 (see particleTween.PARTICLE_TWEEN)
+    tweenMask: Uint16Array,
+    easeId: Uint8Array,
+    alphaFrom: Float32Array,
+    alphaTo: Float32Array,
+    scaleXFrom: Float32Array,
+    scaleXTo: Float32Array,
+    scaleYFrom: Float32Array,
+    scaleYTo: Float32Array,
+    tintFrom: Uint32Array,
+    tintTo: Uint32Array,
+    rotFrom: Float32Array, // degrees
+    rotTo: Float32Array,
+    // Angular velocity (deg per ms) — constant or from/to over life
+    angularVelFrom: Float32Array,
+    angularVelTo: Float32Array,
+    hasAngularVel: Uint8Array,
+    // Frame cycle over life (resolved texture ids)
+    animCount: Uint8Array,
+    animMode: Uint8Array, // 0=none, 1=cycle by life progress
+    animFrames: { type: Uint16Array, length: 8 },
 
     // === Visibility ===
     isItOnScreen: Uint8Array, // 0 = not on screen, 1 = on screen
@@ -75,7 +94,6 @@ export class ParticleComponent extends Component {
     // viewMode: CAMERA_TYPES.TOPDOWN | ZENITHAL
     viewMode: Uint8Array,
     // Note: Anchor is always 0.5, 0.5 for particles (centered)
-    // Note: No animation support - particles are static sprites
   };
 
   // Static pool tracking (set during initialization)

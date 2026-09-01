@@ -211,8 +211,8 @@ export class Explosion extends GameObject {
       scale: { min: 1, max: 3 },
       texture: 'smoke',
       tint: { min: 0xaaaaaa, max: 0x666666 },
-      alpha: { min: 0.15, max: 0.3 },
-      tweenToAlpha0: true,
+      alpha: { from: { min: 0.15, max: 0.3 }, to: 0 },
+
     });
   }
 }

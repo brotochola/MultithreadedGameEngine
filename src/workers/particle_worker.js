@@ -744,12 +744,12 @@ class ParticleWorker extends AbstractWorker {
     });
 
     this.activeParticleCount = activeCount;
-    if (activeCount !== this._lastLoggedActiveCount) {
-      this._lastLoggedActiveCount = activeCount;
-      const x0 = ParticleComponent.x ? ParticleComponent.x[0] : 0;
-      const y0 = ParticleComponent.y ? ParticleComponent.y[0] : 0;
-      console.log(`[particle_worker] Active particles: ${activeCount}, Visible: ${visibleData ? visibleData[0] : 0}, particle[0]=(${x0}, ${y0}), cam=(${cameraX.toFixed(1)}, ${cameraY.toFixed(1)}, z=${zoom.toFixed(2)})`);
-    }
+    // if (activeCount !== this._lastLoggedActiveCount) {
+    //   this._lastLoggedActiveCount = activeCount;
+    //   const x0 = ParticleComponent.x ? ParticleComponent.x[0] : 0;
+    //   const y0 = ParticleComponent.y ? ParticleComponent.y[0] : 0;
+    //   console.log(`[particle_worker] Active particles: ${activeCount}, Visible: ${visibleData ? visibleData[0] : 0}, particle[0]=(${x0}, ${y0}), cam=(${cameraX.toFixed(1)}, ${cameraY.toFixed(1)}, z=${zoom.toFixed(2)})`);
+    // }
   }
 
   /**
@@ -883,7 +883,6 @@ class ParticleWorker extends AbstractWorker {
 
     const cameraBounds = this._frameCameraBounds();
     if (!cameraBounds) return;
-
 
     const x = DecorationComponent.x;
     const y = DecorationComponent.y;
@@ -1067,8 +1066,32 @@ class ParticleWorker extends AbstractWorker {
         initialAlpha: ParticleComponent.initialAlpha,
         stayOnTheFloor: ParticleComponent.stayOnTheFloor,
         despawnOnGroundContact: ParticleComponent.despawnOnGroundContact,
-        tweenToAlpha0: ParticleComponent.tweenToAlpha0,
         flat: ParticleComponent.flat,
+        tweenMask: ParticleComponent.tweenMask,
+        easeId: ParticleComponent.easeId,
+        alphaFrom: ParticleComponent.alphaFrom,
+        alphaTo: ParticleComponent.alphaTo,
+        scaleX: ParticleComponent.scaleX,
+        scaleY: ParticleComponent.scaleY,
+        scaleXFrom: ParticleComponent.scaleXFrom,
+        scaleXTo: ParticleComponent.scaleXTo,
+        scaleYFrom: ParticleComponent.scaleYFrom,
+        scaleYTo: ParticleComponent.scaleYTo,
+        tint: ParticleComponent.tint,
+        baseTint: ParticleComponent.baseTint,
+        tintFrom: ParticleComponent.tintFrom,
+        tintTo: ParticleComponent.tintTo,
+        rotC: ParticleComponent.rotC,
+        rotS: ParticleComponent.rotS,
+        rotFrom: ParticleComponent.rotFrom,
+        rotTo: ParticleComponent.rotTo,
+        angularVelFrom: ParticleComponent.angularVelFrom,
+        angularVelTo: ParticleComponent.angularVelTo,
+        hasAngularVel: ParticleComponent.hasAngularVel,
+        animCount: ParticleComponent.animCount,
+        animMode: ParticleComponent.animMode,
+        animFrames: ParticleComponent.animFrames,
+        textureId: ParticleComponent.textureId,
       },
     });
 

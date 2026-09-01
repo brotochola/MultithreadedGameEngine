@@ -57,7 +57,6 @@ function integrate(indices, dtRatio = 1) {
       initialAlpha: ParticleComponent.initialAlpha,
       stayOnTheFloor: ParticleComponent.stayOnTheFloor,
       despawnOnGroundContact: ParticleComponent.despawnOnGroundContact,
-      tweenToAlpha0: ParticleComponent.tweenToAlpha0,
       flat: ParticleComponent.flat,
     },
   });
@@ -79,9 +78,7 @@ function spawnFlat(i, { gravity, vy = 0 } = {}) {
   ParticleComponent.timeOnFloor[i] = 0;
   ParticleComponent.initialAlpha[i] = 0;
   ParticleComponent.stayOnTheFloor[i] = 0;
-  ParticleComponent.despawnOnGroundContact[i] = 0;
-  ParticleComponent.tweenToAlpha0[i] = 0;
-  ParticleComponent.flat[i] = 1;
+  ParticleComponent.despawnOnGroundContact[i] = 0;  ParticleComponent.flat[i] = 1;
 }
 
 test('emitFlat gravity accelerates vy; zero gravity stays put', { concurrency: false }, () => {

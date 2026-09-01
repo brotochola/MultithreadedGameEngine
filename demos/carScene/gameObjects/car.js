@@ -231,8 +231,8 @@ export class Car extends GameObject {
             scale: { min: 0.4, max: 1.5 },
             texture: 'smoke',
             tint: { min: 0x999999, max: 0xbbbbbb },
-            alpha: { min: 0.05, max: 0.1 },
-            tweenToAlpha0: true,
+            alpha: { from: { min: 0.05, max: 0.1 }, to: 0 },
+
         });
     }
 
@@ -286,8 +286,8 @@ export class Car extends GameObject {
                 scale: { min: 0.4, max: 1.5 },
                 texture: 'smoke',
                 tint: { min: 0x999999, max: 0xbbbbbb },
-                alpha: { min: 0.05, max: 0.1 },
-                tweenToAlpha0: true,
+                alpha: { from: { min: 0.05, max: 0.1 }, to: 0 },
+
             });
         }
     }

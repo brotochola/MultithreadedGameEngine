@@ -104,7 +104,7 @@ class WaterBall extends GameObject {
       z: -r * (0.6 + Math.random() * 0.8),
       texture: '_whiteCircle',
       tint: { min: 0x66aaff, max: 0xffffff },
-      alpha: { min: 0.55, max: 1 },
+      alpha: { from: { min: 0.55, max: 1 }, to: 0 },
       scale: { min: 0.55, max: 1.6 + intensity * 1.4 },
       lifespan: { min: 500, max: 1400 + intensity * 1200 },
       dirX,
@@ -114,7 +114,6 @@ class WaterBall extends GameObject {
       gravity: 0.55,
       vz: { min: -(3 + intensity * 8), max: -(1 + intensity * 3) },
       despawnOnGroundContact: true,
-      tweenToAlpha0: true,
     });
 
     // Fine mist — dense cloud around hit.
@@ -125,7 +124,7 @@ class WaterBall extends GameObject {
       z: -r * 0.4,
       texture: '_whiteCircle',
       tint: { min: 0xaaccff, max: 0xffffff },
-      alpha: { min: 0.35, max: 0.75 },
+      alpha: { from: { min: 0.35, max: 0.75 }, to: 0 },
       scale: { min: 0.25, max: 0.85 },
       lifespan: { min: 350, max: 900 + intensity * 600 },
       angleXY: { min: 0, max: 360 },
@@ -133,7 +132,7 @@ class WaterBall extends GameObject {
       gravity: 0.28,
       vz: { min: -(1.5 + intensity * 4), max: -0.4 },
       despawnOnGroundContact: true,
-      tweenToAlpha0: true,
+
     });
   }
 }

@@ -103,9 +103,9 @@ export class WeldBreakBox extends GameObject {
       scale: { min: 1, max: 3 },
       texture: '_whiteCircle',
       // tint: { min: 0xffaa33, max: 0xffffaa },
-      alpha: { min: 0.5, max: 0.95 },
+      alpha: { from: { min: 0.5, max: 0.95 }, to: 0 },
       despawnOnGroundContact: false,
-      tweenToAlpha0: true,
+
       layerId: Layer.getId('sparks'),
     });
   }

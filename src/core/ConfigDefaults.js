@@ -283,6 +283,29 @@ export const SPATIAL_DEFAULTS = Object.freeze({
 // PARTICLE DEFAULTS
 // ============================================================================
 
+
+/**
+ * Particle over-life ease ids (u8). No sine — keep hot path cheap.
+ * @readonly
+ * @enum {number}
+ */
+export const PARTICLE_EASE = Object.freeze({
+  LERP: 0,
+  QUAD_IN: 1,
+  QUAD_OUT: 2,
+  QUAD_INOUT: 3,
+  CUBIC_IN: 4,
+  CUBIC_OUT: 5,
+  CUBIC_INOUT: 6,
+  EXPO_IN: 7,
+  EXPO_OUT: 8,
+  EXPO_INOUT: 9,
+  BACK_IN: 10,
+  BACK_OUT: 11,
+  BACK_INOUT: 12,
+  BOUNCE_OUT: 13,
+});
+
 export const PARTICLE_DEFAULTS = Object.freeze({
   maxParticles: 0,
   noLimitFPS: false,
@@ -290,6 +313,8 @@ export const PARTICLE_DEFAULTS = Object.freeze({
   decals: false,
   decalsTileSize: 256,
   decalsResolution: 0.5,
+  /** Expo ease LUT samples (built once at module load in particleTween). 256 ≈ 1e-4 error. */
+  expoLutSize: 256,
   /** Zenithal projection curve (scene-level). Used when viewMode === ZENITHAL. */
   zenithalMaxHeight: 50,
   zenithalScaleFactor: 0.5,

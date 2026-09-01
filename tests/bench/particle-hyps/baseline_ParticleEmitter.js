@@ -188,7 +188,7 @@ export class ParticleEmitter extends SharedAtomicPool {
     const initialAlpha = ParticleComponent.initialAlpha;
     const stayOnTheFloor = ParticleComponent.stayOnTheFloor;
     const despawnOnGroundContact = ParticleComponent.despawnOnGroundContact;
-    const tweenToAlpha0 = ParticleComponent.tweenToAlpha0;
+    const tweenMask = ParticleComponent.tweenMask;
     const rotC = ParticleComponent.rotC;
     const rotS = ParticleComponent.rotS;
     const flipX = ParticleComponent.flipX;
@@ -291,8 +291,8 @@ export class ParticleEmitter extends SharedAtomicPool {
       fadeOnTheFloor[i] = flatMode ? 0 : (cfg.fadeOnTheFloor ?? 0);
       timeOnFloor[i] = 0;
 
-      tweenToAlpha0[i] = cfg.tweenToAlpha0 ? 1 : 0;
-      initialAlpha[i] = cfg.tweenToAlpha0 ? alpha[i] : 0;
+      tweenMask[i] = 0;
+      easeId[i] = 0;
 
       stayOnTheFloor[i] = flatMode ? 0 : (cfg.stayOnTheFloor ? 1 : 0);
       despawnOnGroundContact[i] = flatMode ? 0 : (cfg.despawnOnGroundContact ? 1 : 0);

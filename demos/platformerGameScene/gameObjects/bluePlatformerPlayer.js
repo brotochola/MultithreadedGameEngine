@@ -44,12 +44,12 @@ export class BluePlatformerPlayer extends GameObject {
       x: this.x,
       y: this.y,
       texture: '_whiteCircle',
-      alpha: { min: 0.25, max: 0.5 },
+      alpha: { from: { min: 0.25, max: 0.5 }, to: 0 },
       scale: { min: 0.66, max: 2 },
       lifespan: { min: 100, max: 500 },
       angleXY: { min: -180, max: 180 },
       speed: { min: 3, max: 5 },
-      tweenToAlpha0: true,
+
     });
   }
 
@@ -169,12 +169,12 @@ export class BluePlatformerPlayer extends GameObject {
         x: this.x,
         y: this.y + randomOffset * 10 + 10,
         texture: '_whiteCircle',
-        alpha: { min: 0.05, max: 0.15 },
+        alpha: { from: { min: 0.05, max: 0.15 }, to: 0 },
         scale: { min: 1, max: 2.3 },
         lifespan: 300,
         angleXY: randomOffset,
         speed: { min: 0, max: -this.vx * 0.01 },
-        tweenToAlpha0: true,
+
       });
     }
   }
@@ -186,12 +186,12 @@ export class BluePlatformerPlayer extends GameObject {
       x: this.x,
       y: this.y,
       texture: '_whiteCircle',
-      alpha: { min: 0.25, max: 0.5 },
+      alpha: { from: { min: 0.25, max: 0.5 }, to: 0 },
       scale: { min: 0.66, max: 2 },
       lifespan: 300,
       angleXY: 0,
       speed: 0,
-      tweenToAlpha0: true,
+
     });
 
   }

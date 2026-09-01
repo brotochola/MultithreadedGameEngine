@@ -768,7 +768,6 @@ WEED.ParticleEmitter.emitFlat({
   texture: '_whiteCircle',
   speed: { min: 1, max: 4 },
   lifespan: 300,
-  tweenToAlpha0: true,
 });
 WEED.ParticleEmitter.emitZenithal({
   x: this.x, y: this.y, z: -80,

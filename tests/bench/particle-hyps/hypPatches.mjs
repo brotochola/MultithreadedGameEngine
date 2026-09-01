@@ -119,7 +119,7 @@ function P2(state) {
     'vx', 'vy', 'vz', 'lifespan', 'gravity',
     'scale', 'scaleX', 'scaleY', 'alpha', 'tint',
     'rotC', 'rotS', 'rotation', 'flipX', 'flipY',
-    'fadeOnTheFloor', 'tweenToAlpha0', 'stayOnTheFloor', 'despawnOnGroundContact',
+    'fadeOnTheFloor', 'stayOnTheFloor', 'despawnOnGroundContact',
     'blendMode', 'layerId',
   ];`,
     'P2'
@@ -242,12 +242,6 @@ const _heightedScratch = new Uint16Array(65536);`,
       ParticleEmitter.returnToPool(i);
       continue;
     }
-
-    if (tweenToAlpha0[i]) {
-      const lifeProgress = currentLife[i] / lifespan[i];
-      alpha[i] = initialAlpha[i] * (1 - lifeProgress);
-    }
-
     // Flat: screen-plane only — always integrate XY (ignore z / floor flags)
     if (flat[i]) {
       x[i] += vx[i] * dtRatio;
@@ -326,12 +320,6 @@ const _heightedScratch = new Uint16Array(65536);`,
       ParticleEmitter.returnToPool(i);
       continue;
     }
-
-    if (tweenToAlpha0[i]) {
-      const lifeProgress = currentLife[i] / lifespan[i];
-      alpha[i] = initialAlpha[i] * (1 - lifeProgress);
-    }
-
     if (flat[i]) {
       _flatScratch[flatCount++] = i;
     } else {

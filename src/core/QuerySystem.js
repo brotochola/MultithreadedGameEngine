@@ -615,7 +615,9 @@ export class QuerySystem {
    */
   _initializeQueryResultViews() {
     this.queryResultViews = [];
-    const capacity = this.queryEntityCapacity || MAX_ENTITIES;
+    // Keep 0 when scene has no entity pools — do NOT fall back to MAX_ENTITIES
+    // (SAB was sized with queryEntityCapacity; mismatch throws RangeError on Uint16Array).
+    const capacity = this.queryEntityCapacity | 0;
 
     for (let i = 0; i < this.precomputedQueries.length; i++) {
       this.queryResultViews.push(
@@ -887,7 +889,7 @@ export class QuerySystem {
         endIndex: meta.endIndex,
         poolSize: meta.poolSize,
       })),
-      queryEntityCapacity: this.queryEntityCapacity || MAX_ENTITIES,
+      queryEntityCapacity: this.queryEntityCapacity | 0,
       precomputedQueries: this.precomputedQueries.map((q) => ({
         name: q.name,
         queryMask: q.queryMask.toString(),

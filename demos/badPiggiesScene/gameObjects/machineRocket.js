@@ -89,8 +89,8 @@ export class MachineRocket extends GameObject {
       scale: { min: 0.66, max: 1.5 },
       texture: 'smoke',
       tint: { min: 0x666666, max: 0xbbbbbb },
-      alpha: { min: 0.1, max: 0.3 },
-      tweenToAlpha0: true,
+      alpha: { from: { min: 0.1, max: 0.3 }, to: 0 },
+
       rotation: { min: 0, max: 360 },
     });
   }

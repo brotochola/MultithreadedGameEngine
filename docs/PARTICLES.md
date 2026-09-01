@@ -60,7 +60,8 @@ WEED.ParticleEmitter.emitFlat({
   speed: { min: 1, max: 4 },
   gravity: 0.8,
   lifespan: 300,
-  tweenToAlpha0: true,
+  alpha: { from: { min: 0.25, max: 0.5 }, to: 0 },
+  scale: { from: 1, to: 0, ease: WEED.enums.PARTICLE_EASE.QUAD_OUT },
 });
 ```
 
@@ -68,13 +69,27 @@ WEED.ParticleEmitter.emitFlat({
 
 Particle `gravity` is px/frame² (`dtRatio ≈ 1` at 60fps), **not** Box2D scene `{ x, y }` (px/s²). Typical heighted values are `0.15–1`; flat side-view fall is the same ballpark on `vy`.
 
-`scale: { min, max }` (or a single `scaleX` / `scaleY`) samples once and writes both axes — aspect stays locked. Pass both `scaleX` and `scaleY` with no `scale` only for non-uniform stamps (decals, muzzle).
+### Value ops (`ParticleOp`)
+
+| Form | Meaning |
+| --- | --- |
+| `number` | Fixed at spawn |
+| `{ min, max }` | Random once at spawn (no over-life change) |
+| `{ from, to }` | Ease over lifespan (`from`/`to` sampled once at spawn) |
+| `{ from, to, ease }` | Same + ease id (`PARTICLE_EASE.LERP` default) |
+| Nested | `from` / `to` may themselves be `number` or `{ min, max }` |
+
+Aliases: `start`/`end` ≡ `from`/`to`. Ease: numeric id or `'lerp'` / `'quad.out'` / `'cubic.in'` / `'expo.inout'` / `'back.out'` / `'bounce.out'` (no sine).
+
+Props that accept over-life ops: `alpha`, `scale` / `scaleX` / `scaleY`, `tint`, `rotation`. Also `angularVelocity` (deg/ms). Frame cycle: `frame: [0,1,2]` + `spritesheet`/`animation` (+ optional `anim: 'cycle'|'random'`).
+
+`scale: { min, max }` samples once and writes both axes — aspect stays locked. Pass both `scaleX` and `scaleY` with no `scale` only for non-uniform stamps (decals, muzzle).
 
 ## Physics (`particle_worker`)
 
 Convention: `z < 0` = airborne, `z >= 0` = on ground.
 
-- **Flat:** `vy += gravity`; integrate `x`/`y` every step; skip ground clamp and floor flags. Death by lifespan (and optional `tweenToAlpha0`). No collision.
+- **Flat:** `vy += gravity`; integrate `x`/`y` every step; skip ground clamp and floor flags. Death by lifespan (and optional `alpha: { from, to: 0 }`). No collision.
 - **Heighted:** `vz += gravity`; while airborne integrate `x`/`y`/`z`; on ground zero velocity then:
   - `despawnOnGroundContact` → return to pool
   - `stayOnTheFloor` → queue decal stamp → return to pool

@@ -55,7 +55,6 @@ const components = {
   initialAlpha: ParticleComponent.initialAlpha,
   stayOnTheFloor: ParticleComponent.stayOnTheFloor,
   despawnOnGroundContact: ParticleComponent.despawnOnGroundContact,
-  tweenToAlpha0: ParticleComponent.tweenToAlpha0,
   flat: ParticleComponent.flat,
 };
 
@@ -83,9 +82,7 @@ function spawnDirect(n, { flat, x0, y0, vx0, vy0, z0 = 0, vz0 = 0, gravity = 0, 
     components.timeOnFloor[i] = 0;
     components.initialAlpha[i] = 0;
     components.stayOnTheFloor[i] = stayOnTheFloor ? 1 : 0;
-    components.despawnOnGroundContact[i] = despawnOnGroundContact ? 1 : 0;
-    components.tweenToAlpha0[i] = 0;
-    components.flat[i] = flat ? 1 : 0;
+    components.despawnOnGroundContact[i] = despawnOnGroundContact ? 1 : 0;    components.flat[i] = flat ? 1 : 0;
     indices.push(i);
   }
   return indices;
