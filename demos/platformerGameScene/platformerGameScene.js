@@ -72,7 +72,14 @@ export class PlatformerGameScene extends Scene {
 
   create() {
     this.spawnLevelPlatforms();
+    Camera.setZoom(1.25);
 
+
+  }
+
+  
+
+  createNewGame() {
     const playerHandle = this.spawnEntity(BluePlatformerPlayer, {
       x: 240,
       y: 1700,
@@ -82,12 +89,12 @@ export class PlatformerGameScene extends Scene {
       worldHeight: this.config.worldHeight,
     });
 
-    this.playerIndex = playerHandle.index
-    console.log("#########################", this.playerIndex);
+    this.playerIndex = playerHandle.index;
     const startX = this.playerIndex >= 0 ? Transform.x[this.playerIndex] : 240;
     const startY = this.playerIndex >= 0 ? Transform.y[this.playerIndex] : 1700;
     Camera.centerOn(startX, startY);
-    Camera.setZoom(1.25);
+
+
   }
 
   spawnLevelPlatforms() {

@@ -121,18 +121,19 @@ export class WaterAndBoxesScene extends WEED.Scene {
   }
 
   create() {
-    console.log('WaterAndBoxesScene: Spawning entities...');
-
     this.spawnFloorAndWalls();
-    this.spawnWaterBalls(4000);
-    this.spawnBoxes(2);
 
     const cx = this.config.worldWidth / 2;
     const cy = this.config.worldHeight / 2;
     Camera.setFree(true, { panSpeed: 10, zoomSensitivity: 0.001 });
     Camera.setFreeTarget(cx, cy);
     Camera.centerOn(cx, cy);
+  }
 
+  createNewGame() {
+    console.log('WaterAndBoxesScene: Spawning entities...');
+    this.spawnWaterBalls(4000);
+    this.spawnBoxes(2);
     console.log(
       `WaterAndBoxesScene: Spawned ${this.numberOfWaterBalls} water balls and ${this.numberOfBoxes} boxes`
     );

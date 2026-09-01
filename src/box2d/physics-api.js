@@ -540,6 +540,51 @@ function createPhysicsApi(Module) {
   const getParticleQueryHit = wrap("get_particle_query_hit", "number", ["number"]);
   const getParticleWeightByteOffset = wrap("get_particle_weight_byte_offset", "number", []);
   const getParticleCount = wrap("get_particle_count", "number", []);
+  const restoreParticlesFn = wrap("restore_particles", "number", ["number", "number", "number", "number"]);
+  const getParticleGroupIndexByteOffset = wrap("get_particle_group_index_byte_offset", "number", []);
+  const getParticleRestOffsetByteOffset = wrap("get_particle_rest_offset_byte_offset", "number", []);
+  const getParticlePairCount = wrap("get_particle_pair_count", "number", []);
+  const copyParticleGroupSlots = wrap("copy_particle_group_slots", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const copyParticlePairs = wrap("copy_particle_pairs", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const restoreParticleGroupsAndPairsFn = wrap("restore_particle_groups_and_pairs", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  // Weed wasm glue only assigns Module.HEAP32 / HEAPF32 (not HEAPU8/U16/U32).
+  const heapBuf = () => Module.HEAPF32.buffer;
+  const heapU8 = () => new Uint8Array(heapBuf());
+  const heapU16 = () => new Uint16Array(heapBuf());
+  const heapU32 = () => new Uint32Array(heapBuf());
   const getLiquidFunStepMs = wrap("get_liquidfun_step_ms", "number", []);
   const getParticleCapacity = wrap("get_particle_capacity", "number", []);
   const getParticleRadius = wrap("get_particle_radius", "number", []);
@@ -1552,6 +1597,269 @@ function createPhysicsApi(Module) {
 
     getParticleCount() {
       return getParticleCount();
+    }
+
+    /**
+     * Replace all particles with a snapshot (ungrouped). pos/vel are interleaved xy.
+     * @param {number} count
+     * @param {Float32Array} posXY length count*2
+     * @param {Float32Array} velXY length count*2
+     * @param {Uint32Array} flags length count
+     * @returns {number} restored count, or negative error
+     */
+    restoreParticles(count, posXY, velXY, flags) {
+      const n = count | 0;
+      if (n < 0) return -2;
+      if (n === 0) {
+        // Still clear existing particles
+        const empty = Module._malloc(4);
+        const r = restoreParticlesFn(0, empty, empty, empty);
+        Module._free(empty);
+        return r;
+      }
+      const posBytes = n * 2 * 4;
+      const velBytes = n * 2 * 4;
+      const flagsBytes = n * 4;
+      const posPtr = Module._malloc(posBytes);
+      const velPtr = Module._malloc(velBytes);
+      const flagsPtr = Module._malloc(flagsBytes);
+      Module.HEAPF32.set(posXY.subarray(0, n * 2), posPtr >> 2);
+      Module.HEAPF32.set(velXY.subarray(0, n * 2), velPtr >> 2);
+      heapU32().set(flags.subarray(0, n), flagsPtr >> 2);
+      const r = restoreParticlesFn(n, posPtr, velPtr, flagsPtr);
+      Module._free(posPtr);
+      Module._free(velPtr);
+      Module._free(flagsPtr);
+      return r;
+    }
+
+    /**
+     * Snapshot particle HEAP SoA for save games (includes groups + pairs when present).
+     * @returns {object|null}
+     */
+    snapshotParticles() {
+      const count = getParticleCount() | 0;
+      const radius = getParticleRadius();
+      const maxCount = getParticleCapacity() | 0;
+      if (count <= 0) {
+        return {
+          count: 0,
+          radius,
+          maxCount,
+          pos: new Float32Array(0),
+          vel: new Float32Array(0),
+          flags: new Uint32Array(0),
+          groupIndex: new Int32Array(0),
+          restOffset: new Float32Array(0),
+          groups: null,
+          pairs: null,
+        };
+      }
+      const posOff = getParticlePosByteOffset() | 0;
+      const velOff = getParticleVelByteOffset() | 0;
+      const flagsOff = getParticleFlagsByteOffset() | 0;
+      if (!posOff || !velOff || !flagsOff) return null;
+      const buf = heapBuf();
+      const posSrc = new Float32Array(buf, posOff, count * 2);
+      const velSrc = new Float32Array(buf, velOff, count * 2);
+      const flagsSrc = new Uint32Array(buf, flagsOff, count);
+
+      let groupIndex = new Int32Array(count);
+      let restOffset = new Float32Array(count * 2);
+      const giOff = getParticleGroupIndexByteOffset() | 0;
+      const roOff = getParticleRestOffsetByteOffset() | 0;
+      if (giOff) {
+        groupIndex = new Int32Array(new Int32Array(buf, giOff, count));
+      } else {
+        groupIndex.fill(-1);
+      }
+      if (roOff) {
+        restOffset = new Float32Array(new Float32Array(buf, roOff, count * 2));
+      }
+
+      let groups = null;
+      const slotCount = copyParticleGroupSlots(0, 0, 0, 0, 0, 0, 0, 0) | 0;
+      if (slotCount > 0) {
+        const alive = new Uint8Array(slotCount);
+        const gFlags = new Uint32Array(slotCount);
+        const gGroupFlags = new Uint32Array(slotCount);
+        const strength = new Float32Array(slotCount);
+        const viscousScale = new Float32Array(slotCount);
+        const firstIndex = new Int32Array(slotCount);
+        const lastIndex = new Int32Array(slotCount);
+        const aPtr = Module._malloc(slotCount);
+        const fPtr = Module._malloc(slotCount * 4);
+        const gfPtr = Module._malloc(slotCount * 4);
+        const sPtr = Module._malloc(slotCount * 4);
+        const vsPtr = Module._malloc(slotCount * 4);
+        const fiPtr = Module._malloc(slotCount * 4);
+        const liPtr = Module._malloc(slotCount * 4);
+        copyParticleGroupSlots(aPtr, fPtr, gfPtr, sPtr, vsPtr, fiPtr, liPtr, slotCount);
+        const u8 = heapU8();
+        const u32 = heapU32();
+        alive.set(u8.subarray(aPtr, aPtr + slotCount));
+        gFlags.set(u32.subarray(fPtr >> 2, (fPtr >> 2) + slotCount));
+        gGroupFlags.set(u32.subarray(gfPtr >> 2, (gfPtr >> 2) + slotCount));
+        strength.set(Module.HEAPF32.subarray(sPtr >> 2, (sPtr >> 2) + slotCount));
+        viscousScale.set(Module.HEAPF32.subarray(vsPtr >> 2, (vsPtr >> 2) + slotCount));
+        firstIndex.set(Module.HEAP32.subarray(fiPtr >> 2, (fiPtr >> 2) + slotCount));
+        lastIndex.set(Module.HEAP32.subarray(liPtr >> 2, (liPtr >> 2) + slotCount));
+        Module._free(aPtr);
+        Module._free(fPtr);
+        Module._free(gfPtr);
+        Module._free(sPtr);
+        Module._free(vsPtr);
+        Module._free(fiPtr);
+        Module._free(liPtr);
+        groups = { slotCount, alive, flags: gFlags, groupFlags: gGroupFlags, strength, viscousScale, firstIndex, lastIndex };
+      }
+
+      let pairs = null;
+      const pairCount = getParticlePairCount() | 0;
+      if (pairCount > 0) {
+        const a = new Uint16Array(pairCount);
+        const b = new Uint16Array(pairCount);
+        const pFlags = new Uint32Array(pairCount);
+        const distance = new Float32Array(pairCount);
+        const pStrength = new Float32Array(pairCount);
+        const aPtr = Module._malloc(pairCount * 2);
+        const bPtr = Module._malloc(pairCount * 2);
+        const fPtr = Module._malloc(pairCount * 4);
+        const dPtr = Module._malloc(pairCount * 4);
+        const sPtr = Module._malloc(pairCount * 4);
+        copyParticlePairs(aPtr, bPtr, fPtr, dPtr, sPtr, pairCount);
+        const u16 = heapU16();
+        const u32 = heapU32();
+        a.set(u16.subarray(aPtr >> 1, (aPtr >> 1) + pairCount));
+        b.set(u16.subarray(bPtr >> 1, (bPtr >> 1) + pairCount));
+        pFlags.set(u32.subarray(fPtr >> 2, (fPtr >> 2) + pairCount));
+        distance.set(Module.HEAPF32.subarray(dPtr >> 2, (dPtr >> 2) + pairCount));
+        pStrength.set(Module.HEAPF32.subarray(sPtr >> 2, (sPtr >> 2) + pairCount));
+        Module._free(aPtr);
+        Module._free(bPtr);
+        Module._free(fPtr);
+        Module._free(dPtr);
+        Module._free(sPtr);
+        pairs = { count: pairCount, a, b, flags: pFlags, distance, strength: pStrength };
+      }
+
+      return {
+        count,
+        radius,
+        maxCount,
+        pos: new Float32Array(posSrc),
+        vel: new Float32Array(velSrc),
+        flags: new Uint32Array(flagsSrc),
+        groupIndex,
+        restOffset,
+        groups,
+        pairs,
+      };
+    }
+
+    /**
+     * Restore groups + elastic restOffset + spring/barrier pairs after restoreParticles.
+     * @returns {number} 0 ok, negative error
+     */
+    restoreParticleGroupsAndPairs(payload) {
+      if (!payload) return 0;
+      const n = getParticleCount() | 0;
+      const groupIndex = payload.groupIndex instanceof Int32Array ? payload.groupIndex : new Int32Array(payload.groupIndex || []);
+      const restOffset = payload.restOffset instanceof Float32Array ? payload.restOffset : new Float32Array(payload.restOffset || []);
+      const groups = payload.groups || null;
+      const pairs = payload.pairs || null;
+      const slotCount = groups ? (groups.slotCount | 0) : 0;
+      const pairCount = pairs ? (pairs.count | 0) : 0;
+
+      if (n > 0 && (groupIndex.length < n || restOffset.length < n * 2)) {
+        return -4;
+      }
+
+      let giPtr = 0;
+      let roPtr = 0;
+      let alivePtr = 0;
+      let flagsPtr = 0;
+      let gFlagsPtr = 0;
+      let strengthPtr = 0;
+      let vsPtr = 0;
+      let fiPtr = 0;
+      let liPtr = 0;
+      let aPtr = 0;
+      let bPtr = 0;
+      let pfPtr = 0;
+      let distPtr = 0;
+      let psPtr = 0;
+
+      try {
+        if (n > 0) {
+          giPtr = Module._malloc(n * 4);
+          roPtr = Module._malloc(n * 2 * 4);
+          Module.HEAP32.set(groupIndex.subarray(0, n), giPtr >> 2);
+          Module.HEAPF32.set(restOffset.subarray(0, n * 2), roPtr >> 2);
+        }
+        if (slotCount > 0) {
+          alivePtr = Module._malloc(slotCount);
+          flagsPtr = Module._malloc(slotCount * 4);
+          gFlagsPtr = Module._malloc(slotCount * 4);
+          strengthPtr = Module._malloc(slotCount * 4);
+          vsPtr = Module._malloc(slotCount * 4);
+          fiPtr = Module._malloc(slotCount * 4);
+          liPtr = Module._malloc(slotCount * 4);
+          heapU8().set(groups.alive.subarray(0, slotCount), alivePtr);
+          heapU32().set(groups.flags.subarray(0, slotCount), flagsPtr >> 2);
+          heapU32().set(groups.groupFlags.subarray(0, slotCount), gFlagsPtr >> 2);
+          Module.HEAPF32.set(groups.strength.subarray(0, slotCount), strengthPtr >> 2);
+          Module.HEAPF32.set(groups.viscousScale.subarray(0, slotCount), vsPtr >> 2);
+          Module.HEAP32.set(groups.firstIndex.subarray(0, slotCount), fiPtr >> 2);
+          Module.HEAP32.set(groups.lastIndex.subarray(0, slotCount), liPtr >> 2);
+        }
+        if (pairCount > 0) {
+          aPtr = Module._malloc(pairCount * 2);
+          bPtr = Module._malloc(pairCount * 2);
+          pfPtr = Module._malloc(pairCount * 4);
+          distPtr = Module._malloc(pairCount * 4);
+          psPtr = Module._malloc(pairCount * 4);
+          heapU16().set(pairs.a.subarray(0, pairCount), aPtr >> 1);
+          heapU16().set(pairs.b.subarray(0, pairCount), bPtr >> 1);
+          heapU32().set(pairs.flags.subarray(0, pairCount), pfPtr >> 2);
+          Module.HEAPF32.set(pairs.distance.subarray(0, pairCount), distPtr >> 2);
+          Module.HEAPF32.set(pairs.strength.subarray(0, pairCount), psPtr >> 2);
+        }
+
+        return restoreParticleGroupsAndPairsFn(
+          giPtr,
+          roPtr,
+          slotCount,
+          alivePtr,
+          flagsPtr,
+          gFlagsPtr,
+          strengthPtr,
+          vsPtr,
+          fiPtr,
+          liPtr,
+          pairCount,
+          aPtr,
+          bPtr,
+          pfPtr,
+          distPtr,
+          psPtr
+        );
+      } finally {
+        if (giPtr) Module._free(giPtr);
+        if (roPtr) Module._free(roPtr);
+        if (alivePtr) Module._free(alivePtr);
+        if (flagsPtr) Module._free(flagsPtr);
+        if (gFlagsPtr) Module._free(gFlagsPtr);
+        if (strengthPtr) Module._free(strengthPtr);
+        if (vsPtr) Module._free(vsPtr);
+        if (fiPtr) Module._free(fiPtr);
+        if (liPtr) Module._free(liPtr);
+        if (aPtr) Module._free(aPtr);
+        if (bPtr) Module._free(bPtr);
+        if (pfPtr) Module._free(pfPtr);
+        if (distPtr) Module._free(distPtr);
+        if (psPtr) Module._free(psPtr);
+      }
     }
 
     getLiquidFunStepMs() {

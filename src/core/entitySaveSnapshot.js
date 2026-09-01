@@ -9,16 +9,18 @@ import { Camera } from './Camera.js';
 import { Sun } from './Sun.js';
 import { VERSION } from '../version.js';
 import { BODY_DIRTY, markBodyDirty } from '../box2d/box2dBodySync.js';
+import { Joint } from './Joint.js';
 
 export const SAVE_MAGIC = 'WEEDSAVE1';
-export const SAVE_FORMAT_VERSION = 1;
+export const SAVE_FORMAT_VERSION = 2;
 
 /** @param {Function} EntityClass */
 export function isEntityClassSerializable(EntityClass) {
   let cur = EntityClass;
   while (cur && cur !== Function.prototype) {
-    if (Object.prototype.hasOwnProperty.call(cur, 'serializable') && cur.serializable === true) {
-      return true;
+    if (Object.prototype.hasOwnProperty.call(cur, 'serializable')) {
+      // Own false must win over an ancestor true (e.g. GhostMachineBox).
+      return cur.serializable === true;
     }
     cur = Object.getPrototypeOf(cur);
   }
@@ -200,6 +202,7 @@ export function collectSerializableEntities(scene) {
       if (Transform.active && Transform.active[entityIndex] !== 1) continue;
       records.push({
         typeName,
+        entityIndex,
         components: readEntityComponents(EntityClass, entityIndex),
       });
     }
@@ -259,7 +262,8 @@ export function applySunGlobals(sun) {
  */
 export function buildSavePayload(scene, globals = {}) {
   const entities = collectSerializableEntities(scene);
-  return {
+  const joints = typeof Joint.serializeActive === 'function' ? Joint.serializeActive() : [];
+  const payload = {
     magic: SAVE_MAGIC,
     formatVersion: SAVE_FORMAT_VERSION,
     engineVersion: VERSION,
@@ -268,7 +272,14 @@ export function buildSavePayload(scene, globals = {}) {
     camera: globals.camera !== undefined ? globals.camera : readCameraGlobals(),
     sun: globals.sun !== undefined ? globals.sun : readSunGlobals(),
     entities,
+    joints,
   };
+  if (globals.liquidFun !== undefined) {
+    payload.liquidFun = globals.liquidFun;
+  } else if (scene._liquidFunSaveSnapshot) {
+    payload.liquidFun = scene._liquidFunSaveSnapshot;
+  }
+  return payload;
 }
 
 // --- Binary encode/decode (JSON body after header for simplicity + deflate) ---

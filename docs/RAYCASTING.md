@@ -2,7 +2,7 @@
 
 `Ray` is a static class in `src/core/Ray.js`. It casts rays against the spatial grid using DDA (Digital Differential Analyzer) traversal. Object and array return values are borrowed by default -- pre-allocated and reused for zero GC pressure.
 
-All methods accept an optional **`mask`** parameter (Uint32 bitmask, default `0xFFFFFFFF`). Only entities whose `collisionLayer` bit is set in the mask are considered. Rays do not use `collisionGroupIndex` (that filter is for entity–entity physics pairs only). See **Collision Filtering** in `bible_of_weed_js.md`.
+All methods accept an optional `mask` parameter (Uint32 bitmask, default `0xFFFFFFFF`). Only entities whose `collisionLayer` bit is set in the mask are considered. Rays do not use `collisionGroupIndex` (that filter is for entity–entity physics pairs only). See **Collision Filtering** in `bible_of_weed_js.md`.
 
 If you need to keep a result after another `Ray` call, pass an optional `out` object/array as the last argument. Otherwise, consume the returned object immediately.
 
@@ -19,7 +19,7 @@ const hit = Ray.cast(player.x, player.y, mouseX, mouseY);
 if (hit !== -1) damageEntity(hit);
 
 // Only hit enemies (layer 4)
-const hit = Ray.cast(x, y, tx, ty, Infinity, (1 << 4));
+const hit = Ray.cast(x, y, tx, ty, Infinity, 1 << 4);
 ```
 
 ---
@@ -37,7 +37,7 @@ if (r.hit) {
 
 // Stable result storage with no allocation:
 const out = { hit: false, entityIndex: -1, distance: Infinity, hitX: 0, hitY: 0 };
-Ray.castWithInfo(gun.x, gun.y, targetX, targetY, Infinity, 0xFFFFFFFF, out);
+Ray.castWithInfo(gun.x, gun.y, targetX, targetY, Infinity, 0xffffffff, out);
 ```
 
 ---
@@ -55,7 +55,7 @@ for (const h of hits) {
 
 // Stable array storage with no per-frame allocation:
 const outHits = [];
-Ray.castAll(gun.x, gun.y, targetX, targetY, Infinity, 5, 0xFFFFFFFF, outHits);
+Ray.castAll(gun.x, gun.y, targetX, targetY, Infinity, 5, 0xffffffff, outHits);
 ```
 
 ---
@@ -131,8 +131,8 @@ The ray checks `(1 << (entity.collisionLayer & 31)) & mask` per entity -- one bi
 - **DDA grid traversal**: rays step through spatial grid cells, only testing entities in cells the ray actually crosses.
 - **Cell-exit early-out**: once the closest hit distance is not past the current cell's DDA exit boundary (`min(tMaxX, tMaxY)`), traversal stops. Valid because spatial workers insert each entity into **every** cell its AABB overlaps — a closer hit cannot appear in a later cell. Used in `_traverseGrid` and the inlined `cast` loop.
 - **Two internal functions**: `_checkCellEntities` (finds closest hit per cell) and `_collectCellHits` (collects all hits for `castAll`).
-- **`_traverseGrid`**: shared DDA loop used by `cast`, `castWithInfo`, and `linecast`. Returns a borrowed static `{ entityIndex, distance }` consumed immediately by callers.
-- **`cast`** and **`castAll`** have their own inlined DDA loops for performance.
+- `_traverseGrid`: shared DDA loop used by `cast`, `castWithInfo`, and `linecast`. Returns a borrowed static `{ entityIndex, distance }` consumed immediately by callers.
+- `cast` and `castAll` have their own inlined DDA loops for performance.
 - All temp objects (`_tempResult`, `_tempHitInfo`, `_tempLinecastResult`, `_tempHitsArray`, `_traverseResult`) are static and reused across calls unless you pass an explicit `out`.
 
 ---
@@ -144,5 +144,5 @@ The ray checks `(1 << (entity.collisionLayer & 31)) & mask` per entity -- one bi
 - `linecastBetweenEntities` uses scalar excludeA/B (no Set).
 - `castAll` reuses a pool of hit objects; only allocates new ones if the pool grows (one-time cost).
 - Correctness + throughput regression: `node tests/bench/ray-microbench.mjs` (20k brute-force comparisons + timed workloads).
-- Optimization hypotheses + headless L1/L2/L3 campaign: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md).
+- Optimization hypotheses + headless L1/L2/L3 campaign: `[RAY_HYPOTHESES.md](./RAY_HYPOTHESES.md)`.
 - Production Ray path includes tournament champion **H6+H1** (stamp dedup + `castAll` top-N early-out).

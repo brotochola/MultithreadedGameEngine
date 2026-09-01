@@ -74,9 +74,21 @@ export class OrientedBoxScene extends WEED.Scene {
     create() {
         this.spawnFloorAndWalls();
 
+        const cx = this.config.worldWidth / 2;
+        const cy = this.config.worldHeight / 2;
+        Camera.setFree(true, { panSpeed: 10 });
+        Camera.setFreeTarget(cx, cy);
+        Camera.centerOn(cx, cy);
+
+
+    }
+
+    
+
+    createNewGame() {
         for (let i = 0; i < this.numberOfBoxes; i++) {
-            const width = 10 + this.rng() * 10
-            const height = 100 + this.rng() * 100
+            const width = 10 + this.rng() * 10;
+            const height = 100 + this.rng() * 100;
             OrientedBox.spawn({
                 x: 500 + this.rng() * (this.config.worldWidth - 1000),
                 y: 150 + this.rng() * (this.config.worldHeight * 0.45),
@@ -87,11 +99,7 @@ export class OrientedBoxScene extends WEED.Scene {
             });
         }
 
-        const cx = this.config.worldWidth / 2;
-        const cy = this.config.worldHeight / 2;
-        Camera.setFree(true, { panSpeed: 10 });
-        Camera.setFreeTarget(cx, cy);
-        Camera.centerOn(cx, cy);
+
     }
 
     update(_time, _delta) {

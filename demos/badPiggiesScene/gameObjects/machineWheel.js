@@ -8,6 +8,7 @@ const BALL_TEX = 14;
 export class MachineWheel extends GameObject {
   static scriptUrl = import.meta.url;
   static instances = [];
+  static serializable = true;
   static components = [RigidBody, Collider, SpriteRenderer];
 
   setup() {

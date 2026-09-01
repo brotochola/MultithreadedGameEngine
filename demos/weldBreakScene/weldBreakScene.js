@@ -92,14 +92,22 @@ export class WeldBreakScene extends WEED.Scene {
 
   create() {
     this.spawnFloorAndWalls();
-    this._spawnWeldedU();
-    // this._spawnHeavyDroppers();
 
     const cx = this.config.worldWidth / 2;
     const cy = this.config.worldHeight * 0.55;
     Camera.setFree(true, { panSpeed: 10 });
     Camera.setFreeTarget(cx, cy);
     Camera.centerOn(cx, cy);
+
+
+  }
+
+  
+
+  createNewGame() {
+    this._spawnWeldedU();
+
+
   }
 
   update(_time, _delta) {

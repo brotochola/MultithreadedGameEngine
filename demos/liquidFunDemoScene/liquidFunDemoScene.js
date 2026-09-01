@@ -146,8 +146,6 @@ export class LiquidFunDemoScene extends WEED.Scene {
 
   create() {
     this.createEnvironment();
-    this.spawnBoxes();
-    this.spawnParticleGroups();
     this._createHud();
 
     Camera.setFree(true, { panSpeed: 15, zoomSensitivity: 0.001, maxZoom: 3 });
@@ -156,6 +154,11 @@ export class LiquidFunDemoScene extends WEED.Scene {
     Camera.zoom = 0.3;
     Camera.setZoom(0.3);
     Camera.setWorldBounds(Infinity, Infinity);
+  }
+
+  createNewGame() {
+    this.spawnBoxes();
+    this.spawnParticleGroups();
   }
 
   async destroy() {

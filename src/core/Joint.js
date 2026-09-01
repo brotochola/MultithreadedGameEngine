@@ -461,6 +461,134 @@ export class Joint extends SharedAtomicPool {
     return result;
   }
 
+
+  /**
+   * Full SoA dump of every dense-active joint for save games.
+   * Prefer local anchors; do not re-resolve from world.
+   * @returns {object[]}
+   */
+  static serializeActive() {
+    const result = [];
+    if (!this.activeIndices || !this.active) return result;
+    const activeCount = this.getDenseActiveCount();
+    for (let slot = 0; slot < activeCount; slot++) {
+      const idx = this.activeIndices[slot];
+      if (idx === this.INVALID_INDEX || !this.active[idx]) continue;
+      const packed = this.pairs[idx];
+      const type = this.type[idx];
+      const rec = {
+        type,
+        entityA: packed >>> 16,
+        entityB: packed & 0xffff,
+        localAnchorAX: this.localAnchorAX[idx],
+        localAnchorAY: this.localAnchorAY[idx],
+        localAnchorBX: this.localAnchorBX[idx],
+        localAnchorBY: this.localAnchorBY[idx],
+        forceThreshold: this.forceThreshold[idx],
+        torqueThreshold: this.torqueThreshold[idx],
+      };
+      if (type === JOINT_TYPE.DISTANCE) {
+        rec.length = this.length[idx];
+        rec.enableSpring = this.enableSpring[idx] ? 1 : 0;
+        rec.hertz = this.hertz[idx];
+        rec.dampingRatio = this.dampingRatio[idx];
+      } else if (type === JOINT_TYPE.REVOLUTE) {
+        rec.enableLimit = this.enableLimit[idx] ? 1 : 0;
+        rec.lowerAngle = this.lowerAngle[idx];
+        rec.upperAngle = this.upperAngle[idx];
+        rec.enableMotor = this.enableMotor[idx] ? 1 : 0;
+        rec.motorSpeed = this.motorSpeed[idx];
+        rec.maxMotorTorque = this.maxMotorTorque[idx];
+      } else if (type === JOINT_TYPE.WELD) {
+        rec.linearHertz = this.linearHertz[idx];
+        rec.angularHertz = this.angularHertz[idx];
+        rec.linearDampingRatio = this.linearDampingRatio[idx];
+        rec.angularDampingRatio = this.angularDampingRatio[idx];
+      }
+      result.push(rec);
+    }
+    return result;
+  }
+
+  /** Remove every active joint (pool return). */
+  static clearAllActive() {
+    if (!this.activeIndices || !this.active) return;
+    for (let slot = this.getDenseActiveCount() - 1; slot >= 0; slot--) {
+      const idx = this.activeIndices[slot];
+      if (idx === this.INVALID_INDEX || !this.active[idx]) continue;
+      this.remove(idx);
+    }
+  }
+
+  /**
+   * Recreate joints from save records after entity index remap.
+   * @param {object[]} records
+   * @param {Map<number, number>|Record<number, number>} oldToNew
+   * @returns {number[]} new joint indices
+   */
+  static restoreFromSave(records, oldToNew) {
+    const created = [];
+    if (!records || !records.length) return created;
+    const mapGet = (old) => {
+      if (oldToNew == null) return old | 0;
+      if (typeof oldToNew.get === 'function') {
+        return oldToNew.has(old) ? oldToNew.get(old) : old | 0;
+      }
+      return oldToNew[old] !== undefined ? oldToNew[old] : old | 0;
+    };
+
+    for (let i = 0; i < records.length; i++) {
+      const rec = records[i];
+      if (!rec) continue;
+      const entityA = mapGet(rec.entityA | 0);
+      const entityB = mapGet(rec.entityB | 0);
+      if (entityA < 0 || entityB < 0) continue;
+
+      const opts = {
+        entityA,
+        entityB,
+        localAnchorAX: rec.localAnchorAX ?? 0,
+        localAnchorAY: rec.localAnchorAY ?? 0,
+        localAnchorBX: rec.localAnchorBX ?? 0,
+        localAnchorBY: rec.localAnchorBY ?? 0,
+        forceThreshold: rec.forceThreshold ?? Infinity,
+        torqueThreshold: rec.torqueThreshold ?? Infinity,
+      };
+
+      let idx = -1;
+      const t = rec.type | 0;
+      if (t === JOINT_TYPE.DISTANCE) {
+        idx = this.addDistance({
+          ...opts,
+          length: rec.length ?? 0,
+          enableSpring: !!rec.enableSpring,
+          hertz: rec.hertz ?? 1,
+          dampingRatio: rec.dampingRatio ?? 0.7,
+        });
+      } else if (t === JOINT_TYPE.REVOLUTE) {
+        idx = this.addRevolute({
+          ...opts,
+          enableLimit: !!rec.enableLimit,
+          lowerAngle: rec.lowerAngle ?? 0,
+          upperAngle: rec.upperAngle ?? 0,
+          enableMotor: !!rec.enableMotor,
+          motorSpeed: rec.motorSpeed ?? 0,
+          maxMotorTorque: rec.maxMotorTorque ?? 0,
+        });
+      } else if (t === JOINT_TYPE.WELD) {
+        idx = this.addWeld({
+          ...opts,
+          linearHertz: rec.linearHertz ?? 0,
+          angularHertz: rec.angularHertz ?? 0,
+          linearDampingRatio: rec.linearDampingRatio ?? 1,
+          angularDampingRatio: rec.angularDampingRatio ?? 1,
+        });
+      }
+      if (idx >= 0) created.push(idx);
+    }
+    return created;
+  }
+
   static reset() {
     super.reset();
     this.type = null;

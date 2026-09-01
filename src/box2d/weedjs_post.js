@@ -2137,6 +2137,97 @@
     }
   }
 
+
+  function weedjsSnapshotLiquidFun() {
+    if (!world || typeof world.snapshotParticles !== "function") {
+      return { count: 0, radius: 0, maxCount: 0, pos: null, vel: null, flags: null, render: null, groups: null, pairs: null };
+    }
+    const snap = world.snapshotParticles();
+    if (!snap) {
+      return { count: 0, radius: 0, maxCount: 0, pos: null, vel: null, flags: null, render: null, groups: null, pairs: null };
+    }
+    const n = snap.count | 0;
+    let render = null;
+    if (liquidFunViews && n > 0) {
+      render = {
+        tint: new Uint32Array(liquidFunViews.tint.subarray(0, n)),
+        textureId: new Uint16Array(liquidFunViews.textureId.subarray(0, n)),
+        scaleX: new Float32Array(liquidFunViews.scaleX.subarray(0, n)),
+        scaleY: new Float32Array(liquidFunViews.scaleY.subarray(0, n)),
+        alpha: new Float32Array(liquidFunViews.baseAlpha
+          ? liquidFunViews.baseAlpha.subarray(0, n)
+          : (liquidFunViews.alpha ? liquidFunViews.alpha.subarray(0, n) : new Float32Array(n).fill(1))),
+        rotC: liquidFunViews.rotC ? new Float32Array(liquidFunViews.rotC.subarray(0, n)) : null,
+        rotS: liquidFunViews.rotS ? new Float32Array(liquidFunViews.rotS.subarray(0, n)) : null,
+        layerId: liquidFunViews.layerId ? new Uint8Array(liquidFunViews.layerId.subarray(0, n)) : null,
+      };
+    }
+    return {
+      count: n,
+      radius: snap.radius,
+      maxCount: snap.maxCount,
+      pos: snap.pos,
+      vel: snap.vel,
+      flags: snap.flags,
+      groupIndex: snap.groupIndex || null,
+      restOffset: snap.restOffset || null,
+      groups: snap.groups || null,
+      pairs: snap.pairs || null,
+      render,
+    };
+  }
+
+  function weedjsRestoreLiquidFun(payload) {
+    if (!world || typeof world.restoreParticles !== "function") return { ok: false, reason: "no-world" };
+    if (!payload) return { ok: false, reason: "no-payload" };
+    const n = payload.count | 0;
+    const pos = payload.pos instanceof Float32Array ? payload.pos : new Float32Array(payload.pos || []);
+    const vel = payload.vel instanceof Float32Array ? payload.vel : new Float32Array(payload.vel || []);
+    const flags = payload.flags instanceof Uint32Array ? payload.flags : new Uint32Array(payload.flags || []);
+    const r = world.restoreParticles(n, pos, vel, flags);
+    if (r < 0) return { ok: false, reason: "wasm", code: r };
+
+    const hasGroups =
+      (payload.groupIndex && payload.groupIndex.length) ||
+      (payload.groups && (payload.groups.slotCount | 0) > 0) ||
+      (payload.pairs && (payload.pairs.count | 0) > 0);
+    if (hasGroups && typeof world.restoreParticleGroupsAndPairs === "function") {
+      const gr = world.restoreParticleGroupsAndPairs({
+        groupIndex: payload.groupIndex,
+        restOffset: payload.restOffset,
+        groups: payload.groups,
+        pairs: payload.pairs,
+      });
+      if (gr < 0) return { ok: false, reason: "groups", code: gr };
+    }
+
+    if (liquidFunViews) {
+      if (liquidFunViews.count) liquidFunViews.count[0] = n;
+      const render = payload.render || null;
+      if (render && n > 0) {
+        if (liquidFunViews.tint && render.tint) liquidFunViews.tint.set(render.tint.subarray ? render.tint.subarray(0, n) : render.tint, 0);
+        if (liquidFunViews.textureId && render.textureId) liquidFunViews.textureId.set(render.textureId.subarray ? render.textureId.subarray(0, n) : render.textureId, 0);
+        if (liquidFunViews.scaleX && render.scaleX) liquidFunViews.scaleX.set(render.scaleX.subarray ? render.scaleX.subarray(0, n) : render.scaleX, 0);
+        if (liquidFunViews.scaleY && render.scaleY) liquidFunViews.scaleY.set(render.scaleY.subarray ? render.scaleY.subarray(0, n) : render.scaleY, 0);
+        const alphaSrc = render.alpha || render.baseAlpha;
+        if (alphaSrc) {
+          if (liquidFunViews.baseAlpha) liquidFunViews.baseAlpha.set(alphaSrc.subarray ? alphaSrc.subarray(0, n) : alphaSrc, 0);
+          if (liquidFunViews.alpha) liquidFunViews.alpha.set(alphaSrc.subarray ? alphaSrc.subarray(0, n) : alphaSrc, 0);
+        }
+        if (liquidFunViews.rotC && render.rotC) liquidFunViews.rotC.set(render.rotC.subarray ? render.rotC.subarray(0, n) : render.rotC, 0);
+        if (liquidFunViews.rotS && render.rotS) liquidFunViews.rotS.set(render.rotS.subarray ? render.rotS.subarray(0, n) : render.rotS, 0);
+        if (liquidFunViews.layerId && render.layerId) liquidFunViews.layerId.set(render.layerId.subarray ? render.layerId.subarray(0, n) : render.layerId, 0);
+      }
+      liquidFunPrevSyncedCount = n;
+      liquidFunPaintedHighWater = Math.max(liquidFunPaintedHighWater | 0, n);
+      if (typeof publishLiquidFunHeap === "function") publishLiquidFunHeap();
+    }
+    return { ok: true, count: n };
+  }
+
+
+  globalThis.weedjsSnapshotLiquidFun = weedjsSnapshotLiquidFun;
+  globalThis.weedjsRestoreLiquidFun = weedjsRestoreLiquidFun;
   globalThis.weedjsEnableHostMode = weedjsEnableHostMode;
   globalThis.weedjsDoStep = weedjsDoStep;
   globalThis.weedjsWhenModuleReady = weedjsWhenModuleReady;

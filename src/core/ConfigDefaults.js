@@ -283,7 +283,6 @@ export const SPATIAL_DEFAULTS = Object.freeze({
 // PARTICLE DEFAULTS
 // ============================================================================
 
-
 /**
  * Particle over-life ease ids (u8). No sine — keep hot path cheap.
  * @readonly

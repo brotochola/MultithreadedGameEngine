@@ -85,18 +85,17 @@ export class BallsAndRectanglesScene extends WEED.Scene {
   }
 
   create() {
-    // Spawn initial entities
-    console.log('🎬 BallsAndRectanglesScene: Spawning entities...');
-
-    this.spawnBalls(this.numberOfBalls);
-    this.spawnBoxes(this.numberOfBoxes);
-
     const cx = this.config.worldWidth / 2;
     const cy = this.config.worldHeight / 2;
     Camera.setFree(true, { panSpeed: 10 });
     Camera.setFreeTarget(cx, cy);
     Camera.centerOn(cx, cy);
+  }
 
+  createNewGame() {
+    console.log('🎬 BallsAndRectanglesScene: Spawning entities...');
+    this.spawnBalls(this.numberOfBalls);
+    this.spawnBoxes(this.numberOfBoxes);
     console.log(
       `✅ BallsAndRectanglesScene: Spawned ${this.numberOfBalls} balls and ${this.numberOfBoxes} boxes!`
     );

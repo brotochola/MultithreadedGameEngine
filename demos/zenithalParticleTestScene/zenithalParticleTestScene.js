@@ -78,15 +78,21 @@ export class ZenithalParticleTestScene extends Scene {
   create() {
     Camera.centerOn(this.config.worldWidth / 2, this.config.worldHeight / 2);
     Camera.setZoom(1.2);
+
+
+  }
+
+  
+
+  createNewGame() {
     const cx = this.config.worldWidth / 2;
     const cy = this.config.worldHeight / 2;
-
     for (let i = 0; i < 100; i++) {
-
       ZenithalCar.spawn({ x: i * 50, y: i * 80 });
     }
-
     ZenithalLight.spawn({ x: cx, y: cy });
+
+
   }
 
   update(dtRatio, deltaTime, accumulatedTime, frameNumber) {

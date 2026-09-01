@@ -6,7 +6,7 @@ const STORE_BLOBS = 'blobs';
 const CATALOG_KEY = 'weed.save.catalog';
 
 /**
- * @typedef {{ id: string, scene: string, savedAt: string, bytes: number, engineVersion: string, entityCount?: number }} SaveMeta
+ * @typedef {{ id: string, scene: string, savedAt: string, bytes: number, engineVersion: string, entityCount?: number, particleCount?: number }} SaveMeta
  */
 
 function readCatalog() {
@@ -82,6 +82,7 @@ export class SaveStore {
       bytes: bytes.byteLength,
       engineVersion: meta.engineVersion || '',
       entityCount: meta.entityCount | 0,
+      particleCount: meta.particleCount | 0,
     };
 
     const db = await openDb();

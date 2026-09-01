@@ -86,9 +86,21 @@ Debug overlay → **Saves** tab:
 - **×** on each row — delete that slot (`SaveStore.remove`)
 - **List** — slots filtered to `scene.constructor.name`
 
-## Limits (v1)
+## Joints + LiquidFun
 
-- No Box2D contact/joint WASM dump
-- No decoration / particle / bullet / decal dumps
+Payload keys (format version 2):
+
+- `entities[]` � each record includes `entityIndex` (pre-restore free-list index) for joint remapping
+- `joints[]` � full SoA dump via `Joint.serializeActive()`, recreated after entity spawn
+- `liquidFun` — optional packed snapshot from the physics worker (`restore_particles` + `restore_particle_groups_and_pairs`)
+
+LiquidFun WASM source: `D:\\xampp\\htdocs\\Box2d_3.2_C_-_liquidfun` (`wasm_wrapper.c` + `lf_particle_system.c`). Rebuild with `weedjs\\build_for_weed.bat`.
+
+## Limits (v2)
+
+- **Joints:** active Weed joint pool is saved/restored (distance / revolute / weld) with entity-index remapping. Box2D contact manifold dump is still not saved.
+- **LiquidFun:** particle pos/vel/flags, render tint/texture/scale/alpha, **plus** group slots, per-particle `groupIndex` / elastic `restOffset`, and spring/barrier pair graphs (jelly/elastic round-trips).
+- No decoration / CPU particle / bullet / decal dumps
 - Schema fingerprint mismatch → warn / fail; no automatic migration
 - Cross-scene load rejected (`payload.sceneName` must match)
+- Save format version is `2` (`SAVE_FORMAT_VERSION`); older blobs are rejected

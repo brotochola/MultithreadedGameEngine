@@ -78,6 +78,18 @@ export class ConstraintBoxScene extends WEED.Scene {
     create() {
         this.spawnFloorAndWalls();
 
+        const cx = this.config.worldWidth / 2;
+        const cy = this.config.worldHeight / 2;
+        Camera.setFree(true, { panSpeed: 10 });
+        Camera.setFreeTarget(cx, cy);
+        Camera.centerOn(cx, cy);
+
+
+    }
+
+    
+
+    createNewGame() {
         for (let i = 0; i < this.numberOfBoxes; i++) {
             const size = 60 + this.rng() * 80;
             ConstraintBox.spawn({
@@ -87,11 +99,7 @@ export class ConstraintBoxScene extends WEED.Scene {
             });
         }
 
-        const cx = this.config.worldWidth / 2;
-        const cy = this.config.worldHeight / 2;
-        Camera.setFree(true, { panSpeed: 10 });
-        Camera.setFreeTarget(cx, cy);
-        Camera.centerOn(cx, cy);
+
     }
 
     update(_time, _delta) {

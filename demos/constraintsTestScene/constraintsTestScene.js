@@ -97,7 +97,6 @@ export class ConstraintsTestScene extends Scene {
     }
 
     create() {
-        // Spawn floor and walls first (static colliders)
         console.log('🎬 ConstraintsTestScene: Spawning floor and walls...');
         this.spawnFloorAndWalls();
 
@@ -106,32 +105,12 @@ export class ConstraintsTestScene extends Scene {
         Camera.setFree(true, { panSpeed: 10, zoomSensitivity: 0.001 });
         Camera.setFreeTarget(cx, cy);
         Camera.centerOn(cx, cy);
+    }
 
-        // Spawn demo constraint structures
+    createNewGame() {
         console.log('🎬 ConstraintsTestScene: Creating constraint demos...');
-
-        // // Create several hanging chains
-        // this.createHangingChain(800, 200, 15, 40, 0.8);
-        // this.createHangingChain(1200, 200, 20, 35, 0.9);
-        // this.createHangingChain(1600, 200, 12, 45, 0.7);
-        // this.createHangingChain(2000, 200, 18, 38, 0.85);
-        // this.createHangingChain(2400, 200, 25, 30, 0.95);
-
-        // Create a rope bridge
-        // this.createRopeBridge(2800, 800, 3200, 800, 20, 0.6);
-
-        // Create a soft body (circular arrangement)
         this.createSoftBody(3000, 500, 40, 120, 10);
-        // this.createSoftBody(1800, 1500, 12, 120, 0.4);
-        // this.createSoftBody(2600, 1500, 6, 80, 0.6);
-
-        // Create a grid/cloth simulation
         this.createCloth(1200, 2500, 20, 20, 40, this.constraintStiffness, 20);
-
-        // Spawn some free balls for interaction
-        console.log('🎬 ConstraintsTestScene: Spawning free balls...');
-        // this.spawnBalls(500);
-
         console.log('✅ ConstraintsTestScene: Demo ready!');
         console.log('📝 Controls:');
         console.log('   WASD/Arrows - Pan camera');

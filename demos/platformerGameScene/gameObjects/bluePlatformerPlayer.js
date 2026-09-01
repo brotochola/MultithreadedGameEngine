@@ -5,6 +5,7 @@ import { PlatformerCharacterComponent } from '../components/platformerCharacterC
 const { LightEmitter, GameObject, AdobeAnimComponent, ParticleEmitter, AdobeAnimRegistry, RigidBody, Collider, Keyboard, CollisionListener, Transform } = WEED;
 
 export class BluePlatformerPlayer extends GameObject {
+  static serializable = true;
   static scriptUrl = import.meta.url;
   static components = [PlatformerCharacterComponent, AdobeAnimComponent, RigidBody, Collider, LightEmitter, CollisionListener];
   static assetName = 'blue_character';

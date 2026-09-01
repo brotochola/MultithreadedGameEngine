@@ -1,6 +1,9 @@
 import { MachineBox } from './gameObjects/machineBox.js';
 import { MachineWheel } from './gameObjects/machineWheel.js';
 import { MachineRocket } from './gameObjects/machineRocket.js';
+import { GhostMachineBox } from './gameObjects/ghostMachineBox.js';
+import { GhostMachineWheel } from './gameObjects/ghostMachineWheel.js';
+import { GhostMachineRocket } from './gameObjects/ghostMachineRocket.js';
 import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
 import WEED from '/src/index.js';
@@ -20,6 +23,7 @@ import {
   parseCellKey,
   planJoints,
   snapWorld,
+  worldToCell,
 } from './utils/badPiggiesGrid.js';
 
 const { Scene, Mouse, Keyboard, Transform, RigidBody, Joint, Noise2D, LiquidFun, LIQUIDFUN_FLAGS, LIQUIDFUN_GROUP_FLAGS } =
@@ -124,6 +128,9 @@ export class BadPiggiesScene extends Scene {
     [MachineBox, 1500],
     [MachineWheel, 1500],
     [MachineRocket, 1500],
+    [GhostMachineBox, 4],
+    [GhostMachineWheel, 4],
+    [GhostMachineRocket, 4],
     [Floor, 2024],
   ];
 
@@ -165,9 +172,9 @@ export class BadPiggiesScene extends Scene {
     Camera.centerOn(cx, cy);
     Camera.setZoom(0.7);
 
-    const ghostBox = MachineBox.spawn({ x: -9999, y: -9999, ghost: true });
-    const ghostWheel = MachineWheel.spawn({ x: -9999, y: -9999, ghost: true });
-    const ghostRocket = MachineRocket.spawn({ x: -9999, y: -9999, ghost: true, rotation: this._placeAngle });
+    const ghostBox = GhostMachineBox.spawn({ x: -9999, y: -9999, ghost: true });
+    const ghostWheel = GhostMachineWheel.spawn({ x: -9999, y: -9999, ghost: true });
+    const ghostRocket = GhostMachineRocket.spawn({ x: -9999, y: -9999, ghost: true, rotation: this._placeAngle });
     this.ghostBoxIdx = ghostBox ? ghostBox.index : -1;
     this.ghostWheelIdx = ghostWheel ? ghostWheel.index : -1;
     this.ghostRocketIdx = ghostRocket ? ghostRocket.index : -1;
@@ -178,6 +185,90 @@ export class BadPiggiesScene extends Scene {
     this._createHud();
     this._refreshHud();
   }
+
+  onLoadGame(_payload) {
+    this._rebuildOccupancyFromEntities();
+    this._rebuildWheelJointsFromActive();
+    // Ghosts are non-serializable; ensure previews exist after remount.
+    if (this.ghostBoxIdx < 0) {
+      const ghostBox = GhostGhostMachineBox.spawn({ x: -9999, y: -9999, ghost: true });
+      const ghostWheel = GhostGhostMachineWheel.spawn({ x: -9999, y: -9999, ghost: true });
+      const ghostRocket = GhostMachineRocket.spawn({
+        x: -9999,
+        y: -9999,
+        ghost: true,
+        rotation: this._placeAngle,
+      });
+      this.ghostBoxIdx = ghostBox ? ghostBox.index : -1;
+      this.ghostWheelIdx = ghostWheel ? ghostWheel.index : -1;
+      this.ghostRocketIdx = ghostRocket ? ghostRocket.index : -1;
+    }
+  }
+
+  _rebuildOccupancyFromEntities() {
+    this.occupancy.clear();
+    const boxes = MachineBox.getAllActive?.() || [];
+    for (let a = 0; a < boxes.length; a++) {
+      const i = boxes[a];
+      if (Transform.active && Transform.active[i] !== 1) continue;
+      const x = Transform.x[i];
+      const y = Transform.y[i];
+      if (x < -5000 || y < -5000) continue;
+      const { gx, gy } = worldToCell(x, y, this.originX, this.originY);
+      const key = cellKey(gx, gy);
+      if (this.occupancy.has(key)) continue;
+      this.occupancy.set(key, {
+        boxIndex: i,
+        wheelIndex: -1,
+        rocketIndex: -1,
+        rocketAngle: DEFAULT_ROCKET_ANGLE,
+      });
+    }
+
+    const wheels = MachineWheel.getAllActive?.() || [];
+    for (let a = 0; a < wheels.length; a++) {
+      const i = wheels[a];
+      if (Transform.active && Transform.active[i] !== 1) continue;
+      const x = Transform.x[i];
+      const y = Transform.y[i];
+      if (x < -5000 || y < -5000) continue;
+      const { gx, gy } = worldToCell(x, y, this.originX, this.originY);
+      const rec = this.occupancy.get(cellKey(gx, gy));
+      if (rec) rec.wheelIndex = i;
+    }
+
+    const rockets = MachineRocket.getAllActive?.() || [];
+    for (let a = 0; a < rockets.length; a++) {
+      const i = rockets[a];
+      if (Transform.active && Transform.active[i] !== 1) continue;
+      const x = Transform.x[i];
+      const y = Transform.y[i];
+      if (x < -5000 || y < -5000) continue;
+      const { gx, gy } = worldToCell(x, y, this.originX, this.originY);
+      const rec = this.occupancy.get(cellKey(gx, gy));
+      if (rec) {
+        rec.rocketIndex = i;
+        const c = Transform.rotC ? Transform.rotC[i] : 1;
+        const sn = Transform.rotS ? Transform.rotS[i] : 0;
+        rec.rocketAngle = Math.atan2(sn, c);
+      }
+    }
+  }
+
+  _rebuildWheelJointsFromActive() {
+    this._wheelJoints.length = 0;
+    if (typeof Joint.getAllActive !== 'function') return;
+    const wheelSet = new Set(MachineWheel.getAllActive?.() || []);
+    const active = Joint.getAllActive();
+    for (let i = 0; i < active.length; i++) {
+      const j = active[i];
+      if (j.type !== Joint.TYPE.REVOLUTE) continue;
+      if (wheelSet.has(j.entityA) || wheelSet.has(j.entityB)) {
+        this._wheelJoints.push(j.idx);
+      }
+    }
+  }
+
 
   async destroy() {
     this._removePalette();

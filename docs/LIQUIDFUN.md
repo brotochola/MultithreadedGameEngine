@@ -319,3 +319,13 @@ node --test tests/node/liquidfun.test.js tests/node/liquidfun.wasm.test.js
 |------|------|
 | [`tests/node/liquidfun.test.js`](../tests/node/liquidfun.test.js) | Flags (including BARRIER / STATIC_PRESSURE), AABB, `SET_LIQUIDFUN_EMIT` ring, `physics.liquidFun` merge + maxCount clamp 65535 |
 | [`tests/node/liquidfun.wasm.test.js`](../tests/node/liquidfun.wasm.test.js) | Y-down floor settle + `spanY`; no wall-climb **and** no centers inside the wall; water beside a thick box (`maxPen < radius`); 10k create/step smoke; **1-particle point rest** on floor top (`|vy|` small); barrier smoke; staticPressure finite; deinterleaved `x`/`y` exactly match interleaved `pos`; `strictContactCheck` 5th-arg smoke |
+
+
+## Save / restore (groups + pairs)
+
+Weed save games snapshot LiquidFun via sibling WASM (`D:\\xampp\\htdocs\\Box2d_3.2_C_-_liquidfun`):
+
+1. `restore_particles` — clear + recreate particles (pos / vel / flags)
+2. `restore_particle_groups_and_pairs` — reinstall `groupIndex`, elastic `restOffset`, group slots, spring/barrier pairs
+
+Also saved: thin render SAB fields (tint / textureId / scale / alpha). Rebuild WASM with `weedjs\\build_for_weed.bat`.

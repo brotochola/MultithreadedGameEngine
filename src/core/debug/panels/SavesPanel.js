@@ -113,8 +113,10 @@ export class SavesPanel {
 
       const when = meta.savedAt ? new Date(meta.savedAt).toLocaleString() : '?';
       const kb = meta.bytes != null ? `${(meta.bytes / 1024).toFixed(1)} KB` : '?';
-      const n = meta.entityCount != null ? `${meta.entityCount} ents` : '';
-      selectBtn.textContent = `${meta.id}\n${when} · ${kb}${n ? ` · ${n}` : ''}`;
+      const ents = meta.entityCount != null ? `${meta.entityCount} ents` : '';
+      const lf = (meta.particleCount | 0) > 0 ? `${meta.particleCount} lf` : '';
+      const counts = [ents, lf].filter(Boolean).join(' · ');
+      selectBtn.textContent = `${meta.id}\n${when} · ${kb}${counts ? ` · ${counts}` : ''}`;
 
       selectBtn.onclick = () => {
         this.selectedId = meta.id;
@@ -156,8 +158,9 @@ export class SavesPanel {
     try {
       const result = await scene.saveGame();
       this.selectedId = result.meta.id;
+      const pc = result.particleCount | 0;
       this._setStatus(
-        `Saved ${result.entityCount} entities (${(result.bytes / 1024).toFixed(1)} KB)`
+        `Saved ${result.entityCount} entities, ${pc} particles (${(result.bytes / 1024).toFixed(1)} KB)`
       );
     } catch (err) {
       console.error(err);

@@ -61,11 +61,22 @@ export class AdobeAnimateScene extends Scene {
   create() {
     const cx = this.config.worldWidth * 0.5;
     const cy = this.config.worldHeight * 0.5;
+    Camera.setFree(true, { panSpeed: 18, zoomSensitivity: 0.08, smoothing: 0.18 });
+    Camera.setFreeTarget(cx, cy);
+    Camera.centerOn(cx, cy);
+    Camera.setZoom(1.4);
 
-    // Set up grid parameters
+
+  }
+
+  
+
+  createNewGame() {
+    const cx = this.config.worldWidth * 0.5;
+    const cy = this.config.worldHeight * 0.5;
     const totalCharacters = 10000;
     const gridCols = Math.sqrt(totalCharacters);
-    const gridRows = gridCols
+    const gridRows = gridCols;
     const spacingX = 50;
     const spacingY = 50;
     const startX = cx;
@@ -77,17 +88,13 @@ export class AdobeAnimateScene extends Scene {
       this.spawnEntity(AdobeAnimateCharacter, {
         x: startX + col * spacingX,
         y: startY + row * spacingY,
-        // clipName: 'idle',
         playbackRate: 1 + i * 0.001,
         scaleX: 0.25,
         scaleY: 0.25,
       });
     }
 
-    Camera.setFree(true, { panSpeed: 18, zoomSensitivity: 0.08, smoothing: 0.18 });
-    Camera.setFreeTarget(cx, cy);
-    Camera.centerOn(cx, cy);
-    Camera.setZoom(1.4);
+
   }
 
   update() {

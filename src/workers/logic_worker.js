@@ -8,6 +8,7 @@ self.postMessage({
 
 // Import engine dependencies
 import { GameObject } from '../core/gameObject.js';
+import { Joint } from '../core/Joint.js';
 import { Mouse } from '../core/Mouse.js';
 import { Transform } from '../components/Transform.js';
 import { RigidBody } from '../components/RigidBody.js';
@@ -1109,13 +1110,18 @@ class LogicWorker extends AbstractWorker {
       case 'restoreSave': {
         if (this.workerIndex !== 0) break;
 
-        const { serializableClassNames = [], entities = [] } = data;
+        const { serializableClassNames = [], entities = [], joints = [] } = data;
         let restored = 0;
         let failed = 0;
+        const oldToNew = new Map();
 
         for (let i = 0; i < serializableClassNames.length; i++) {
           const EntityClass = self[serializableClassNames[i]];
           if (EntityClass) GameObject.despawnAll(EntityClass);
+        }
+
+        if (typeof Joint.clearAllActive === 'function') {
+          Joint.clearAllActive();
         }
 
         for (let i = 0; i < entities.length; i++) {
@@ -1142,12 +1148,26 @@ class LogicWorker extends AbstractWorker {
             failed++;
           } else {
             restored++;
+            if (rec.entityIndex != null && rec.entityIndex >= 0) {
+              oldToNew.set(rec.entityIndex | 0, instance.index | 0);
+            }
           }
+        }
+
+        let jointsRestored = 0;
+        if (joints.length && typeof Joint.restoreFromSave === 'function') {
+          const created = Joint.restoreFromSave(joints, oldToNew);
+          jointsRestored = created.length;
         }
 
         // Flush active lists before ack so entities are fully in the scene.
         this.processListUpdates();
-        self.postMessage({ msg: 'restoreSaveComplete', restored, failed });
+        self.postMessage({
+          msg: 'restoreSaveComplete',
+          restored,
+          failed,
+          jointsRestored,
+        });
         break;
       }
 

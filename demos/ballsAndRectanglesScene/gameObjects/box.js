@@ -10,6 +10,7 @@ class Box extends GameObject {
 
   // entityType auto-assigned during registration (no manual ID needed!)
   static instances = []; // Instance tracking for this class
+  static serializable = true;
 
   // Define components this entity uses
   static components = [RigidBody, Collider, SpriteRenderer];

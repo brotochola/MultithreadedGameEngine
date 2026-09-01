@@ -194,27 +194,19 @@ export class BichosScene extends WEED.Scene {
   }
 
   create() {
-    // Spawn initial entities
-    // console.log('🎬 PredatorScene: Spawning entities...');
+    this.spawnGrass(20000);
 
-    // Spawn player first
-    // this.spawnPlayer();
 
+  }
+
+  
+
+  createNewGame() {
     this.spawnLights(100);
     this.spawnBugs(10000);
-    // this.spawnHouses(this.numberOfHouses);
-    this.spawnGrass(20000);
-    // this.spawnCivilians(10000);
-    // this.spawnTrash(100);
-    // this.spawnEntity(PreySpawner, {});
-
-    // this.spawnEntity(CameraController, {});
-    // // this.spawnTrees(this.numberOfTrees);
-    // this.spawnBarrels(this.numberOfBarrels);
     this.spawnRocks(500);
-    // this.spawnMySoldiers(2500);
-    // this.spawnDestination();
-    // this.spawnRocksTreesAndHouses();
+
+
   }
 
   spawnTrash(count) {

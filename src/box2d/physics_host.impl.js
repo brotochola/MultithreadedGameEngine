@@ -950,6 +950,34 @@
         startGameLoop();
       } else if (data.msg === 'updatePhysicsConfig') {
         applyPhysicsConfig(data.config || {});
+      } else if (data.msg === 'snapshotLiquidFun') {
+        var snap = typeof weedjsSnapshotLiquidFun === 'function' ? weedjsSnapshotLiquidFun() : null;
+        var transfer = [];
+        var pushBuf = function (a) {
+          if (a && a.buffer) transfer.push(a.buffer);
+        };
+        if (snap) {
+          pushBuf(snap.pos);
+          pushBuf(snap.vel);
+          pushBuf(snap.flags);
+          pushBuf(snap.groupIndex);
+          pushBuf(snap.restOffset);
+          if (snap.groups) {
+            Object.keys(snap.groups).forEach(function (k) { pushBuf(snap.groups[k]); });
+          }
+          if (snap.pairs) {
+            Object.keys(snap.pairs).forEach(function (k) { pushBuf(snap.pairs[k]); });
+          }
+          if (snap.render) {
+            Object.keys(snap.render).forEach(function (k) { pushBuf(snap.render[k]); });
+          }
+        }
+        self.postMessage({ msg: 'liquidFunSnapshot', requestId: data.requestId | 0, snapshot: snap }, transfer);
+      } else if (data.msg === 'restoreLiquidFun') {
+        var result = typeof weedjsRestoreLiquidFun === 'function'
+          ? weedjsRestoreLiquidFun(data.payload || null)
+          : { ok: false, reason: 'missing-fn' };
+        self.postMessage({ msg: 'liquidFunRestoreComplete', requestId: data.requestId | 0, result: result });
       }
     } catch (err) {
       console.error('[physics_host]', err);

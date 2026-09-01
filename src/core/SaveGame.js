@@ -16,6 +16,12 @@ import {
 } from './entitySaveSnapshot.js';
 import { applyEntitySaveRestore } from './entitySaveSnapshot.js';
 import { SaveStore } from './SaveStore.js';
+import {
+  packLiquidFunSnapshot,
+  unpackLiquidFunSnapshot,
+  requestLiquidFunSnapshot,
+  requestLiquidFunRestore,
+} from './liquidFunSave.js';
 import { VERSION } from '../version.js';
 
 export {
@@ -36,24 +42,37 @@ export {
 /**
  * @param {object} scene
  * @param {string} [slotId]
- * @returns {Promise<{ meta: object, bytes: number, entityCount: number }>}
+ * @returns {Promise<{ meta: object, bytes: number, entityCount: number, particleCount: number }>}
  */
 export async function saveGame(scene, slotId) {
   if (!scene) throw new Error('SaveGame: no scene');
-  const payload = buildSavePayload(scene);
+  let liquidFun = null;
+  const lfEnabled = !!(scene.config?.physics?.liquidFun?.enabled);
+  if (lfEnabled && scene.workers?.physics) {
+    try {
+      const snap = await requestLiquidFunSnapshot(scene.workers.physics);
+      liquidFun = packLiquidFunSnapshot(snap);
+    } catch (err) {
+      console.warn('[SaveGame] LiquidFun snapshot failed:', err);
+    }
+  }
+  const payload = buildSavePayload(scene, liquidFun ? { liquidFun } : {});
   const compressed = await encodeSave(payload);
   const id =
     slotId ||
     `${payload.sceneName}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+  const entityCount = payload.entities.length;
+  const particleCount = liquidFun?.count | 0;
 
   const meta = await SaveStore.put(id, compressed, {
     scene: payload.sceneName,
     savedAt: new Date().toISOString(),
     engineVersion: VERSION,
-    entityCount: payload.entities.length,
+    entityCount,
+    particleCount,
   });
 
-  return { meta, bytes: compressed.byteLength, entityCount: payload.entities.length };
+  return { meta, bytes: compressed.byteLength, entityCount, particleCount };
 }
 
 /**
@@ -110,13 +129,24 @@ export function applySavePayloadToScene(scene, payload) {
     msg: 'restoreSave',
     serializableClassNames,
     entities: payload.entities || [],
+    joints: payload.joints || [],
   });
 
   applyCameraGlobals(payload.camera);
   applySunGlobals(payload.sun);
   scene._restorePayload = null;
 
-  return completePromise;
+  return completePromise.then(async (result) => {
+    if (payload.liquidFun && scene.workers?.physics) {
+      try {
+        const unpacked = unpackLiquidFunSnapshot(payload.liquidFun);
+        await requestLiquidFunRestore(scene.workers.physics, unpacked);
+      } catch (err) {
+        console.warn('[SaveGame] LiquidFun restore failed:', err);
+      }
+    }
+    return result;
+  });
 }
 
 /**

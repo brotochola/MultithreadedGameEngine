@@ -26,6 +26,7 @@ const SPLASH_SPEED_FULL = 3500;
 class WaterBall extends GameObject {
   static scriptUrl = import.meta.url;
   static instances = [];
+  static serializable = true;
   static components = [RigidBody, Collider, CollisionListener, SpriteRenderer];
 
   setup() { }
