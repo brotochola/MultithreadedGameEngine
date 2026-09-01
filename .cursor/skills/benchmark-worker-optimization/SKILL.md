@@ -12,6 +12,12 @@ description: >-
 
 # Benchmark-driven worker optimization (weed.js engine)
 
+## Before you merge
+
+- Follow skill **`zero-alloc-perf-doctrine`**: no hot-loop alloc/GC; measure before claiming wins; kill hyps that lose L1 or sit in L2 noise.
+- Pyramid (L1 micro → L2 integrated → L3 demo): [`docs/FEATURE_BENCHMARKS.md`](docs/FEATURE_BENCHMARKS.md). Kernel A/B: `pnpm bench:micro:hyp-wins` and `tests/bench/*-microbench.mjs`.
+- **Predator Awake noise:** do **not** claim physics wins unless `AWAKE_COUNT` / `BODY_MOVED_COUNT` (or moved/awake fields in the report) land in a comparable band across baseline vs after. Prefer Balls for stable physics load.
+
 ## Goal
 
 Change **physics** or **spatial** / **renderer** code, then **verify impact** using the same scene and the same harness, without treating a single noisy run as truth. For render hyps, also gate on canvas screenshots (agent visual review).
