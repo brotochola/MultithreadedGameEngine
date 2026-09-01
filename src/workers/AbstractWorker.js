@@ -46,6 +46,7 @@ import { createWorkerQueryFunctions } from '../core/QuerySystem.js';
 import { bindBox2dHotFields } from '../box2d/box2dHotFields.js';
 import { bindCommandRing } from '../box2d/box2dCommandRing.js';
 import { bindQueryAabbSab } from '../box2d/box2dQueryAabb.js';
+import { bindRayCastSab } from '../box2d/box2dRayCast.js';
 import { bindLiquidFunQuerySab } from '../box2d/liquidFunQuery.js';
 import { bindMovedBodies } from '../box2d/box2dMovedBodies.js';
 import { bindBodySyncBuffers } from '../box2d/box2dBodySync.js';
@@ -1282,6 +1283,9 @@ export class AbstractWorker {
       }
       if (data.queryAabbSab) {
         bindQueryAabbSab(data.queryAabbSab);
+      }
+      if (data.rayCastSab) {
+        bindRayCastSab(data.rayCastSab);
       }
       if (data.liquidFunQuerySab) {
         bindLiquidFunQuerySab(data.liquidFunQuerySab);

@@ -452,6 +452,7 @@
     frameRateStride: 1,
     commandSab: null,
     queryAabbSab: null,
+    rayCastSab: null,
     liquidFunQuerySab: null,
     contactSab: null,
     movedSab: null,
@@ -515,6 +516,7 @@
       sleepingByteOffset: ready.sleepingByteOffset,
       commandSab: state.commandSab,
       queryAabbSab: state.queryAabbSab,
+      rayCastSab: state.rayCastSab,
       liquidFunQuerySab: state.liquidFunQuerySab,
       contactSab: state.contactSab,
       movedSab: state.movedSab,
@@ -551,6 +553,8 @@
     Box2dCommandRing.bindCommandRing(state.commandSab);
     state.queryAabbSab = Box2dQueryAabb.createQueryAabbSab();
     Box2dQueryAabb.bindQueryAabbSab(state.queryAabbSab);
+    state.rayCastSab = Box2dRayCast.createRayCastSab();
+    Box2dRayCast.bindRayCastSab(state.rayCastSab);
     state.liquidFunQuerySab = LiquidFunQuery.createLiquidFunQuerySab();
     LiquidFunQuery.bindLiquidFunQuerySab(state.liquidFunQuerySab);
     state.contactSab = Box2dContactRing.createContactRingSab(
@@ -585,6 +589,7 @@
       worldHeight: state.config.worldHeight | 0,
       commandSab: state.commandSab,
       queryAabbSab: state.queryAabbSab,
+      rayCastSab: state.rayCastSab,
       liquidFunQuerySab: state.liquidFunQuerySab,
       contactSab: state.contactSab,
       movedSab: state.movedSab,

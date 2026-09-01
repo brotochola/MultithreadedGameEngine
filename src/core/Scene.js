@@ -14,6 +14,10 @@ import {
   bindQueryAabbSab,
   box2dQueryAABBAsync,
 } from '../box2d/box2dQueryAabb.js';
+import {
+  bindRayCastSab,
+  box2dCastRayClosestAsync,
+} from '../box2d/box2dRayCast.js';
 import { bindLiquidFunQuerySab } from '../box2d/liquidFunQuery.js';
 import { bindMovedBodies, getMovedBodiesViews } from '../box2d/box2dMovedBodies.js';
 import { SpriteRenderer } from '../components/SpriteRenderer.js';
@@ -1614,6 +1618,7 @@ class Scene {
         sleepingByteOffset: e.data.sleepingByteOffset,
         commandSab: e.data.commandSab,
         queryAabbSab: e.data.queryAabbSab || null,
+        rayCastSab: e.data.rayCastSab || null,
         liquidFunQuerySab: e.data.liquidFunQuerySab || null,
         contactSab: e.data.contactSab,
         movedSab: e.data.movedSab || null,
@@ -1640,6 +1645,9 @@ class Scene {
       }
       if (payload.queryAabbSab) {
         bindQueryAabbSab(payload.queryAabbSab);
+      }
+      if (payload.rayCastSab) {
+        bindRayCastSab(payload.rayCastSab);
       }
       if (payload.liquidFunQuerySab) {
         bindLiquidFunQuerySab(payload.liquidFunQuerySab);
@@ -1820,6 +1828,14 @@ class Scene {
    */
   box2dQueryAABB(x0, y0, x1, y1, out, filter) {
     return box2dQueryAABBAsync(x0, y0, x1, y1, out, filter);
+  }
+
+  /**
+   * Box2D castRayClosest from main thread (async — Atomics.waitAsync).
+   * Logic / GameObject should use sync `box2dCastRayClosest` instead.
+   */
+  box2dCastRayClosest(ox, oy, dx, dy, out, filter) {
+    return box2dCastRayClosestAsync(ox, oy, dx, dy, out, filter);
   }
 
   updatePhysicsConfig(partialConfig = {}) {

@@ -269,7 +269,6 @@ export class BadPiggiesScene extends Scene {
     }
   }
 
-
   async destroy() {
     this._removePalette();
     this._removeFluidBar();

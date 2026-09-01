@@ -32,6 +32,17 @@ pnpm bench:feature:ray
 pnpm bench:feature:ray:predator
 pnpm bench:ray:tournament
 
+# Ray vs Box2D (kernel + busy-physics hyp)
+pnpm bench:micro:ray-vs-box2d
+pnpm bench:feature:ray-vs-box2d:weedjs:idle
+pnpm bench:feature:ray-vs-box2d:weedjs:busy
+pnpm bench:feature:ray-vs-box2d:box2d:idle
+pnpm bench:feature:ray-vs-box2d:box2d:busy
+```
+
+**Hyp read:** WeedJS `Ray` runs on the **logic** thread (DDA over Grid SAB). Box2D `castRayClosest` runs on the **physics** thread (sync SAB wait from logic). Compare `RAYCAST_MS` + physics `STEP_MS` / `BOX2D_MS` idle vs busy. Expect WeedJS ray wall time to stay flat when physics is saturated; Box2D sync path climbs. L1 (`bench:micro:ray-vs-box2d`) is idle-kernel only — not the contention hyp.
+
+```bash
 # Decals Wave A (champion D2 merged — UV DDA)
 pnpm bench:micro:decal
 pnpm bench:feature:decal
@@ -53,6 +64,7 @@ Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`]
 | Feature | Hot module | L1 | L2 stress scene | L3 demo | Primary metric |
 |---------|------------|----|-----------------|---------|----------------|
 | Grid Ray (DDA) | `src/core/Ray.js` | `ray-microbench.mjs` | `stressScenes/RayStressScene` | Predator / bullets | L1 ops/s; L2 `RAYCAST_MS` — **H6+H1 shipped** (w/ D2+P45 on Predator pick) |
+| Ray vs Box2D | `Ray.js` + `box2dRayCast` / `cast_ray_closest` | `ray-vs-box2d-microbench.mjs` | `RayVsBox2dStressScene` (weedjs/box2d × idle/busy) | — | L1 ops/s; L2 `RAYCAST_MS` under busy `BOX2D_MS` |
 | Stamp decals | `decalStamp.js`, particle_worker | `decal-microbench.mjs` | `stressScenes/DecalStampStressScene` | zenithal / Predator | `DECAL_STAMP_MS`, particle `STEP_MS` — **champion D2** |
 | Particle emit | `ParticleEmitter.js`, free list | `particle-emit-microbench.mjs` | `stressScenes/ParticleEmitStressScene` | zenithalParticleTest | emit ops/s; particle `STEP_MS` — **champion includes P5** |
 | Particle integrate | `particleIntegrate.js`, particle_worker | `particle-integrate-microbench.mjs` | `stressScenes/ParticleIntegrateStressScene` | zenithalParticleTest | `PARTICLE_PHYSICS_MS`, `BUILD_ACTIVE_VISIBLE_MS` — **champion P4+P5** |

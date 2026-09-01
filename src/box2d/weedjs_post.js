@@ -16,6 +16,7 @@
     'box2dJointBreakRing.impl.js',
     'box2dMovedBodies.impl.js',
     'box2dQueryAabb.impl.js',
+    'box2dRayCast.impl.js',
     'liquidFunQuery.impl.js',
   );
   const drainBox2dCommandRing = Box2dCommandRing.drainCommandRing;
@@ -1134,6 +1135,40 @@
     });
   }
 
+  function serviceRayCast() {
+    if (!world || typeof Box2dRayCast === 'undefined') return;
+    var castFn = function (
+      ox,
+      oy,
+      dx,
+      dy,
+      categoryBits,
+      maskBits,
+    ) {
+      var n = world.castRayClosest(ox, oy, dx, dy, {
+        categoryBits: categoryBits,
+        maskBits: maskBits,
+      });
+      if (!(n > 0) || !world._queryHits) {
+        return { hit: false, entityIndex: -1, fraction: 0, hitX: 0, hitY: 0 };
+      }
+      var hits = world._queryHits;
+      return {
+        hit: true,
+        entityIndex: hits[0] | 0,
+        fraction: hits[1],
+        hitX: hits[2],
+        hitY: hits[3],
+      };
+    };
+    // Burst: sync logic can post many single-flight casts per its tick.
+    if (typeof Box2dRayCast.servicePendingRayCastBurst === 'function') {
+      Box2dRayCast.servicePendingRayCastBurst(castFn, 1024);
+    } else {
+      Box2dRayCast.servicePendingRayCast(castFn);
+    }
+  }
+
   function serviceLiquidFunQuery() {
     if (!world || typeof LiquidFunQuery === 'undefined') return;
     var OP_AABB = LiquidFunQuery.OP_AABB;
@@ -1744,6 +1779,7 @@
     // Service even when dt==0 / paused so sync query callers do not hang.
     if (!(dt > 0)) {
       serviceQueryAabb();
+      serviceRayCast();
       serviceLiquidFunQuery();
       return;
     }
@@ -1752,6 +1788,7 @@
       drainCommands();
       syncJoints();
       serviceQueryAabb();
+      serviceRayCast();
       serviceLiquidFunQuery();
       snapshotPrevPose(entityCount);
       applyForcesAndTorque();
@@ -1769,6 +1806,7 @@
     const jointSyncChanges = syncJoints();
     const t3 = performance.now();
     serviceQueryAabb();
+    serviceRayCast();
     serviceLiquidFunQuery();
     snapshotPrevPose(entityCount);
     applyForcesAndTorque();
@@ -1913,6 +1951,9 @@
     }
     if (data.queryAabbSab) {
       Box2dQueryAabb.bindQueryAabbSab(data.queryAabbSab);
+    }
+    if (data.rayCastSab) {
+      Box2dRayCast.bindRayCastSab(data.rayCastSab);
     }
     if (data.liquidFunQuerySab) {
       LiquidFunQuery.bindLiquidFunQuerySab(data.liquidFunQuerySab);

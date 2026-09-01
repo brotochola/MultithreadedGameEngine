@@ -119,6 +119,12 @@ export {
   isQueryAabbBound,
 } from './box2d/box2dQueryAabb.js';
 export {
+  box2dCastRayClosest,
+  box2dCastRayClosestAsync,
+  bindRayCastSab,
+  isRayCastBound,
+} from './box2d/box2dRayCast.js';
+export {
   liquidFunQueryAABB,
   liquidFunQueryAABBAsync,
   liquidFunRayCast,
@@ -252,6 +258,12 @@ import {
   isQueryAabbBound,
 } from './box2d/box2dQueryAabb.js';
 import {
+  box2dCastRayClosest,
+  box2dCastRayClosestAsync,
+  bindRayCastSab,
+  isRayCastBound,
+} from './box2d/box2dRayCast.js';
+import {
   liquidFunQueryAABB,
   liquidFunQueryAABBAsync,
   liquidFunRayCast,
@@ -372,6 +384,12 @@ const WEED = Object.freeze({
   box2dQueryAABBAsync,
   bindQueryAabbSab,
   isQueryAabbBound,
+
+  // Box2D castRayClosest (logic sync / Scene async)
+  box2dCastRayClosest,
+  box2dCastRayClosestAsync,
+  bindRayCastSab,
+  isRayCastBound,
 
   // LiquidFun QueryAABB / RayCast (logic sync / Scene async)
   liquidFunQueryAABB,

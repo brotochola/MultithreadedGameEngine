@@ -1,12 +1,12 @@
 import WEED from '/src/index.js';
 
-const { GameObject, Collider, SpriteRenderer, enums } = WEED;
+const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
 const { ShapeType } = enums;
 
-/** Static collider obstacle for RayStressScene (circle or box). */
+/** Static collider + RigidBody obstacle for Ray vs Box2D stress (circle or box). */
 export class RayStressEntity extends GameObject {
   static scriptUrl = import.meta.url;
-  static components = [Collider, SpriteRenderer];
+  static components = [RigidBody, Collider, SpriteRenderer];
   static tickInterval = 16;
 
   onSpawned({
@@ -21,6 +21,8 @@ export class RayStressEntity extends GameObject {
     this.x = x;
     this.y = y;
     this.rotation = 0;
+
+    this.rigidBody.static = 1;
 
     if (shape === 'box') {
       this.collider.shapeType = ShapeType.Box;

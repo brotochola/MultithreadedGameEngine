@@ -1,6 +1,6 @@
 import WEED from '/src/index.js';
 
-const { GameObject, Ray, Transform, Collider } = WEED;
+const { GameObject, Ray, Transform, Collider, RigidBody, box2dCastRayClosest } = WEED;
 
 const CASTS_PER_TICK = 512;
 const PAIR_COUNT = 1024;
@@ -10,23 +10,32 @@ const WORLD_H = 3000;
 const MARGIN = 64;
 
 /**
- * Fires a fixed mix of Ray.cast / linecast / castAll / hasLineOfSight each tick.
- * Workload is seeded and cyclic so RAYCAST_MS stays comparable across runs.
+ * Fires a fixed mix of casts each tick against static obstacles.
+ * backend: 'weedjs' (default) uses Ray.*; 'box2d' uses sync box2dCastRayClosest SAB.
+ * Workload is seeded/cyclic so RAYCAST_MS stays comparable across runs.
  */
 export class RayStressDriver extends GameObject {
   static scriptUrl = import.meta.url;
   static components = [];
 
-  onSpawned({ seed = 0xc0de1234 } = {}) {
+  onSpawned({ seed = 0xc0de1234, backend = 'weedjs' } = {}) {
     this.x = -10000;
     this.y = -10000;
     this._seed = seed >>> 0;
+    this._backend = backend === 'box2d' ? 'box2d' : 'weedjs';
     this._cursor = 0;
     this._sink = 0;
     this._ready = false;
     this._indices = null;
     this._pairs = new Uint32Array(PAIR_COUNT * 2);
     this._longRays = new Float32Array(LONG_RAY_COUNT * 4);
+    this._rayOut = {
+      hit: false,
+      entityIndex: -1,
+      fraction: 0,
+      hitX: 0,
+      hitY: 0,
+    };
   }
 
   _mulberry32(seed) {
@@ -44,8 +53,12 @@ export class RayStressDriver extends GameObject {
     if (this._ready) return true;
     const active = [];
     const len = Transform.active.length;
+    const hasStatic = RigidBody.static != null;
     for (let i = 0; i < len; i++) {
-      if (Transform.active[i] && Collider.active[i]) active.push(i);
+      if (!(Transform.active[i] && Collider.active[i])) continue;
+      // Prefer static RigidBody obstacles; fall back to any collider if schema missing.
+      if (hasStatic && !RigidBody.static[i]) continue;
+      active.push(i);
     }
     if (active.length < 2) return false;
 
@@ -65,15 +78,14 @@ export class RayStressDriver extends GameObject {
     return true;
   }
 
-  tick() {
-    if (!this._ensureWorkload()) return;
+  _box2dClosest(ox, oy, ex, ey) {
+    const out = this._rayOut;
+    box2dCastRayClosest(ox, oy, ex - ox, ey - oy, out);
+    return out.hit ? out.entityIndex : -1;
+  }
 
-    const pairs = this._pairs;
-    const rays = this._longRays;
-    let cursor = this._cursor;
+  _tickWeedjs(pairs, rays, cursor, half) {
     let sink = this._sink;
-    const half = CASTS_PER_TICK >> 2;
-
     for (let i = 0; i < half; i++) {
       const k = ((cursor + i) % PAIR_COUNT) * 2;
       const a = pairs[k];
@@ -82,15 +94,70 @@ export class RayStressDriver extends GameObject {
       const los = Ray.linecastBetweenEntities(a, b);
       if (los.blocked) sink++;
     }
-
     for (let i = 0; i < half; i++) {
       const k = ((cursor + i) % LONG_RAY_COUNT) * 4;
       sink += Ray.cast(rays[k], rays[k + 1], rays[k + 2], rays[k + 3]);
-      const hits = Ray.castAll(rays[k], rays[k + 1], rays[k + 2], rays[k + 3], Infinity, 4);
+      const hits = Ray.castAll(
+        rays[k],
+        rays[k + 1],
+        rays[k + 2],
+        rays[k + 3],
+        Infinity,
+        4,
+      );
       sink += hits.length;
+    }
+    this._sink = sink;
+  }
+
+  _tickBox2d(pairs, rays, cursor, half) {
+    const t0 = performance.now();
+    let sink = this._sink;
+    let casts = 0;
+    for (let i = 0; i < half; i++) {
+      const k = ((cursor + i) % PAIR_COUNT) * 2;
+      const a = pairs[k];
+      const b = pairs[k + 1];
+      const ax = Transform.x[a];
+      const ay = Transform.y[a];
+      const bx = Transform.x[b];
+      const by = Transform.y[b];
+      // Two closest casts ≈ LOS + linecastBetweenEntities cost shape.
+      const h1 = this._box2dClosest(ax, ay, bx, by);
+      casts++;
+      if (h1 === -1) sink++;
+      const h2 = this._box2dClosest(ax, ay, bx, by);
+      casts++;
+      if (h2 !== -1) sink++;
+    }
+    for (let i = 0; i < half; i++) {
+      const k = ((cursor + i) % LONG_RAY_COUNT) * 4;
+      const hit = this._box2dClosest(rays[k], rays[k + 1], rays[k + 2], rays[k + 3]);
+      casts++;
+      sink += hit;
+      // Second cast stands in for castAll(maxHits=4) volume (closest-only API).
+      const hit2 = this._box2dClosest(rays[k], rays[k + 1], rays[k + 2], rays[k + 3]);
+      casts++;
+      if (hit2 !== -1) sink++;
+    }
+    this._sink = sink;
+    Ray.noteExternalWork(performance.now() - t0, casts);
+  }
+
+  tick() {
+    if (!this._ensureWorkload()) return;
+
+    const pairs = this._pairs;
+    const rays = this._longRays;
+    const cursor = this._cursor;
+    const half = CASTS_PER_TICK >> 2;
+
+    if (this._backend === 'box2d') {
+      this._tickBox2d(pairs, rays, cursor, half);
+    } else {
+      this._tickWeedjs(pairs, rays, cursor, half);
     }
 
     this._cursor = (cursor + half) % PAIR_COUNT;
-    this._sink = sink;
   }
 }
