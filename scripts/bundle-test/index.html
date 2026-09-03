@@ -19,9 +19,6 @@
 <body>
   <div id="info">WeedJS Bundle Smoke Test — Loading...</div>
 
-  <!-- UMD bundle: sets window.WEED -->
-  <script src="weed.bundle.min.js"></script>
-
   <!--
     Entity definitions as inert text (not executed directly).
     Workers fetch this via Blob URL; main thread imports it dynamically.
@@ -127,6 +124,43 @@ export class Floor extends GameObject {
   </script>
 
   <script type="module">
+    const BUNDLES = new Set([
+      'weed.bundle.min.js',
+      'weed.bundle.esm.min.js',
+      'weed.prod.bundle.min.js',
+      'weed.prod.bundle.esm.min.js',
+      'weed.bundle.compressed.min.js',
+      'weed.bundle.esm.compressed.min.js',
+      'weed.prod.bundle.compressed.min.js',
+      'weed.prod.bundle.esm.compressed.min.js',
+    ]);
+    const requested = new URLSearchParams(location.search).get('bundle') || 'weed.bundle.min.js';
+    const bundle = BUNDLES.has(requested) ? requested : 'weed.bundle.min.js';
+
+    async function loadWeed(file) {
+      if (file.includes('.esm.')) {
+        const mod = await import('./' + file);
+        window.WEED = mod.default;
+        return;
+      }
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = file;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('failed to load ' + file));
+        document.head.appendChild(s);
+      });
+    }
+
+    await loadWeed(bundle);
+    const WEED = window.WEED;
+    if (!WEED) {
+      throw new Error('WEED missing after loading ' + bundle);
+    }
+    if (typeof WEED.ensureEmbeddedSources === 'function') {
+      await WEED.ensureEmbeddedSources();
+    }
+
     const { GameEngine, Scene, Camera, Mouse } = WEED;
 
     // Create a fetchable Blob URL from the inline entity source.

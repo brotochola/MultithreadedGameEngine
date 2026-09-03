@@ -19,14 +19,18 @@ Classic physics worker for **Box2D 3.0 WASM** (pthread + SharedArrayBuffer). Sce
 
 ## Dist / npm bundle
 
-`npm run make_bundle` emits **both** debug and prod single-file artifacts into `dist/`:
+`npm run make_bundle` emits **8** single-file artifacts into `dist/` (UMD/ESM × debug/prod × raw/gzip-embed workers):
 
 | Artifact | Notes |
 |----------|--------|
-| `weed.bundle.min.js` / `.esm.min.js` | Debug UI kept |
-| `weed.prod.bundle.min.js` / `.esm.min.js` | Debug stubs |
+| `weed.bundle.min.js` / `.esm.min.js` | Debug UI, raw worker strings (default `main` / `module`) |
+| `weed.prod.bundle.min.js` / `.esm.min.js` | Debug stubs, raw worker strings |
+| `weed.bundle.compressed.min.js` / `.esm.compressed.min.js` | Debug UI, gzip-embedded workers |
+| `weed.prod.bundle.compressed.min.js` / `.esm.compressed.min.js` | Debug stubs, gzip-embedded workers |
 
-At runtime `getBox2dWorkerUrl()` creates one blob URL; that blob **is** the physics worker. Pthreads re-fetch the same worker URL via `_scriptName`.
+WASM is gzip-embedded in all 8. `.compressed` extra-gzips worker/glue/css strings; call `WEED.ensureEmbeddedSources()` before the first `Worker()` (Scene bootstrap does this). Uncompressed skips inflate (faster first load).
+
+At runtime `getBox2dWorkerUrl()` creates one blob URL; that blob **is** the physics worker. Pthreads re-fetch the same worker URL via `_scriptName`. Smoke: `dist/index.html` (`?bundle=` to pick an artifact).
 
 ## Rebuild from sibling Box2D tree
 

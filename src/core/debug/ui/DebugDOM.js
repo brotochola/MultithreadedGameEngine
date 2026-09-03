@@ -9,6 +9,10 @@ export async function injectStyles() {
 
   let cssText = null;
 
+  if (typeof globalThis.WEED?.ensureEmbeddedSources === 'function') {
+    await globalThis.WEED.ensureEmbeddedSources();
+  }
+
   if (typeof globalThis.WEED !== 'undefined' && globalThis.WEED.DebugUICSS) {
     cssText = globalThis.WEED.DebugUICSS;
   } else {

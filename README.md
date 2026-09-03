@@ -89,7 +89,7 @@ Or a classic script tag (UMD, sets `window.WEED`):
 <script src="https://cdn.jsdelivr.net/npm/@weed.js/engine/dist/weed.prod.bundle.min.js"></script>
 ```
 
-Pin a version for real apps (`@0.6.4/...`). Bare `/npm/@weed.js/engine/...` tracks latest. Debug builds (debug UI included) use `weed.bundle*.min.js` instead of `weed.prod.bundle*.min.js`.
+Pin a version for real apps (`@0.6.4/...`). Bare `/npm/@weed.js/engine/...` tracks latest. Debug builds (debug UI included) use `weed.bundle*.min.js` instead of `weed.prod.bundle*.min.js`. Gzip-embedded worker variants add `.compressed` before `.min.js` (smaller disk, inflate on first load). `package.json` `main` / `module` stay uncompressed.
 
 ---
 

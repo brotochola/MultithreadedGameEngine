@@ -463,6 +463,9 @@ export async function createSceneWorkers(scene) {
     typeof window !== 'undefined' && window.WEED?.BUNDLE_MODE && window.WEED?.WorkerSources;
 
   if (useInlineWorkers) {
+    if (typeof window.WEED.ensureEmbeddedSources === 'function') {
+      await window.WEED.ensureEmbeddedSources();
+    }
     console.log('[Scene] Using inline workers (single-file bundle mode)');
   }
 

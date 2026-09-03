@@ -111,6 +111,9 @@ export class SoundManager {
     this._audioCtx = new AudioContext({ latencyHint: 'interactive' });
 
     let processorUrl;
+    if (typeof globalThis.WEED?.ensureEmbeddedSources === 'function') {
+      await globalThis.WEED.ensureEmbeddedSources();
+    }
     const embedded = typeof globalThis.WEED !== 'undefined' && globalThis.WEED.AudioWorkletSource;
     if (embedded) {
       const blob = new Blob([embedded], { type: 'application/javascript' });

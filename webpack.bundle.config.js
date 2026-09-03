@@ -26,6 +26,18 @@ const TERSER_PARALLEL = Math.max(
 
 // Production mode: swap debug modules with no-op stubs
 const isProd = process.env.WEED_PROD === 'true';
+const isCompressed = process.env.WEED_COMPRESSED === 'true';
+
+function bundleFileName(esm) {
+    const parts = ['weed'];
+    if (isProd) parts.push('prod');
+    parts.push('bundle');
+    if (esm) parts.push('esm');
+    if (isCompressed) parts.push('compressed');
+    parts.push('min.js');
+    return parts.join('.');
+}
+
 const debugStubAliases = isProd ? {
     [path.resolve(__dirname, 'src/core/debug/DebugDraw.js')]:
         path.resolve(__dirname, 'src/core/debug/stubs/DebugDraw.js'),
@@ -42,7 +54,7 @@ const umdConfig = {
     entry: './src/index.bundle.js',
     output: {
         path: path.resolve(__dirname, 'dist'),
-        filename: isProd ? 'weed.prod.bundle.min.js' : 'weed.bundle.min.js',
+        filename: bundleFileName(false),
         library: {
             name: 'WEED',
             type: 'umd',
@@ -131,7 +143,7 @@ const esmConfig = {
     entry: './src/index.bundle.js',
     output: {
         path: path.resolve(__dirname, 'dist'),
-        filename: isProd ? 'weed.prod.bundle.esm.min.js' : 'weed.bundle.esm.min.js',
+        filename: bundleFileName(true),
         library: {
             type: 'module'
         },
