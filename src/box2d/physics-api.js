@@ -630,6 +630,8 @@ function createPhysicsApi(Module) {
   const getParticleFlagsByteOffset = wrap("get_particle_flags_byte_offset", "number", []);
   const getParticleXByteOffset = wrap("get_particle_x_byte_offset", "number", []);
   const getParticleYByteOffset = wrap("get_particle_y_byte_offset", "number", []);
+  const getParticleVxByteOffset = wrap("get_particle_vx_byte_offset", "number", []);
+  const getParticleVyByteOffset = wrap("get_particle_vy_byte_offset", "number", []);
   const getParticleAlphaByteOffset = wrap("get_particle_alpha_byte_offset", "number", []);
   const DEFAULT_MATERIAL = Object.freeze({
     density: 1.0,
@@ -1742,14 +1744,26 @@ function createPhysicsApi(Module) {
           pairs: null,
         };
       }
-      const posOff = getParticlePosByteOffset() | 0;
-      const velOff = getParticleVelByteOffset() | 0;
+      const xOff = getParticleXByteOffset() | 0;
+      const yOff = getParticleYByteOffset() | 0;
+      const vxOff = getParticleVxByteOffset() | 0;
+      const vyOff = getParticleVyByteOffset() | 0;
       const flagsOff = getParticleFlagsByteOffset() | 0;
-      if (!posOff || !velOff || !flagsOff) return null;
+      if (!xOff || !yOff || !vxOff || !vyOff || !flagsOff) return null;
       const buf = heapBuf();
-      const posSrc = new Float32Array(buf, posOff, count * 2);
-      const velSrc = new Float32Array(buf, velOff, count * 2);
+      const xs = new Float32Array(buf, xOff, count);
+      const ys = new Float32Array(buf, yOff, count);
+      const vxs = new Float32Array(buf, vxOff, count);
+      const vys = new Float32Array(buf, vyOff, count);
       const flagsSrc = new Uint32Array(buf, flagsOff, count);
+      const posSrc = new Float32Array(count * 2);
+      const velSrc = new Float32Array(count * 2);
+      for (let i = 0; i < count; i++) {
+        posSrc[i * 2] = xs[i];
+        posSrc[i * 2 + 1] = ys[i];
+        velSrc[i * 2] = vxs[i];
+        velSrc[i * 2 + 1] = vys[i];
+      }
 
       let groupIndex = new Int32Array(count);
       let restOffset = new Float32Array(count * 2);
@@ -1983,6 +1997,14 @@ function createPhysicsApi(Module) {
 
     getParticleYByteOffset() {
       return getParticleYByteOffset();
+    }
+
+    getParticleVxByteOffset() {
+      return getParticleVxByteOffset();
+    }
+
+    getParticleVyByteOffset() {
+      return getParticleVyByteOffset();
     }
 
     getParticleAlphaByteOffset() {

@@ -1385,7 +1385,7 @@
       }
     }
     if (maxP > liquidFunPaintedHighWater) liquidFunPaintedHighWater = maxP;
-    seedLiquidFunHeapPoseFromPos(oldCount, maxP);
+    // Native SoA pose is written at CreateParticle; no AoS→SoA seed needed.
   }
 
   function resolveLiquidFunHeapPoseOffsets() {
@@ -1402,27 +1402,6 @@
       if (alphaByteOffset) liquidFunAlphaFloatOffset = alphaByteOffset >> 2;
     }
     return !!(liquidFunXFloatOffset && liquidFunYFloatOffset);
-  }
-
-  /** Copy interleaved WASM pos → deinterleaved x/y for [start, end) so count/pose match before step. */
-  function seedLiquidFunHeapPoseFromPos(start, end) {
-    if (end <= start) return;
-    if (!resolveLiquidFunHeapPoseOffsets()) return;
-    if (typeof Module === 'undefined' || !Module.HEAPF32) return;
-    if (typeof world.getParticlePosByteOffset !== 'function') return;
-    const posOff = world.getParticlePosByteOffset() | 0;
-    if (!posOff) return;
-    const heap = Module.HEAPF32;
-    const posBase = posOff >> 2;
-    const xBase = liquidFunXFloatOffset;
-    const yBase = liquidFunYFloatOffset;
-    const aBase = liquidFunAlphaFloatOffset;
-    for (let i = start; i < end; i++) {
-      const p = posBase + (i << 1);
-      heap[xBase + i] = heap[p];
-      heap[yBase + i] = heap[p + 1];
-      if (aBase) heap[aBase + i] = 1;
-    }
   }
 
   /** Park cleared HEAP pose slots far off-screen (and alpha 0). */
