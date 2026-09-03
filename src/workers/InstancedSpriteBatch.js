@@ -5,6 +5,9 @@
  *   - scale rgb by instance alpha (vColor.a) so soft particles / smoke fade
  *   - NOT multiply by tex.a again (tex.rgb already has it) — that darkens trails
  * blendMode 'normal' expects PMA (ONE, ONE_MINUS_SRC_ALPHA).
+ *
+ * GPU record stays interleaved AoS (vertex fetch). CPU pack is compact: LUT
+ * size/uv/trim and tint unpack live in the vertex shader (texelFetch uTexLut).
  */
 
 import {
@@ -16,11 +19,13 @@ import {
   BufferUsage,
   State,
   Texture,
+  TextureSource,
 } from '../lib/pixi_8.16_.min.js';
 
 import { DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
 
-export const INSTANCED_SPRITE_FLOATS = 25;
+/** Compact instance floats: xy, scale, anchor, rotCS, depth, packedARGB, texId, tileInv. */
+export const INSTANCED_SPRITE_FLOATS = 13;
 export const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 const Y_SORT_K = DECORATION_Y_SORT_SCALE;
@@ -30,18 +35,17 @@ const VERTEX_SRC = `
 in vec2 aQuad;
 in vec2 aInstXY;
 in vec2 aInstScale;
-in vec2 aInstSize;
 in vec2 aInstAnchor;
 in vec2 aInstRotCS;
 in float aInstDepth;
-in vec4 aInstUV;
-in vec4 aInstColor;
-in vec4 aInstTrim;
+in float aInstTintBits;
+in float aInstTexId;
 in vec2 aInstTileInv;
 
 uniform mat3 uProjectionMatrix;
 uniform mat3 uWorldTransformMatrix;
 uniform mat3 uTransformMatrix;
+uniform sampler2D uTexLut;
 
 out vec2 vLocal;
 out vec4 vColor;
@@ -50,6 +54,28 @@ out vec4 vAtlasUV;
 out vec2 vTileInv;
 
 void main() {
+  int tid = int(aInstTexId + 0.5);
+  ivec2 lutSize = textureSize(uTexLut, 0);
+  vec2 aInstSize = vec2(0.0);
+  vec4 aInstUV = vec4(0.0);
+  vec4 aInstTrim = vec4(0.0);
+  if (tid >= 0 && tid < lutSize.y) {
+    vec4 t0 = texelFetch(uTexLut, ivec2(0, tid), 0);
+    vec4 t1 = texelFetch(uTexLut, ivec2(1, tid), 0);
+    vec4 t2 = texelFetch(uTexLut, ivec2(2, tid), 0);
+    aInstSize = t0.xy;
+    aInstUV = vec4(t0.zw, t1.xy);
+    aInstTrim = vec4(t1.zw, t2.xy);
+  }
+
+  uint tintBits = floatBitsToUint(aInstTintBits);
+  vec3 rgb = vec3(
+    float((tintBits >> 16u) & 255u),
+    float((tintBits >> 8u) & 255u),
+    float(tintBits & 255u)
+  ) / 255.0;
+  float instA = float((tintBits >> 24u) & 255u) / 255.0;
+
   vec2 content = aInstTrim.xy + aQuad * aInstTrim.zw;
   vec2 local = (content - aInstAnchor * aInstSize) * aInstScale;
   float c = aInstRotCS.x;
@@ -60,7 +86,7 @@ void main() {
   vec3 clip = mvp * vec3(world, 1.0);
   gl_Position = vec4(clip.xy, aInstDepth, 1.0);
   vLocal = aQuad;
-  vColor = aInstColor;
+  vColor = vec4(rgb, instA);
   vWorld = world;
   vAtlasUV = aInstUV;
   vTileInv = aInstTileInv;
@@ -79,8 +105,12 @@ vec2 weedUv() {
 `;
 }
 
+/** Pixi GlProgram only injects GLSL 300 if the fragment contains this string. */
+const GLSL300 = '#version 300 es';
+
 /** Normal + depth-write: discard clear atlas texels so they do not punch Z. */
 const FRAGMENT_SRC = `
+${GLSL300}
 precision highp float;
 in vec2 vLocal;
 in vec4 vColor;
@@ -88,19 +118,21 @@ in vec2 vWorld;
 in vec4 vAtlasUV;
 in vec2 vTileInv;
 uniform sampler2D uTexture;
+out vec4 finalColor;
 
 ${tiledSamplePrelude()}
 
 void main() {
-  vec4 t = texture2D(uTexture, weedUv());
+  vec4 t = texture(uTexture, weedUv());
   float a = t.a * vColor.a;
   if (a < 0.01) discard;
-  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
+  finalColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
 }
 `;
 
 /** Soft particles (no Z write): PMA blend only — no discard (ParticleContainer-style fill). */
 const FRAGMENT_SRC_BLEND = `
+${GLSL300}
 precision highp float;
 in vec2 vLocal;
 in vec4 vColor;
@@ -108,18 +140,20 @@ in vec2 vWorld;
 in vec4 vAtlasUV;
 in vec2 vTileInv;
 uniform sampler2D uTexture;
+out vec4 finalColor;
 
 ${tiledSamplePrelude()}
 
 void main() {
-  vec4 t = texture2D(uTexture, weedUv());
+  vec4 t = texture(uTexture, weedUv());
   float a = t.a * vColor.a;
-  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
+  finalColor = vec4(t.rgb * vColor.rgb * vColor.a, a);
 }
 `;
 
 /** Additive glows: same rgb scale, alpha 0 so ADD (ONE,ONE) never darkens. */
 const FRAGMENT_SRC_ADDITIVE = `
+${GLSL300}
 precision highp float;
 in vec2 vLocal;
 in vec4 vColor;
@@ -127,12 +161,13 @@ in vec2 vWorld;
 in vec4 vAtlasUV;
 in vec2 vTileInv;
 uniform sampler2D uTexture;
+out vec4 finalColor;
 
 ${tiledSamplePrelude()}
 
 void main() {
-  vec4 t = texture2D(uTexture, weedUv());
-  gl_FragColor = vec4(t.rgb * vColor.rgb * vColor.a, 0.0);
+  vec4 t = texture(uTexture, weedUv());
+  finalColor = vec4(t.rgb * vColor.rgb * vColor.a, 0.0);
 }
 `;
 
@@ -140,6 +175,8 @@ void main() {
  * Per-textureId LUT: origW, origH, u0, v0, u1, v1, trimX, trimY, trimW, trimH
  */
 export const TEX_LUT_FLOATS = 10;
+/** RGBA32F texels per LUT row (12 floats; last two unused). */
+export const TEX_LUT_RGBA_WIDTH = 3;
 
 function writeLutSlot(lut, base, tex) {
   if (typeof tex.updateUvs === 'function') tex.updateUvs();
@@ -191,6 +228,45 @@ export function buildTextureLut(flatTextures, fallbackTexture) {
   return lut;
 }
 
+/** Pack CPU LUT (10 floats/id) into RGBA32F rows for vertex texelFetch. */
+export function packTextureLutRgba(lut, count) {
+  const n = Math.max(1, count | 0);
+  const out = new Float32Array(n * TEX_LUT_RGBA_WIDTH * 4);
+  const srcN = lut ? (lut.length / TEX_LUT_FLOATS) | 0 : 0;
+  for (let i = 0; i < n; i++) {
+    const dst = i * 12;
+    if (i < srcN) {
+      const s = i * TEX_LUT_FLOATS;
+      out[dst] = lut[s];
+      out[dst + 1] = lut[s + 1];
+      out[dst + 2] = lut[s + 2];
+      out[dst + 3] = lut[s + 3];
+      out[dst + 4] = lut[s + 4];
+      out[dst + 5] = lut[s + 5];
+      out[dst + 6] = lut[s + 6];
+      out[dst + 7] = lut[s + 7];
+      out[dst + 8] = lut[s + 8];
+      out[dst + 9] = lut[s + 9];
+    }
+  }
+  return out;
+}
+
+let _dummyLutSource = null;
+function dummyLutSource() {
+  if (_dummyLutSource) return _dummyLutSource;
+  _dummyLutSource = TextureSource.from({
+    resource: packTextureLutRgba(null, 1),
+    width: TEX_LUT_RGBA_WIDTH,
+    height: 1,
+    format: 'rgba32float',
+    scaleMode: 'nearest',
+    addressMode: 'clamp-to-edge',
+    autoGenerateMipmaps: false,
+  });
+  return _dummyLutSource;
+}
+
 export class InstancedSpriteBatch {
   /**
    * @param {object} opts
@@ -212,9 +288,11 @@ export class InstancedSpriteBatch {
     alphaDiscard = true,
     premultiplyAlpha = true,
     blendMode = 'normal',
+    lutSource = null,
   }) {
     this.capacity = Math.max(1, capacity | 0);
     this.data = new Float32Array(this.capacity * INSTANCED_SPRITE_FLOATS);
+    this.dataU32 = new Uint32Array(this.data.buffer);
     this.buffer = new Buffer({
       data: this.data,
       usage: BufferUsage.VERTEX | BufferUsage.COPY_DST,
@@ -230,14 +308,12 @@ export class InstancedSpriteBatch {
         aQuad: { buffer: quad, format: 'float32x2' },
         aInstXY: { buffer: buf, format: 'float32x2', stride, offset: 0, instance: true },
         aInstScale: { buffer: buf, format: 'float32x2', stride, offset: 8, instance: true },
-        aInstSize: { buffer: buf, format: 'float32x2', stride, offset: 16, instance: true },
-        aInstAnchor: { buffer: buf, format: 'float32x2', stride, offset: 24, instance: true },
-        aInstRotCS: { buffer: buf, format: 'float32x2', stride, offset: 32, instance: true },
-        aInstDepth: { buffer: buf, format: 'float32', stride, offset: 40, instance: true },
-        aInstUV: { buffer: buf, format: 'float32x4', stride, offset: 44, instance: true },
-        aInstColor: { buffer: buf, format: 'float32x4', stride, offset: 60, instance: true },
-        aInstTrim: { buffer: buf, format: 'float32x4', stride, offset: 76, instance: true },
-        aInstTileInv: { buffer: buf, format: 'float32x2', stride, offset: 92, instance: true },
+        aInstAnchor: { buffer: buf, format: 'float32x2', stride, offset: 16, instance: true },
+        aInstRotCS: { buffer: buf, format: 'float32x2', stride, offset: 24, instance: true },
+        aInstDepth: { buffer: buf, format: 'float32', stride, offset: 32, instance: true },
+        aInstTintBits: { buffer: buf, format: 'float32', stride, offset: 36, instance: true },
+        aInstTexId: { buffer: buf, format: 'float32', stride, offset: 40, instance: true },
+        aInstTileInv: { buffer: buf, format: 'float32x2', stride, offset: 44, instance: true },
       },
       indexBuffer: [0, 1, 2, 0, 2, 3],
     });
@@ -257,6 +333,7 @@ export class InstancedSpriteBatch {
       glProgram,
       resources: {
         uTexture: atlasSource || Texture.WHITE.source,
+        uTexLut: lutSource || dummyLutSource(),
       },
     });
 
@@ -282,6 +359,10 @@ export class InstancedSpriteBatch {
     if (source) this.shader.resources.uTexture = source;
   }
 
+  setLutSource(source) {
+    if (source) this.shader.resources.uTexLut = source;
+  }
+
   /**
    * Upload SoA views into instance buffer.
    * @param {object} q - typed array views + count
@@ -294,22 +375,28 @@ export class InstancedSpriteBatch {
    * @param {'index'|'sortKey'} [opts.depthMode='index']
    * @param {number} [opts.worldHeight=1]
    * @param {Float32Array|null} [opts.sortKey] - composite collector keys (depthMode sortKey)
-   * @param {Float32Array|null} [opts.texLut]
+   * @param {Float32Array|null} [opts.texLut] - unused (LUT is a vertex texture); kept for callers
    * @param {number} [opts.texLutCount=0]
-   * @param {Array|null} [opts.textures] - flatTextures fallback when LUT miss / absent
+   * @param {Array|null} [opts.textures]
    * @param {Uint8Array|null} [opts.type] - render queue type (filter)
    * @param {number} [opts.includeType] - only pack this type (e.g. 3 = light glow)
    * @param {number|number[]} [opts.excludeType] - skip this type / these types
+   * @param {Uint16Array|null} [opts.indices] - compact source indices (skips type filter)
+   * @param {number} [opts.indexCount]
    */
   upload(q, opts = {}) {
     const count = q.count | 0;
-    if (count <= 0) {
+    const indices = opts.indices;
+    const indexCount = opts.indexCount | 0;
+    const useIndices = indices != null;
+    if ((!useIndices && count <= 0) || (useIndices && indexCount <= 0)) {
       this.geometry.instanceCount = 0;
       this.mesh.visible = false;
       return 0;
     }
 
     const data = this.data;
+    const dataU32 = this.dataU32;
     const space = opts.space || 'world';
     const zoom = opts.zoom ?? 1;
     const cameraX = opts.cameraX ?? 0;
@@ -317,16 +404,13 @@ export class InstancedSpriteBatch {
     const resolution = opts.resolution ?? 1;
     const depthMode = opts.depthMode || 'index';
     const worldHeight = opts.worldHeight > 0 ? opts.worldHeight : 1;
-    const texLut = opts.texLut;
-    const texLutCount = opts.texLutCount | 0;
-    const textures = opts.textures || null;
     const typeArr = opts.type || null;
     const sortKeyArr = opts.sortKey || null;
     const includeType = opts.includeType;
     const excludeRaw = opts.excludeType;
     const excludeList =
       excludeRaw == null ? null : typeof excludeRaw === 'number' ? [excludeRaw] : excludeRaw;
-    const filterTypes = typeArr && (includeType !== undefined || excludeList);
+    const filterTypes = !useIndices && typeArr && (includeType !== undefined || excludeList);
     const depthDenom = (opts.depthDenom || this.capacity) + 1;
     const sortKeyMax = worldHeight * Y_SORT_K + GLOW_BIAS + 1;
 
@@ -345,19 +429,22 @@ export class InstancedSpriteBatch {
     const rqRepeatY = q.repeatY;
 
     const screenScale = zoom * resolution;
-    const hasLut = texLut && texLutCount > 0;
     const useScreen = space === 'screen';
     const useSortKey = depthMode === 'sortKey' && sortKeyArr;
-    // Without type[] cannot filter: includeType → empty; excludeType → draw all
-    if (includeType !== undefined && !typeArr) {
+    if (!useIndices && includeType !== undefined && !typeArr) {
       this.geometry.instanceCount = 0;
       this.mesh.visible = false;
       return 0;
     }
-    const scanCount = count > this.capacity && !filterTypes ? this.capacity : count;
+    const scanCount = useIndices
+      ? indexCount
+      : count > this.capacity && !filterTypes
+        ? this.capacity
+        : count;
     let base = 0;
     let out = 0;
-    for (let i = 0; i < scanCount; i++) {
+    for (let k = 0; k < scanCount; k++) {
+      const i = useIndices ? indices[k] : k;
       if (filterTypes) {
         const t = typeArr[i];
         if (includeType !== undefined && t !== includeType) continue;
@@ -373,55 +460,6 @@ export class InstancedSpriteBatch {
         }
       }
       if (out >= this.capacity) break;
-
-      const texId = rqTextureId[i];
-      let ow = 0;
-      let oh = 0;
-      let u0 = 0;
-      let v0 = 0;
-      let u1 = 0;
-      let v1 = 0;
-      let trimX = 0;
-      let trimY = 0;
-      let trimW = 0;
-      let trimH = 0;
-
-      if (hasLut && texId >= 0 && texId < texLutCount) {
-        const lutBase = texId * TEX_LUT_FLOATS;
-        ow = texLut[lutBase];
-        oh = texLut[lutBase + 1];
-        u0 = texLut[lutBase + 2];
-        v0 = texLut[lutBase + 3];
-        u1 = texLut[lutBase + 4];
-        v1 = texLut[lutBase + 5];
-        trimX = texLut[lutBase + 6];
-        trimY = texLut[lutBase + 7];
-        trimW = texLut[lutBase + 8];
-        trimH = texLut[lutBase + 9];
-      } else if (textures && texId >= 0 && texId < textures.length) {
-        const tex = textures[texId];
-        if (tex) {
-          const orig = tex.orig;
-          ow = (orig && orig.width) || tex.width || 0;
-          oh = (orig && orig.height) || tex.height || 0;
-          const uvs = tex.uvs;
-          u0 = uvs.x0;
-          v0 = uvs.y0;
-          u1 = uvs.x2;
-          v1 = uvs.y2;
-          const trim = tex.trim;
-          if (trim) {
-            trimX = trim.x;
-            trimY = trim.y;
-            trimW = trim.width;
-            trimH = trim.height;
-          } else {
-            trimW = ow;
-            trimH = oh;
-          }
-        }
-      }
-      // invalid / missing textureId → zero-size instance (never map to LUT slot 0 / _empty)
 
       const worldY = rqY[i];
       let x = rqX[i];
@@ -443,34 +481,27 @@ export class InstancedSpriteBatch {
         depth = 1.0 - (out + 1) / depthDenom;
       }
 
-      const tint = rqTint[i] >>> 0;
+      let a = rqAlpha[i];
+      if (a < 0) a = 0;
+      else if (a > 1) a = 1;
+      const a8 = (a * 255 + 0.5) | 0;
+      const packed = ((a8 & 255) << 24) | (rqTint[i] & 0xffffff);
+
+      const rx = rqRepeatX ? rqRepeatX[i] : 0;
+      const ry = rqRepeatY ? rqRepeatY[i] : 0;
       data[base] = x;
       data[base + 1] = y;
       data[base + 2] = sx;
       data[base + 3] = sy;
-      data[base + 4] = ow;
-      data[base + 5] = oh;
-      data[base + 6] = rqAnchorX[i];
-      data[base + 7] = rqAnchorY[i];
-      data[base + 8] = rqRotC[i];
-      data[base + 9] = rqRotS[i];
-      data[base + 10] = depth;
-      data[base + 11] = u0;
-      data[base + 12] = v0;
-      data[base + 13] = u1;
-      data[base + 14] = v1;
-      data[base + 15] = ((tint >> 16) & 0xff) / 255;
-      data[base + 16] = ((tint >> 8) & 0xff) / 255;
-      data[base + 17] = (tint & 0xff) / 255;
-      data[base + 18] = rqAlpha[i];
-      data[base + 19] = trimX;
-      data[base + 20] = trimY;
-      data[base + 21] = trimW;
-      data[base + 22] = trimH;
-      const rx = rqRepeatX ? rqRepeatX[i] : 0;
-      const ry = rqRepeatY ? rqRepeatY[i] : 0;
-      data[base + 23] = rx > 0 ? 1 / rx : 0;
-      data[base + 24] = ry > 0 ? 1 / ry : 0;
+      data[base + 4] = rqAnchorX[i];
+      data[base + 5] = rqAnchorY[i];
+      data[base + 6] = rqRotC[i];
+      data[base + 7] = rqRotS[i];
+      data[base + 8] = depth;
+      dataU32[base + 9] = packed >>> 0;
+      data[base + 10] = rqTextureId[i];
+      data[base + 11] = rx > 0 ? 1 / rx : 0;
+      data[base + 12] = ry > 0 ? 1 / ry : 0;
       base += INSTANCED_SPRITE_FLOATS;
       out++;
     }

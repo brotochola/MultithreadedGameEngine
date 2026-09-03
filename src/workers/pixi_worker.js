@@ -57,7 +57,12 @@ import {
   packLightDataTexel,
   LIGHT_DATA_TEX_HEIGHT,
 } from '../core/utils.js';
-import { InstancedSpriteBatch, buildTextureLut } from './InstancedSpriteBatch.js';
+import {
+  InstancedSpriteBatch,
+  buildTextureLut,
+  packTextureLutRgba,
+  TEX_LUT_RGBA_WIDTH,
+} from './InstancedSpriteBatch.js';
 import { LiquidFunDensitySplat } from './LiquidFunDensitySplat.js';
 import { LiquidFun } from '../core/LiquidFun.js';
 
@@ -174,6 +179,12 @@ class PixiRenderer extends AbstractWorker {
     this.spriteParticleMesh = null; // entitiesParticleBatch.mesh
     this._texLut = null;
     this._texLutCount = 0;
+    this._texLutSource = null;
+    this._texLutRgba = null;
+    this._texLutNeedsGpuUpload = false;
+    this._rqIdxEntity = null;
+    this._rqIdxParticle = null;
+    this._rqIdxGlow = null;
     this.backgroundSprite = null;
 
     /** From renderer.autoGenerateMipmaps (default false) — applied at ImageSource create */
@@ -696,6 +707,43 @@ class PixiRenderer extends AbstractWorker {
       type: this.renderQueueType,
     };
 
+    const typeArr = this.renderQueueType;
+    let ne = count;
+    let np = 0;
+    let ng = 0;
+    if (typeArr && this._rqIdxEntity) {
+      const idxE = this._rqIdxEntity;
+      const idxP = this._rqIdxParticle;
+      const idxG = this._rqIdxGlow;
+      ne = 0;
+      for (let i = 0; i < count; i++) {
+        const t = typeArr[i];
+        if (t === 1) idxP[np++] = i;
+        else if (t === 3) idxG[ng++] = i;
+        else idxE[ne++] = i;
+      }
+      this.visibleEntityCount = this.entitiesBatch.upload(q, {
+        ...baseOpts,
+        indices: idxE,
+        indexCount: ne,
+      });
+      this.visibleParticleCount = this.entitiesParticleBatch
+        ? this.entitiesParticleBatch.upload(q, {
+          ...baseOpts,
+          indices: idxP,
+          indexCount: np,
+        })
+        : 0;
+      if (this.entitiesGlowBatch) {
+        this.entitiesGlowBatch.upload(q, {
+          ...baseOpts,
+          indices: idxG,
+          indexCount: ng,
+        });
+      }
+      return;
+    }
+
     this.visibleEntityCount = this.entitiesBatch.upload(q, {
       ...baseOpts,
       excludeType: [1, 3],
@@ -727,11 +775,92 @@ class PixiRenderer extends AbstractWorker {
     return PIXI.Texture.WHITE.source;
   }
 
+  /**
+   * Force RGBA32F LUT into the GL texture Pixi owns. BufferImageSource.update()
+   * alone left lighting black; same risk for uTexLut (sprites would be size 0).
+   */
+  _uploadTexLutTexture() {
+    const renderer = this.pixiApp?.renderer;
+    const gl = renderer?.gl;
+    const source = this._texLutSource;
+    const data = this._texLutRgba;
+    if (!gl || !source || !data || !renderer?.texture) return;
+
+    source.update();
+
+    const texSys = renderer.texture;
+    if (typeof texSys.bind === 'function') {
+      texSys.bind(source, 0);
+    } else if (typeof texSys.bindSource === 'function') {
+      texSys.bindSource(source, 0);
+    }
+
+    const glSource = typeof texSys.getGlSource === 'function' ? texSys.getGlSource(source) : null;
+    const target = glSource?.target || gl.TEXTURE_2D;
+    if (glSource?.texture) {
+      gl.bindTexture(target, glSource.texture);
+    }
+
+    const internalFormat = gl.RGBA32F != null ? gl.RGBA32F : gl.RGBA;
+    const height = Math.max(1, this._texLutCount);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    if (gl.UNPACK_FLIP_Y_WEBGL != null) gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    if (gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL != null) {
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    }
+
+    gl.texImage2D(
+      target,
+      0,
+      internalFormat,
+      TEX_LUT_RGBA_WIDTH,
+      height,
+      0,
+      gl.RGBA,
+      gl.FLOAT,
+      data
+    );
+    gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this._texLutNeedsGpuUpload = false;
+  }
+
+  _bindLutToBatches() {
+    const lut = this._texLutSource;
+    if (!lut) return;
+    if (this.entitiesBatch) this.entitiesBatch.setLutSource(lut);
+    if (this.entitiesParticleBatch) this.entitiesParticleBatch.setLutSource(lut);
+    if (this.entitiesGlowBatch) this.entitiesGlowBatch.setLutSource(lut);
+    if (this.shadowBatch) this.shadowBatch.setLutSource(lut);
+    for (let i = 0; i < this._customLayerList.length; i++) {
+      const cl = this._customLayerList[i];
+      if (cl.batch) cl.batch.setLutSource(lut);
+    }
+  }
+
   /** Rebuild per-textureId UV/trim/orig LUT after atlas load. */
   rebuildInstancedTextureLut() {
     const fallback = this.textures?.['_white'] || PIXI.Texture.WHITE;
     this._texLut = buildTextureLut(this.flatTextures || [], fallback);
     this._texLutCount = this.flatTextures?.length || 0;
+    const rgba = packTextureLutRgba(this._texLut, Math.max(1, this._texLutCount));
+    this._texLutRgba = rgba;
+    this._texLutSource = PIXI.TextureSource.from({
+      resource: rgba,
+      width: TEX_LUT_RGBA_WIDTH,
+      height: Math.max(1, this._texLutCount),
+      format: 'rgba32float',
+      scaleMode: 'nearest',
+      addressMode: 'clamp-to-edge',
+      autoGenerateMipmaps: false,
+    });
+    // Same RGBA32F trap as light-data: Pixi buffer uploader can leave the
+    // custom-shader sampler empty. Force texImage2D (retry next sprite tick).
+    this._texLutSource.uploadMethodId = 'unknown';
+    this._texLutNeedsGpuUpload = true;
+    this._uploadTexLutTexture();
     const src = this._resolveAtlasSource();
     if (this.entitiesBatch) this.entitiesBatch.setAtlasSource(src);
     if (this.entitiesParticleBatch) this.entitiesParticleBatch.setAtlasSource(src);
@@ -741,16 +870,21 @@ class PixiRenderer extends AbstractWorker {
       const cl = this._customLayerList[i];
       if (cl.batch) cl.batch.setAtlasSource(src);
     }
+    this._bindLutToBatches();
   }
 
   createEntitiesInstancedBatch(maxItems) {
     // Y-order via GPU depth + sortKey (alpha discard in frag). Without depthTest,
     // transparent atlas texels still punch Z when depth is on — discard handles that.
     const useGpuYSort = !!this.ySorting;
+    this._rqIdxEntity = new Uint16Array(maxItems);
+    this._rqIdxParticle = new Uint16Array(maxItems);
+    this._rqIdxGlow = new Uint16Array(maxItems);
     this.entitiesBatch = new InstancedSpriteBatch({
       capacity: maxItems,
       label: 'entities-instanced',
       atlasSource: this._resolveAtlasSource(),
+      lutSource: this._texLutSource,
       depthTest: useGpuYSort,
       premultiplyAlpha: true,
     });
@@ -761,6 +895,7 @@ class PixiRenderer extends AbstractWorker {
       capacity: maxItems,
       label: 'entities-particles-instanced',
       atlasSource: this._resolveAtlasSource(),
+      lutSource: this._texLutSource,
       depthTest: useGpuYSort,
       depthMask: false,
       alphaDiscard: false,
@@ -773,6 +908,7 @@ class PixiRenderer extends AbstractWorker {
       capacity: maxItems,
       label: 'entities-glow-instanced',
       atlasSource: this._resolveAtlasSource(),
+      lutSource: this._texLutSource,
       depthTest: false,
       premultiplyAlpha: false,
       blendMode: 'add',
@@ -889,6 +1025,7 @@ class PixiRenderer extends AbstractWorker {
     if (detail) this.miscTimeThisFrame = performance.now() - t0;
 
     if (runFrameLockedPasses) {
+      if (this._texLutNeedsGpuUpload) this._uploadTexLutTexture();
       // Pre-compute visible lights once (shared by updateLighting, updateShadowSprites)
       if (detail) t0 = performance.now();
       this.computeVisibleLights();
@@ -2081,6 +2218,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       capacity: this.maxShadowRenderItems || 1,
       label: 'shadows-instanced',
       atlasSource: this._resolveAtlasSource(),
+      lutSource: this._texLutSource,
       depthTest: false,
     });
 
@@ -3506,6 +3644,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
           capacity: maxItems,
           label: `custom-layer-${layerName}`,
           atlasSource: this._resolveAtlasSource(),
+          lutSource: this._texLutSource,
           depthTest: layerYSort,
         });
         batch.mesh.blendMode = containerBlend;
@@ -3621,6 +3760,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
     }
 
     this._customLayerList = Object.values(this._customLayers);
+    this._bindLutToBatches();
 
     if (this._customLayerList.length > 0) {
       this.pixiApp.stage.sortChildren();
