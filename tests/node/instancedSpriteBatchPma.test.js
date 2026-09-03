@@ -75,6 +75,15 @@ test('particle batch: no Z write, no alpha discard; main queue partitions type 1
   assert.match(pixiSrc, /entitiesParticleBatch/);
 });
 
+test('render-queue partition idx buffers are Uint32 (no Uint16 wrap past 65535)', () => {
+  assert.match(pixiSrc, /_rqIdxEntity = new Uint32Array\(maxItems\)/);
+  assert.match(pixiSrc, /_rqIdxParticle = new Uint32Array\(maxItems\)/);
+  assert.match(pixiSrc, /_rqIdxGlow = new Uint32Array\(maxItems\)/);
+  assert.doesNotMatch(pixiSrc, /_rqIdxEntity = new Uint16Array\(maxItems\)/);
+  assert.doesNotMatch(pixiSrc, /_rqIdxParticle = new Uint16Array\(maxItems\)/);
+  assert.doesNotMatch(pixiSrc, /_rqIdxGlow = new Uint16Array\(maxItems\)/);
+});
+
 test('entity and custom-layer uploads pass queue repeatX/Y', () => {
   assert.match(pixiSrc, /this\.renderQueueRepeatX = buffer\.repeatX/);
   assert.match(pixiSrc, /repeatX: this\.renderQueueRepeatX/);

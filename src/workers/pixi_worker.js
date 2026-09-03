@@ -877,9 +877,10 @@ class PixiRenderer extends AbstractWorker {
     // Y-order via GPU depth + sortKey (alpha discard in frag). Without depthTest,
     // transparent atlas texels still punch Z when depth is on — discard handles that.
     const useGpuYSort = !!this.ySorting;
-    this._rqIdxEntity = new Uint16Array(maxItems);
-    this._rqIdxParticle = new Uint16Array(maxItems);
-    this._rqIdxGlow = new Uint16Array(maxItems);
+    // Uint32: queue slot indices can exceed 65535 (Adobe piece expansion).
+    this._rqIdxEntity = new Uint32Array(maxItems);
+    this._rqIdxParticle = new Uint32Array(maxItems);
+    this._rqIdxGlow = new Uint32Array(maxItems);
     this.entitiesBatch = new InstancedSpriteBatch({
       capacity: maxItems,
       label: 'entities-instanced',
