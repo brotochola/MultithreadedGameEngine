@@ -12,8 +12,10 @@ export function packLiquidFunSnapshot(snap) {
     count: snap.count | 0,
     radius: snap.radius,
     maxCount: snap.maxCount | 0,
-    pos: snap.pos,
-    vel: snap.vel,
+    x: snap.x,
+    y: snap.y,
+    vx: snap.vx,
+    vy: snap.vy,
     flags: snap.flags,
     groupIndex: snap.groupIndex || null,
     restOffset: snap.restOffset || null,
@@ -31,8 +33,10 @@ export function unpackLiquidFunSnapshot(blob) {
   if (!blob || !(blob.count > 0)) {
     return {
       count: 0,
-      pos: new Float32Array(0),
-      vel: new Float32Array(0),
+      x: new Float32Array(0),
+      y: new Float32Array(0),
+      vx: new Float32Array(0),
+      vy: new Float32Array(0),
       flags: new Uint32Array(0),
       groupIndex: null,
       restOffset: null,
@@ -111,8 +115,10 @@ export function requestLiquidFunRestore(physicsWorker, payload, timeoutMs = 5000
     const pushBuf = (a) => {
       if (a && a.buffer) transfer.push(a.buffer);
     };
-    pushBuf(payload?.pos);
-    pushBuf(payload?.vel);
+    pushBuf(payload?.x);
+    pushBuf(payload?.y);
+    pushBuf(payload?.vx);
+    pushBuf(payload?.vy);
     pushBuf(payload?.flags);
     pushBuf(payload?.groupIndex);
     pushBuf(payload?.restOffset);

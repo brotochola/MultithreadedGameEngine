@@ -13,7 +13,7 @@ import { Joint } from '../Joint.js';
 import { encodeBinarySaveBody, decodeBinarySaveBody } from './binarySaveCodec.js';
 
 export const SAVE_MAGIC = 'WEEDSAVE1';
-export const SAVE_FORMAT_VERSION = 3;
+export const SAVE_FORMAT_VERSION = 4;
 
 /** @param {Function} EntityClass */
 export function isEntityClassSerializable(EntityClass) {

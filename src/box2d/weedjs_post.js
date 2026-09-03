@@ -2163,11 +2163,11 @@
 
   function weedjsSnapshotLiquidFun() {
     if (!world || typeof world.snapshotParticles !== "function") {
-      return { count: 0, radius: 0, maxCount: 0, pos: null, vel: null, flags: null, render: null, groups: null, pairs: null };
+      return { count: 0, radius: 0, maxCount: 0, x: null, y: null, vx: null, vy: null, flags: null, render: null, groups: null, pairs: null };
     }
     const snap = world.snapshotParticles();
     if (!snap) {
-      return { count: 0, radius: 0, maxCount: 0, pos: null, vel: null, flags: null, render: null, groups: null, pairs: null };
+      return { count: 0, radius: 0, maxCount: 0, x: null, y: null, vx: null, vy: null, flags: null, render: null, groups: null, pairs: null };
     }
     const n = snap.count | 0;
     let render = null;
@@ -2189,8 +2189,10 @@
       count: n,
       radius: snap.radius,
       maxCount: snap.maxCount,
-      pos: snap.pos,
-      vel: snap.vel,
+      x: snap.x,
+      y: snap.y,
+      vx: snap.vx,
+      vy: snap.vy,
       flags: snap.flags,
       groupIndex: snap.groupIndex || null,
       restOffset: snap.restOffset || null,
@@ -2217,10 +2219,12 @@
     }
     drainCommands();
     const n = payload.count | 0;
-    const pos = payload.pos instanceof Float32Array ? payload.pos : new Float32Array(payload.pos || []);
-    const vel = payload.vel instanceof Float32Array ? payload.vel : new Float32Array(payload.vel || []);
+    const x = payload.x instanceof Float32Array ? payload.x : new Float32Array(payload.x || []);
+    const y = payload.y instanceof Float32Array ? payload.y : new Float32Array(payload.y || []);
+    const vx = payload.vx instanceof Float32Array ? payload.vx : new Float32Array(payload.vx || []);
+    const vy = payload.vy instanceof Float32Array ? payload.vy : new Float32Array(payload.vy || []);
     const flags = payload.flags instanceof Uint32Array ? payload.flags : new Uint32Array(payload.flags || []);
-    const r = world.restoreParticles(n, pos, vel, flags);
+    const r = world.restoreParticles(n, x, y, vx, vy, flags);
     if (r < 0) return { ok: false, reason: "wasm", code: r };
 
     const hasGroups =

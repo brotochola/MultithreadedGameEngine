@@ -411,8 +411,10 @@ function writeLiquidFun(w, lf) {
   w.u32(lf.count | 0);
   w.f32(+lf.radius || 0);
   w.u32(lf.maxCount | 0);
-  writeTyped(w, lf.pos);
-  writeTyped(w, lf.vel);
+  writeTyped(w, lf.x);
+  writeTyped(w, lf.y);
+  writeTyped(w, lf.vx);
+  writeTyped(w, lf.vy);
   writeTyped(w, lf.flags);
   w.u8(lf.groupIndex ? 1 : 0);
   if (lf.groupIndex) writeTyped(w, lf.groupIndex);
@@ -470,8 +472,10 @@ function readLiquidFun(r) {
   const count = r.u32();
   const radius = r.f32();
   const maxCount = r.u32();
-  const pos = readTyped(r);
-  const vel = readTyped(r);
+  const x = readTyped(r);
+  const y = readTyped(r);
+  const vx = readTyped(r);
+  const vy = readTyped(r);
   const flags = readTyped(r);
   const groupIndex = r.u8() ? readTyped(r) : null;
   const restOffset = r.u8() ? readTyped(r) : null;
@@ -520,8 +524,10 @@ function readLiquidFun(r) {
     count,
     radius,
     maxCount,
-    pos,
-    vel,
+    x,
+    y,
+    vx,
+    vy,
     flags,
     groupIndex,
     restOffset,

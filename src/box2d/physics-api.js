@@ -594,16 +594,16 @@ function createPhysicsApi(Module) {
     "number",
     "number",
   ]);
-  const copyParticlePosXyInterleaved = wrap("copy_particle_pos_xy_interleaved", "number", []);
-  const copyParticleVelXyInterleaved = wrap("copy_particle_vel_xy_interleaved", "number", []);
-  const getParticleXyScratchByteOffset = wrap(
-    "get_particle_xy_scratch_byte_offset",
-    "number",
-    [],
-  );
   const getParticleWeightByteOffset = wrap("get_particle_weight_byte_offset", "number", []);
   const getParticleCount = wrap("get_particle_count", "number", []);
-  const restoreParticlesFn = wrap("restore_particles", "number", ["number", "number", "number", "number"]);
+  const restoreParticlesFn = wrap("restore_particles", "number", [
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
   const getParticleGroupIndexByteOffset = wrap("get_particle_group_index_byte_offset", "number", []);
   const getParticleRestOffsetByteOffset = wrap("get_particle_rest_offset_byte_offset", "number", []);
   const getParticlePairCount = wrap("get_particle_pair_count", "number", []);
@@ -1718,35 +1718,40 @@ function createPhysicsApi(Module) {
     }
 
     /**
-     * Replace all particles with a snapshot (ungrouped). pos/vel are interleaved xy.
+     * Replace all particles with a SoA snapshot (ungrouped).
      * @param {number} count
-     * @param {Float32Array} posXY length count*2
-     * @param {Float32Array} velXY length count*2
+     * @param {Float32Array} x length count
+     * @param {Float32Array} y length count
+     * @param {Float32Array} vx length count
+     * @param {Float32Array} vy length count
      * @param {Uint32Array} flags length count
      * @returns {number} restored count, or negative error
      */
-    restoreParticles(count, posXY, velXY, flags) {
+    restoreParticles(count, x, y, vx, vy, flags) {
       const n = count | 0;
       if (n < 0) return -2;
       if (n === 0) {
-        // Still clear existing particles
         const empty = Module._malloc(4);
-        const r = restoreParticlesFn(0, empty, empty, empty);
+        const r = restoreParticlesFn(0, empty, empty, empty, empty, empty);
         Module._free(empty);
         return r;
       }
-      const posBytes = n * 2 * 4;
-      const velBytes = n * 2 * 4;
-      const flagsBytes = n * 4;
-      const posPtr = Module._malloc(posBytes);
-      const velPtr = Module._malloc(velBytes);
-      const flagsPtr = Module._malloc(flagsBytes);
-      Module.HEAPF32.set(posXY.subarray(0, n * 2), posPtr >> 2);
-      Module.HEAPF32.set(velXY.subarray(0, n * 2), velPtr >> 2);
+      const fBytes = n * 4;
+      const xPtr = Module._malloc(fBytes);
+      const yPtr = Module._malloc(fBytes);
+      const vxPtr = Module._malloc(fBytes);
+      const vyPtr = Module._malloc(fBytes);
+      const flagsPtr = Module._malloc(fBytes);
+      Module.HEAPF32.set(x.subarray(0, n), xPtr >> 2);
+      Module.HEAPF32.set(y.subarray(0, n), yPtr >> 2);
+      Module.HEAPF32.set(vx.subarray(0, n), vxPtr >> 2);
+      Module.HEAPF32.set(vy.subarray(0, n), vyPtr >> 2);
       heapU32().set(flags.subarray(0, n), flagsPtr >> 2);
-      const r = restoreParticlesFn(n, posPtr, velPtr, flagsPtr);
-      Module._free(posPtr);
-      Module._free(velPtr);
+      const r = restoreParticlesFn(n, xPtr, yPtr, vxPtr, vyPtr, flagsPtr);
+      Module._free(xPtr);
+      Module._free(yPtr);
+      Module._free(vxPtr);
+      Module._free(vyPtr);
       Module._free(flagsPtr);
       return r;
     }
@@ -1764,8 +1769,10 @@ function createPhysicsApi(Module) {
           count: 0,
           radius,
           maxCount,
-          pos: new Float32Array(0),
-          vel: new Float32Array(0),
+          x: new Float32Array(0),
+          y: new Float32Array(0),
+          vx: new Float32Array(0),
+          vy: new Float32Array(0),
           flags: new Uint32Array(0),
           groupIndex: new Int32Array(0),
           restOffset: new Float32Array(0),
@@ -1773,21 +1780,18 @@ function createPhysicsApi(Module) {
           pairs: null,
         };
       }
+      const xOff = getParticleXByteOffset() | 0;
+      const yOff = getParticleYByteOffset() | 0;
+      const vxOff = getParticleVxByteOffset() | 0;
+      const vyOff = getParticleVyByteOffset() | 0;
       const flagsOff = getParticleFlagsByteOffset() | 0;
-      if (!flagsOff) return null;
+      if (!xOff || !yOff || !vxOff || !vyOff || !flagsOff) return null;
       const buf = heapBuf();
-      const flagsSrc = new Uint32Array(buf, flagsOff, count);
-      const nPos = copyParticlePosXyInterleaved() | 0;
-      const scratchOff = getParticleXyScratchByteOffset() | 0;
-      if (!scratchOff || nPos !== count) return null;
-      const posSrc = new Float32Array(
-        Module.HEAPF32.subarray(scratchOff >> 2, (scratchOff >> 2) + count * 2),
-      );
-      const nVel = copyParticleVelXyInterleaved() | 0;
-      if (nVel !== count) return null;
-      const velSrc = new Float32Array(
-        Module.HEAPF32.subarray(scratchOff >> 2, (scratchOff >> 2) + count * 2),
-      );
+      const x = new Float32Array(new Float32Array(buf, xOff, count));
+      const y = new Float32Array(new Float32Array(buf, yOff, count));
+      const vx = new Float32Array(new Float32Array(buf, vxOff, count));
+      const vy = new Float32Array(new Float32Array(buf, vyOff, count));
+      const flags = new Uint32Array(new Uint32Array(buf, flagsOff, count));
 
       let groupIndex = new Int32Array(count);
       let restOffset = new Float32Array(count * 2);
@@ -1872,9 +1876,11 @@ function createPhysicsApi(Module) {
         count,
         radius,
         maxCount,
-        pos: new Float32Array(posSrc),
-        vel: new Float32Array(velSrc),
-        flags: new Uint32Array(flagsSrc),
+        x,
+        y,
+        vx,
+        vy,
+        flags,
         groupIndex,
         restOffset,
         groups,

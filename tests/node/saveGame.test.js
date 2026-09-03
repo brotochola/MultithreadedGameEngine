@@ -80,8 +80,8 @@ test('shouldSaveEntity requires serializable + active', () => {
   assert.equal(shouldSaveEntity(OtherEntity, 1, { active }), false);
 });
 
-test('SAVE_FORMAT_VERSION is 3', () => {
-  assert.equal(SAVE_FORMAT_VERSION, 3);
+test('SAVE_FORMAT_VERSION is 4', () => {
+  assert.equal(SAVE_FORMAT_VERSION, 4);
 });
 
 test('binary uncompressed roundtrip', () => {
@@ -89,7 +89,7 @@ test('binary uncompressed roundtrip', () => {
   const bytes = encodeSaveUncompressed(payload);
   const decoded = decodeSaveUncompressed(bytes);
   assert.equal(decoded.magic, SAVE_MAGIC);
-  assert.equal(decoded.formatVersion, 3);
+  assert.equal(decoded.formatVersion, 4);
   assert.equal(decoded.sceneName, 'TestScene');
   assert.equal(decoded.entities.length, 1);
   assert.equal(decoded.entities[0].entityIndex, 7);
@@ -107,7 +107,7 @@ test('binary deflate roundtrip', async () => {
   assert.ok(compressed.byteLength > 0);
   const decoded = await decodeSave(compressed);
   assert.equal(decoded.entities[0].typeName, 'A');
-  assert.equal(decoded.formatVersion, 3);
+  assert.equal(decoded.formatVersion, 4);
 });
 
 test('applyEntitySaveRestore writes SoA fields', () => {
@@ -178,7 +178,7 @@ test('joints + entityIndex binary roundtrip', () => {
   });
   const bytes = encodeSaveUncompressed(payload);
   const decoded = decodeSaveUncompressed(bytes);
-  assert.equal(decoded.formatVersion, 3);
+  assert.equal(decoded.formatVersion, 4);
   assert.equal(decoded.entities[0].entityIndex, 7);
   assert.equal(decoded.joints.length, 1);
   assert.equal(decoded.joints[0].entityA, 7);
@@ -194,8 +194,10 @@ test('liquidFun typed-array pack + binary roundtrip', async () => {
     count: 2,
     radius: 8,
     maxCount: 100,
-    pos: new Float32Array([1, 2, 3, 4]),
-    vel: new Float32Array([0.1, 0.2, 0.3, 0.4]),
+    x: new Float32Array([1, 3]),
+    y: new Float32Array([2, 4]),
+    vx: new Float32Array([0.1, 0.3]),
+    vy: new Float32Array([0.2, 0.4]),
     flags: new Uint32Array([1, 2]),
     groupIndex: new Int32Array([0, 0]),
     restOffset: new Float32Array([0.5, -0.5, -0.5, 0.5]),
@@ -226,10 +228,13 @@ test('liquidFun typed-array pack + binary roundtrip', async () => {
     },
   };
   const packed = packLiquidFunSnapshot(snap);
-  assert.ok(packed.pos instanceof Float32Array);
+  assert.ok(packed.x instanceof Float32Array);
   const unpacked = unpackLiquidFunSnapshot(packed);
   assert.equal(unpacked.count, 2);
-  assert.deepEqual([...unpacked.pos], [1, 2, 3, 4]);
+  assert.deepEqual([...unpacked.x], [1, 3]);
+  assert.deepEqual([...unpacked.y], [2, 4]);
+  assert.deepEqual([...unpacked.vx], [...new Float32Array([0.1, 0.3])]);
+  assert.deepEqual([...unpacked.vy], [...new Float32Array([0.2, 0.4])]);
 
   const payload = samplePayload({
     entities: [],
@@ -238,8 +243,11 @@ test('liquidFun typed-array pack + binary roundtrip', async () => {
   });
   const decoded = decodeSaveUncompressed(encodeSaveUncompressed(payload));
   assert.equal(decoded.liquidFun.count, 2);
-  assert.ok(decoded.liquidFun.pos instanceof Float32Array);
-  assert.deepEqual([...decoded.liquidFun.pos], [1, 2, 3, 4]);
+  assert.ok(decoded.liquidFun.x instanceof Float32Array);
+  assert.deepEqual([...decoded.liquidFun.x], [1, 3]);
+  assert.deepEqual([...decoded.liquidFun.y], [2, 4]);
+  assert.deepEqual([...decoded.liquidFun.vx], [...new Float32Array([0.1, 0.3])]);
+  assert.deepEqual([...decoded.liquidFun.vy], [...new Float32Array([0.2, 0.4])]);
   assert.deepEqual([...decoded.liquidFun.groupIndex], [0, 0]);
   assert.equal(decoded.liquidFun.groups.slotCount, 1);
   assert.ok(Math.abs(decoded.liquidFun.groups.strength[0] - 0.55) < 1e-6);

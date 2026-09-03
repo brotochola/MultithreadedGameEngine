@@ -1348,35 +1348,57 @@ test('WASM cull_particles_outside_bounds marks OOB centers zombie', () => {
   assert.ok(stillInside > 0, 'in-bounds particles stay alive');
 });
 
-test('WASM copy_particle_pos_xy_interleaved matches SoA x/y', () => {
+test('WASM restore_particles SoA roundtrip matches x/y/vx/vy', () => {
   const { memory, fn } = instantiateBox2dWasm();
   const createWorld = fn('create_world');
   const bindGameBuffers = fn('bind_game_buffers');
   const createParticleSystem = fn('create_particle_system');
-  const createParticleGroupBox = fn('create_particle_group_box');
+  const restoreParticles = fn('restore_particles');
   const getParticleCount = fn('get_particle_count');
   const getXOff = fn('get_particle_x_byte_offset');
   const getYOff = fn('get_particle_y_byte_offset');
-  const copyPos = fn('copy_particle_pos_xy_interleaved');
-  const scratchOff = fn('get_particle_xy_scratch_byte_offset');
+  const getVxOff = fn('get_particle_vx_byte_offset');
+  const getVyOff = fn('get_particle_vy_byte_offset');
+  const malloc = fn('malloc');
+  const free = fn('free');
 
   const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
   assert.ok(worldId);
   assert.ok(bindGameBuffers(16));
   assert.ok(createParticleSystem(worldId, 10, 1.0, 200));
-  const gid = createParticleGroupBox(-20, -20, 20, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
-  assert.ok(gid >= 0);
-  const n = getParticleCount();
-  assert.ok(n > 0);
-  const copied = copyPos();
-  assert.equal(copied, n);
+
+  const n = 3;
+  const x = new Float32Array([10, 20, 30]);
+  const y = new Float32Array([11, 21, 31]);
+  const vx = new Float32Array([1, 2, 3]);
+  const vy = new Float32Array([4, 5, 6]);
+  const flags = new Uint32Array([0, 0, 0]);
+  const xPtr = malloc(n * 4);
+  const yPtr = malloc(n * 4);
+  const vxPtr = malloc(n * 4);
+  const vyPtr = malloc(n * 4);
+  const fPtr = malloc(n * 4);
+  new Float32Array(memory.buffer, xPtr, n).set(x);
+  new Float32Array(memory.buffer, yPtr, n).set(y);
+  new Float32Array(memory.buffer, vxPtr, n).set(vx);
+  new Float32Array(memory.buffer, vyPtr, n).set(vy);
+  new Uint32Array(memory.buffer, fPtr, n).set(flags);
+  const r = restoreParticles(n, xPtr, yPtr, vxPtr, vyPtr, fPtr);
+  free(xPtr);
+  free(yPtr);
+  free(vxPtr);
+  free(vyPtr);
+  free(fPtr);
+  assert.equal(r, n);
+  assert.equal(getParticleCount(), n);
   const xs = new Float32Array(memory.buffer, getXOff(), n);
   const ys = new Float32Array(memory.buffer, getYOff(), n);
-  const xy = new Float32Array(memory.buffer, scratchOff(), n * 2);
-  for (let i = 0; i < n; i++) {
-    assert.equal(xy[i * 2], xs[i]);
-    assert.equal(xy[i * 2 + 1], ys[i]);
-  }
+  const vxs = new Float32Array(memory.buffer, getVxOff(), n);
+  const vys = new Float32Array(memory.buffer, getVyOff(), n);
+  assert.deepEqual([...xs], [...x]);
+  assert.deepEqual([...ys], [...y]);
+  assert.deepEqual([...vxs], [...vx]);
+  assert.deepEqual([...vys], [...vy]);
 });
 
 
