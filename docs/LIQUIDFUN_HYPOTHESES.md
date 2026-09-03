@@ -6,23 +6,23 @@ wired into this repo via [`box2d/src/wasm_wrapper.c`](../../Box2d_3.2_C_-_liquid
 → [`src/box2d/physics-api.js`](../src/box2d/physics-api.js) → [`src/box2d/weedjs_post.js`](../src/box2d/weedjs_post.js).
 Same protocol family as [`PARTICLE_HYPOTHESES.md`](./PARTICLE_HYPOTHESES.md) /
 [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md) (Wave family in
-[`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md)), adapted: no L1 microbench yet
-(the hot loop is C, not JS — L1 would mean a native demo harness in the sibling
-repo, not attempted here), so this campaign is **L2 + correctness gate only**.
+[`FEATURE_HYP_PROGRAM.md`](./FEATURE_HYP_PROGRAM.md)). Hot loop is C; L1 micros
+instantiate the WASM in Node (`CapturePairs` create-time, `ComputeDepth` spawn-step).
 
 ## Protocol
 
 | Layer | Command | Primary metric |
 |-------|---------|-----------------|
 | **Correctness** | `node --test tests/node/liquidfun.test.js tests/node/liquidfun.wasm.test.js` (then full `npm test`) | All pass — a faster `STEP_MS` that breaks physics is invalid |
-| **L1 (added for H6)** | `pnpm bench:micro:liquidfun-capturepairs` ([`tests/bench/liquidfun-capturepairs-microbench.mjs`](../tests/bench/liquidfun-capturepairs-microbench.mjs)) | Wall-clock ms for one large SPRING-group `create_particle_group_box` call — the only way to see create-time-only wins the L2 steady-state window can't |
+| **L1 (H6)** | `pnpm bench:micro:liquidfun-capturepairs` ([`tests/bench/liquidfun-capturepairs-microbench.mjs`](../tests/bench/liquidfun-capturepairs-microbench.mjs)) | Wall-clock ms for one large SPRING-group `create_particle_group_box` call — create-time-only; L2 steady-state never sees it |
+| **L1 (H9)** | `pnpm bench:micro:liquidfun-computedepth` ([`tests/bench/liquidfun-computedepth-microbench.mjs`](../tests/bench/liquidfun-computedepth-microbench.mjs)) | First `step_world` after a SOLID ice create, with a large tracked puddle already in the system |
 | **L2** | `pnpm bench:feature:liquidfun` (`LiquidFunStressScene`), **2 runs per point** | `physics.LIQUIDFUN_MS` (fluid solve); `BOX2D_MS` still full `step_world` (rigid + LiquidFun) |
 | **L2 query** | `pnpm bench:feature:liquidfun-query` (`LiquidFunQueryStressScene`) | physics `STEP_MS` / `BOX2D_MS` / `LIQUIDFUN_MS` + logic `STEP_MS` under sync QueryAABB/RayCast churn |
 | **L3** | `demos/liquidFunDemoScene` (manual) | Visual: still stable, no explosions/tunneling |
 
 Every C change: edit sibling repo → `weedjs\build_for_weed.bat` (incremental, ~10-15s once configured) → copies `box2d_wasm.js`/`.wasm` into `src/box2d/` → correctness gate → L2 ×2 → record here → stop for manual sanity check before the next hypothesis.
 
-**Caveat (known going in):** the harness measures steady-state `STEP_MS` after warmup. One-time creation-time costs (`CapturePairs`'s O(n²) group pairing) happen *during* warmup and won't move this number even if the code-level fix is real.
+**Caveat (known going in):** the L2 harness measures steady-state `STEP_MS` after warmup. One-time costs (`CapturePairs` at SPRING/BARRIER create, `ComputeDepth` on the first step after a SOLID group sets `needsUpdateDepth`) run during warmup and will not move `LIQUIDFUN_MS` even when the code-level fix is real. Use the matching L1 micro.
 
 ## Baseline
 
@@ -45,6 +45,7 @@ Every C change: edit sibling repo → `weedjs\build_for_weed.bat` (incremental, 
 | **H6** | `CapturePairs` (SPRING/BARRIER group creation) is an O(n²) double loop over the new particle range | Route through a scratch grid over just the new range | **Done** |
 | **H7** | `SolveStaticPressure`'s 8-iteration Poisson loop re-filters the *entire* `particleContacts` array every iteration by flag | Compact the qualifying-contact index list once, iterate that 8× | **Done** |
 | **H8** | `syncLiquidFunParticlesToSharedBuffers` (JS) scalar-loops the interleaved→deinterleaved position copy every frame | Deinterleave in C once (tight loop over contiguous `b2Vec2`), JS does two bulk `.set()` calls | **Done** |
+| **H9** | Ice spawn hitch: `ComputeDepth` walks `sqrt(all particles)` × all contacts, including tracked viscous blobs | Scope to dirty solid intra-contacts; `sqrt(dirtySolidCount)`; reuse H7 `staticPressureContactIndices` scratch | **Done** |
 
 ## Results log
 
@@ -419,6 +420,68 @@ verification, adapted for particles (`tests/bench/liquidFunPoseInterpolationVeri
 Fixed by adding `vx`/`vy` to both `physics_host.impl.js`'s `initPayload.liquidFunViews`
 pack and `weedjs_post.js`'s unpack. Regression test:
 `tests/node/liquidFunViewsDescriptor.test.js`. 175/175 full suite.
+
+### H9 — Scope `ComputeDepth` to dirty solid groups (2026-09-03)
+
+Y-key ice in `liquidFunDemoScene` is `WATER` + `SOLID|RIGID`. Each burst is a
+new group that sets `needsUpdateDepth`. The same physics frame ran
+`ComputeDepth` inside `lfParticleSystem_Step` with `iterationCount = sqrt(sys->count)`
+over **all** `particleContacts`, including intra-contacts of the demo's
+`trackGroup` dulce blob. Depth is only used by `SolveSolid` on **inter-group**
+solid contacts, so that walk was wasted. After the pass,
+`RefreshAllGroupFlags` clears the bit and later frames skip `ComputeDepth`.
+
+**Change (C only):** `ComputeDepth` in `lf_particle_system.c`. Keep the
+`allGroupFlags & needsUpdateDepth` early-out. Compact qualifying contacts once
+into existing `staticPressureContactIndices` (H7 scratch; `ComputeDepth` runs
+before `SolveStaticPressure`, which rebuilds the list for itself). Keep contact
+`k` iff same live solid group that is dirty this call. Zero accumulation / init
+depth only on dirty solid slabs. `iterationCount = sqrt(dirtySolidParticleCount)`
+(clamp ≥ 1). Relax the compact list only. Then clear `needsUpdateDepth` and
+`RefreshAllGroupFlags`. No new heap buffer.
+
+New ice does not invalidate old ice depth. OOB compact still sets
+`needsUpdateDepth` on modified solid groups (`SolveZombie`).
+
+**Correctness:** 31/31 `liquidfun.wasm.test.js` (3 new: tracked viscous puddle +
+ice stays finite; overlapping solids eject; second ice still ejects after first
+group depth is stale). Full `pnpm test:node` 240/240.
+
+**L1** (`pnpm bench:micro:liquidfun-computedepth --reps 11`), same WASM flags,
+current vs scoped `ComputeDepth`. Fixture: ~8694 tracked viscous puddle + 350
+SOLID|RIGID ice; times **one** `step_world(1/60)` after ice create (contacts +
+depth + rest of the fluid step — not `ComputeDepth` in isolation).
+
+| | median ms | min | max | n |
+|---|-----------|-----|-----|---|
+| Before | 8.569 | 5.051 | 8.858 | 11 |
+| After | 2.708 | 2.502 | 2.871 | 11 |
+
+after/before = **0.316** (~3.2×). Kill was ≥ 0.5 (less than 2×). Residual ~2.7 ms
+is `FindParticleContacts` + `SolveSolid`/`SolveRigid` and the rest of the step,
+not the old all-contacts Poisson walk. JSON:
+`tests/results/liquidfun-computedepth-micro-before.json` /
+`liquidfun-computedepth-micro-after.json`.
+
+**L2** (`pnpm bench:feature:liquidfun` ×2, headless). `ComputeDepth` is
+warmup-only on this scene (ice slab exists from `init`). Same-session L2-before
+was not captured (WASM already rebuilt). Do **not** claim L2 as the win.
+
+| | `BOX2D_MS` | `LIQUIDFUN_MS` | Load% |
+|---|------------|----------------|-------|
+| H8 historical (resized scene) | 5.507 / 5.491 | — | — |
+| After H9 run 1 | 4.515 | 4.459 | 27% |
+| After H9 run 2 | 4.587 | 4.529 | 28% |
+
+Within/below historical band. Session-to-session drop vs H8 is machine + this
+WASM also carrying the elastic rest rebuild, not a steady-state `ComputeDepth`
+win.
+
+**L3:** `demos/liquidFunDemoScene` — spawn **Y** ice into the dulce tank; spawn
+frame should not jump ~10× on `LIQUIDFUN_MS`. Cubes still push apart. **G** jelly
+still leaves the world (rest rebuild, not this hyp).
+
+**Verdict: L1 win, L2 expected-null.** Ship.
 
 ## Related
 

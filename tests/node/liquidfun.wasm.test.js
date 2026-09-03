@@ -991,6 +991,106 @@ test('WASM solid+rigid group creates and steps finite; QueryAABB finds members',
   assert.ok(inSlab > 0, 'at least one hit must be inside the group slab');
 });
 
+test('WASM tracked viscous puddle + ice step stays finite', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getParticleCount = fn('get_particle_count');
+  const getVxOff = fn('get_particle_vx_byte_offset');
+  const getVyOff = fn('get_particle_vy_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 2000));
+
+  const puddle = createParticleGroupBox(-200, -80, 200, 80, 0, 1 << 2, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(puddle >= 0);
+  stepWorld(worldId, 1 / 60, 1);
+  const nPuddle = getParticleCount();
+
+  const ice = createParticleGroupBox(-40, -30, 40, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, LF_SOLID_GROUP | LF_RIGID_GROUP);
+  assert.ok(ice >= 0);
+  const n = getParticleCount();
+  assert.ok(n > nPuddle);
+  stepWorld(worldId, 1 / 60, 1);
+  assert.equal(getParticleCount(), n);
+
+  const vx = new Float32Array(memory.buffer, getVxOff());
+  const vy = new Float32Array(memory.buffer, getVyOff());
+  for (let i = 0; i < n; i++) {
+    assert.ok(Number.isFinite(vx[i]) && Number.isFinite(vy[i]), `particle ${i} velocity not finite`);
+  }
+});
+
+test('WASM overlapping solid groups eject (centers move apart)', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getCx = fn('get_particle_group_center_x');
+  const getCy = fn('get_particle_group_center_y');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 800));
+
+  const a = createParticleGroupBox(-50, -30, 30, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, LF_SOLID_GROUP | LF_RIGID_GROUP);
+  const b = createParticleGroupBox(-10, -30, 70, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, LF_SOLID_GROUP | LF_RIGID_GROUP);
+  assert.ok(a >= 0 && b >= 0 && a !== b);
+
+  const dx0 = getCx(b) - getCx(a);
+  const dy0 = getCy(b) - getCy(a);
+  const d0 = Math.hypot(dx0, dy0);
+  assert.ok(d0 > 1, `groups should start offset, d0=${d0}`);
+
+  for (let i = 0; i < 30; i++) {
+    stepWorld(worldId, 1 / 60, 1);
+  }
+
+  const d1 = Math.hypot(getCx(b) - getCx(a), getCy(b) - getCy(a));
+  assert.ok(d1 > d0 + 0.5, `SolveSolid should eject overlapping ice, d0=${d0} d1=${d1}`);
+});
+
+test('WASM second ice still ejects after first group depth is stale', () => {
+  const { fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getCx = fn('get_particle_group_center_x');
+  const getCy = fn('get_particle_group_center_y');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 800));
+
+  const a = createParticleGroupBox(-50, -30, 30, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, LF_SOLID_GROUP | LF_RIGID_GROUP);
+  assert.ok(a >= 0);
+  for (let i = 0; i < 5; i++) {
+    stepWorld(worldId, 1 / 60, 1);
+  }
+
+  const b = createParticleGroupBox(-10, -30, 70, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, LF_SOLID_GROUP | LF_RIGID_GROUP);
+  assert.ok(b >= 0);
+  const d0 = Math.hypot(getCx(b) - getCx(a), getCy(b) - getCy(a));
+
+  for (let i = 0; i < 30; i++) {
+    stepWorld(worldId, 1 / 60, 1);
+  }
+
+  const d1 = Math.hypot(getCx(b) - getCx(a), getCy(b) - getCy(a));
+  assert.ok(d1 > d0 + 0.5, `stale first-group depth must still eject, d0=${d0} d1=${d1}`);
+});
+
 test('WASM particle_apply_force accumulates into velocity after step', () => {
   const { memory, fn } = instantiateBox2dWasm();
   const createWorld = fn('create_world');
