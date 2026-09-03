@@ -6,7 +6,7 @@ import { Camera } from '/src/core/Camera.js';
 import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
 
-const { Mouse, Transform, RigidBody, Collider, Joint } = WEED;
+const { Joint } = WEED;
 
 /** Tuned so stacks hold under self-weight; heavy drop / mouse toss can snap welds. */
 const WELD_FORCE_THRESHOLD = 50e8;
@@ -78,18 +78,6 @@ export class WeldBreakScene extends WEED.Scene {
     [Floor, 16],
   ];
 
-  constructor(game) {
-    super(game);
-    this._dragIdx = null;
-    this._dragOffX = 0;
-    this._dragOffY = 0;
-    this._prevMouseX = 0;
-    this._prevMouseY = 0;
-    this._tossVx = 0;
-    this._tossVy = 0;
-    this._tossOmega = 0;
-  }
-
   create() {
     this.spawnFloorAndWalls();
 
@@ -108,10 +96,6 @@ export class WeldBreakScene extends WEED.Scene {
     this._spawnWeldedU();
 
 
-  }
-
-  update(_time, _delta) {
-    this._handleDrag();
   }
 
   _weld(a, b, ax, ay) {
@@ -187,61 +171,6 @@ export class WeldBreakScene extends WEED.Scene {
         tint: 0x556677,
       });
     }
-  }
-
-  _handleDrag() {
-    if (Mouse.isButton0Down && this._dragIdx == null) {
-      let bestDist = Infinity;
-      let bestIdx = null;
-      for (const idx of WeldBreakBox.getAllActive()) {
-        const half = Math.max(Collider.width[idx], Collider.height[idx]) * 0.5;
-        const pickR2 = half * half;
-        const dx = Transform.x[idx] - Mouse.x;
-        const dy = Transform.y[idx] - Mouse.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < pickR2 && d2 < bestDist) {
-          bestDist = d2;
-          bestIdx = idx;
-        }
-      }
-      if (bestIdx != null) {
-        this._dragIdx = bestIdx;
-        this._dragOffX = Transform.x[bestIdx] - Mouse.x;
-        this._dragOffY = Transform.y[bestIdx] - Mouse.y;
-        this._prevMouseX = Mouse.x;
-        this._prevMouseY = Mouse.y;
-        this._tossVx = 0;
-        this._tossVy = 0;
-        this._tossOmega = 0;
-      }
-    }
-
-    if (this._dragIdx == null) return;
-
-    if (!Mouse.isButton0Down || !Transform.active[this._dragIdx]) {
-      const box = this.getEntityView(this._dragIdx, { cache: true });
-      box.setVelocity(this._tossVx, this._tossVy);
-      box.angularVelocity = this._tossOmega;
-      RigidBody.sleeping[this._dragIdx] = 0;
-      this._dragIdx = null;
-      return;
-    }
-
-    const mx = Mouse.x;
-    const my = Mouse.y;
-    this._tossVx = (mx - this._prevMouseX) * 60;
-    this._tossVy = (my - this._prevMouseY) * 60;
-    const rx = mx + this._dragOffX - Transform.x[this._dragIdx];
-    const ry = my + this._dragOffY - Transform.y[this._dragIdx];
-    this._tossOmega = ((rx * this._tossVy - ry * this._tossVx) * 0.00005) / 60;
-    this._prevMouseX = mx;
-    this._prevMouseY = my;
-
-    const box = this.getEntityView(this._dragIdx, { cache: true });
-    box.setPosition(mx + this._dragOffX, my + this._dragOffY);
-    box.setVelocity(0, 0);
-    box.angularVelocity = 0;
-    RigidBody.sleeping[this._dragIdx] = 0;
   }
 
   spawnFloorAndWalls() {

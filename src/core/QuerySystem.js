@@ -422,6 +422,7 @@ export class QuerySystem {
       LightOccluder,
       CameraInOutListener,
       CollisionListener,
+      Grab,
     } = componentClasses;
 
     // Define single-component queries
@@ -437,6 +438,7 @@ export class QuerySystem {
       { name: 'LightOccluder', components: [LightOccluder] },
       { name: 'CameraInOutListener', components: [CameraInOutListener] },
       { name: 'CollisionListener', components: [CollisionListener] },
+      { name: 'Grab', components: [Grab] },
     ].filter((q) =>
       q.components.every((c) => c !== undefined && typeof c.componentId === 'number')
     );

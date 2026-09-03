@@ -436,6 +436,11 @@ export class GameObject {
     this.prototype._componentAccessorsCreated = true;
   }
 
+  /** True when this type has a Box2D body (RigidBody and/or Collider). */
+  _hasBox2dBody() {
+    return !!(this._hasComponents.RigidBody || this._hasComponents.Collider);
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // PROPERTY ACCESSORS (GETTERS & SETTERS)
   // Grouped by component: Transform → RigidBody → SpriteRenderer → Collider
@@ -467,7 +472,7 @@ export class GameObject {
   set x(value) {
     const i = this.index;
     Transform.x[i] = value;
-    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+    if (isCommandRingBound() && this._hasBox2dBody()) {
       enqueueSetTransform(
         i,
         value,
@@ -487,7 +492,7 @@ export class GameObject {
   set y(value) {
     const i = this.index;
     Transform.y[i] = value;
-    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+    if (isCommandRingBound() && this._hasBox2dBody()) {
       enqueueSetTransform(
         i,
         Transform.x[i],
@@ -998,7 +1003,7 @@ export class GameObject {
     const i = this.index;
     Transform.x[i] = x;
     Transform.y[i] = y;
-    if (isCommandRingBound() && this._hasComponents.RigidBody) {
+    if (isCommandRingBound() && this._hasBox2dBody()) {
       enqueueSetTransform(
         i,
         x,

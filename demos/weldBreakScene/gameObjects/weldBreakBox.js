@@ -9,6 +9,7 @@ const {
   SpriteRenderer,
   CollisionListener,
   JointBreakListener,
+  Grab,
   ParticleEmitter,
   Transform,
   Layer,
@@ -25,6 +26,7 @@ export class WeldBreakBox extends GameObject {
     SpriteRenderer,
     CollisionListener,
     JointBreakListener,
+    Grab,
   ];
 
   setup() {

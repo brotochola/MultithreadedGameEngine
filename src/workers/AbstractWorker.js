@@ -66,6 +66,7 @@ import { LightOccluder } from '../components/LightOccluder.js';
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
 import { JointBreakListener } from '../components/JointBreakListener.js';
+import { Grab } from '../components/Grab.js';
 import { ShapeType } from '../core/ConfigDefaults.js';
 
 /**
@@ -832,6 +833,7 @@ export class AbstractWorker {
     self.CameraInOutListener = CameraInOutListener;
     self.CollisionListener = CollisionListener;
     self.JointBreakListener = JointBreakListener;
+    self.Grab = Grab;
 
     // Systems
     self.ParticleEmitter = ParticleEmitter;

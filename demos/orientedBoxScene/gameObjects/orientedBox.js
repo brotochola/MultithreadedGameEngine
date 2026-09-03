@@ -2,13 +2,13 @@
 
 import WEED from '/src/index.js';
 
-const { GameObject, RigidBody, Collider, SpriteRenderer, enums } = WEED;
+const { GameObject, RigidBody, Collider, SpriteRenderer, Grab, enums } = WEED;
 const { ShapeType } = enums;
 
 export class OrientedBox extends GameObject {
     static scriptUrl = import.meta.url;
 
-    static components = [RigidBody, Collider, SpriteRenderer];
+    static components = [RigidBody, Collider, SpriteRenderer, Grab];
 
     setup() {
         this.spriteRenderer.anchorX = 0.5;

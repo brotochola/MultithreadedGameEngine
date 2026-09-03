@@ -48,6 +48,9 @@ PrecomputedCameraInOutListener.componentId = 19;
 class PrecomputedCollisionListener {}
 PrecomputedCollisionListener.componentId = 20;
 
+class PrecomputedGrab {}
+PrecomputedGrab.componentId = 24;
+
 class PrecomputedParticleComponent {}
 PrecomputedParticleComponent.componentId = 21;
 
@@ -155,6 +158,7 @@ test('definePrecomputedQueries covers all built-in entity components as single-c
       LightOccluder: PrecomputedLightOccluder,
       CameraInOutListener: PrecomputedCameraInOutListener,
       CollisionListener: PrecomputedCollisionListener,
+      Grab: PrecomputedGrab,
       ParticleComponent: PrecomputedParticleComponent,
       DecorationComponent: PrecomputedDecorationComponent,
       BulletComponent: PrecomputedBulletComponent,
@@ -170,6 +174,7 @@ test('definePrecomputedQueries covers all built-in entity components as single-c
         'Collider',
         'CollisionListener',
         'FlashComponent',
+        'Grab',
         'LightEmitter',
         'LightEmitter+FlashComponent',
         'LightEmitter+ShadowCaster',

@@ -16,6 +16,7 @@ import { LightEmitter } from '../components/LightEmitter.js';
 import { LightOccluder } from '../components/LightOccluder.js';
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
+import { Grab } from '../components/Grab.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { AdobeAnimRegistry } from './AdobeAnimRegistry.js';
 import { DebugFlags } from './debug/DebugFlags.js';
@@ -538,6 +539,7 @@ function initializeNavigationAndQueryBuffers(scene) {
     LightOccluder,
     CameraInOutListener,
     CollisionListener,
+    Grab,
   }, scene.constructor.queries || []);
 
   const querySABs = querySystem.createSharedBuffers();

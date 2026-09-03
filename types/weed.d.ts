@@ -261,6 +261,7 @@ export interface QuerySystemPrecomputeComponentMap {
   LIGHT_OCCLUDER_MASK_SPRITE: typeof LIGHT_OCCLUDER_MASK_SPRITE;
   CameraInOutListener: typeof CameraInOutListener;
   CollisionListener: typeof CollisionListener;
+  Grab: typeof Grab;
 }
 
 export interface QuerySystemSharedBuffersResult {
@@ -2688,6 +2689,9 @@ export declare class CameraInOutListener extends Component {}
 /** Marker: enables collision callbacks on the entity class. No SoA schema. */
 export declare class CollisionListener extends Component {}
 
+/** Marker: enables main-thread mouse grab on the entity class. No SoA schema. */
+export declare class Grab extends Component {}
+
 export declare class BulletComponent extends Component {
   static readonly ARRAY_SCHEMA: {
     active: typeof Uint8Array;
@@ -3091,6 +3095,7 @@ export interface WeedNamespace {
   FlashComponent: typeof FlashComponent;
   CameraInOutListener: typeof CameraInOutListener;
   CollisionListener: typeof CollisionListener;
+  Grab: typeof Grab;
   ParticleEmitter: typeof ParticleEmitter;
   DecorationPool: typeof DecorationPool;
   Decoration: typeof Decoration;

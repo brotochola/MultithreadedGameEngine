@@ -34,6 +34,7 @@ import { LightOccluder } from '../components/LightOccluder.js';
 import { CameraInOutListener } from '../components/CameraInOutListener.js';
 import { CollisionListener } from '../components/CollisionListener.js';
 import { JointBreakListener } from '../components/JointBreakListener.js';
+import { Grab } from '../components/Grab.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { AdobeAnimRegistry } from './AdobeAnimRegistry.js';
 import { AdobeAnimCompiler } from './AdobeAnimCompiler.js';
@@ -62,6 +63,7 @@ import {
 import { createSceneSharedBuffers, teardownSceneSharedState } from './sceneSharedBuffers.js';
 import { createSceneWorkers } from './sceneWorkerBootstrap.js';
 import { QuerySystem } from './QuerySystem.js';
+import { GrabSystem } from './GrabSystem.js';
 import {
   SCENE_DEFAULTS,
   PHYSICS_DEFAULTS,
@@ -245,8 +247,9 @@ class Scene {
     // Component type ID tracking (similar to entityType)
     this.nextComponentId = 0;
 
-    // Always-dense cores + zero-size markers. Optional SoA (Adobe/Light/Shadow/Flash/Occluder)
-    // enter componentPools only via entity registration or ensureOptionalComponentPools().
+    // Always-dense cores + zero-size markers (listeners + Grab).
+    // Optional SoA (Adobe/Light/Shadow/Flash/Occluder) enter componentPools
+    // only via entity registration or ensureOptionalComponentPools().
     this.componentPools = {
       Transform: { ComponentClass: Transform },
       RigidBody: { ComponentClass: RigidBody },
@@ -255,6 +258,7 @@ class Scene {
       CameraInOutListener: { ComponentClass: CameraInOutListener },
       CollisionListener: { ComponentClass: CollisionListener },
       JointBreakListener: { ComponentClass: JointBreakListener },
+      Grab: { ComponentClass: Grab },
     };
 
     // Assign componentId IDs to always-seeded components
@@ -265,6 +269,7 @@ class Scene {
     CameraInOutListener.componentId = this.nextComponentId++;
     CollisionListener.componentId = this.nextComponentId++;
     JointBreakListener.componentId = this.nextComponentId++;
+    Grab.componentId = this.nextComponentId++;
     // Clear stale IDs/views from a previous scene (realloc only if pooled again)
     AdobeAnimComponent.componentId = null;
     AdobeAnimComponent.clearArrays();
@@ -336,6 +341,8 @@ class Scene {
     // Entity registration
     this.registeredClasses = [];
     this.totalEntityCount = 0;
+    this.grabByType = [];
+    this._anyGrabType = false;
     /** @type {Map<number, GameObject>} */
     this._entityViewCache = new Map();
 
@@ -480,6 +487,10 @@ class Scene {
     // Register custom components and assign componentId IDs
     for (const ComponentClass of components) {
       this._ensureComponentPool(ComponentClass);
+      if (ComponentClass === Grab) {
+        this.grabByType[entityTypeId] = 1;
+        this._anyGrabType = true;
+      }
     }
 
     this.registeredClasses.push({
@@ -1986,6 +1997,8 @@ class Scene {
     // Call user's update hook
     this.update(dtRatio, deltaTime, performance.now(), this.mainFrameNumber);
 
+    GrabSystem.update(this);
+
     // Free-cam after scene.update so scenes can setFreeTarget / pauseFreeZoom first
     Camera.updateFree(dtRatio);
 
@@ -2019,6 +2032,7 @@ class Scene {
     console.log(`🔴 Scene ${this.constructor.name}: Destroying...`);
 
     Camera.setFree(false);
+    GrabSystem.reset();
 
     // =========================================================================
     // CRITICAL: Clear global references FIRST to allow GC of the scene

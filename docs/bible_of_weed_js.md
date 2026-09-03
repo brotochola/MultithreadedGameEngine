@@ -188,6 +188,7 @@ Some lifecycle callbacks are expensive to check every frame for every entity. Th
 | `CollisionListener` | Collision enter/stay/exit callbacks **and** `isCollidingWith()` queries (see below for who receives callbacks); also gates `onCollisionHit` | Contact-ring Set build + enter/stay/exit (and hit dispatch) for non-listening types |
 | `JointBreakListener` | `onJointBreak` when a joint on that type exceeds force/torque threshold | Joint-break ring drain entirely |
 | `CameraInOutListener` | `onScreenEnter` / `onScreenExit` on listening types | Per-frame visibility tracking and screen enter/exit callbacks |
+| `Grab` | Main-thread mouse drag (`GrabSystem`) for types that list it | `GrabSystem.update` skips pick (no grab types) |
 
 ### How it works
 
@@ -197,18 +198,21 @@ Tag components have no `ARRAY_SCHEMA` and allocate no `SharedArrayBuffer`. They 
 
 **Screen visibility:** resolved per-type on the `typeInfo` object. `pre_render_worker` clears `Transform.isItOnScreen` once per visual frame and each entity render pass sets it to `1` when that entity is visible. The logic worker reads that single canonical byte only for entity types that have `CameraInOutListener`, so the callback path does not need to know which render component made the entity visible.
 
+**Grab:** unlike the listener tags, pick/drag runs on the **main thread** (`GrabSystem.update` after `Scene.update`, before free-cam). Types that list `Grab` are scanned on mouse-down; explicit `RigidBody.static` bodies are skipped. Dynamic rigid bodies toss on release; Collider-only implicit-static bodies teleport via `SET_TRANSFORM`.
+
 ### Usage
 
 ```javascript
 import WEED from '/src/index.js';
 const { GameObject, RigidBody, Collider, SpriteRenderer,
-        CollisionListener, CameraInOutListener } = WEED;
+        CollisionListener, CameraInOutListener, Grab } = WEED;
 
 class Enemy extends GameObject {
   static components = [
     RigidBody, Collider, SpriteRenderer,
     CollisionListener,      // opt in to collision callbacks
     CameraInOutListener,    // opt in to screen enter/exit callbacks
+    Grab,                   // opt in to main-thread mouse drag
   ];
 
   onCollisionEnter(otherIndex) {
