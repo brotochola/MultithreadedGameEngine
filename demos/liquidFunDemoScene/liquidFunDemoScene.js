@@ -70,7 +70,7 @@ export class LiquidFunDemoScene extends WEED.Scene {
         enabled: true,
         radius: 16,
         maxCount: 20000,
-        subSteps: 1,
+        subSteps: 2,
       },
     },
 
