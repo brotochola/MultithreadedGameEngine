@@ -1242,3 +1242,141 @@ test('WASM clear wipe parks HEAP x/y far; create writes SoA pose before step', (
   assert.ok(Math.abs(heap[xBase] - oldX0) > 50 || Math.abs(heap[yBase]) < 80, 'new pose away from old puddle');
 });
 
+test('WASM particle query hits are a contiguous HEAP32 block', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const queryAabb = fn('particle_query_aabb');
+  const getHit = fn('get_particle_query_hit');
+  const getHitsOff = fn('get_particle_query_hits_byte_offset');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+  const gid = createParticleGroupBox(-40, -40, 40, 40, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+
+  const n = queryAabb(-50, -50, 50, 50);
+  assert.ok(n > 0);
+  const hitsOff = getHitsOff();
+  assert.ok(hitsOff > 0);
+  const hits = new Int32Array(memory.buffer, hitsOff, n);
+  for (let i = 0; i < n; i++) {
+    assert.equal(hits[i], getHit(i));
+  }
+});
+
+test('WASM sync_active_particle_groups matches per-slot getters', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const syncGroups = fn('sync_active_particle_groups');
+  const getOff = fn('get_sync_particle_groups_byte_offset');
+  const getMax = fn('get_sync_particle_groups_max');
+  const getAlive = fn('get_particle_group_alive');
+  const getCount = fn('get_particle_group_particle_count');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getVisc = fn('get_particle_group_viscous_scale');
+  const getCx = fn('get_particle_group_center_x');
+  const getCy = fn('get_particle_group_center_y');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+  const a = createParticleGroupBox(-80, -20, -20, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  const b = createParticleGroupBox(20, -20, 80, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(a >= 0 && b >= 0);
+
+  const stride = getMax();
+  assert.equal(stride, 256);
+  const n = syncGroups(stride);
+  assert.equal(n, 2);
+  const base = getOff() >> 2;
+  const heap32 = new Int32Array(memory.buffer);
+  const heapF32 = new Float32Array(memory.buffer);
+  const ids = [heap32[base], heap32[base + 1]];
+  assert.ok(ids.includes(a) && ids.includes(b));
+  for (let w = 0; w < n; w++) {
+    const gid = heap32[base + w];
+    assert.equal(getAlive(gid), 1);
+    assert.equal(heap32[base + stride + w], getCount(gid));
+    assert.equal(heap32[base + stride * 2 + w], getFirst(gid));
+    assert.equal(heap32[base + stride * 3 + w], getLast(gid));
+    assert.ok(Math.abs(heapF32[base + stride * 4 + w] - getVisc(gid)) < 1e-6);
+    assert.ok(Math.abs(heapF32[base + stride * 5 + w] - getCx(gid)) < 1e-4);
+    assert.ok(Math.abs(heapF32[base + stride * 6 + w] - getCy(gid)) < 1e-4);
+  }
+});
+
+test('WASM cull_particles_outside_bounds marks OOB centers zombie', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getParticleCount = fn('get_particle_count');
+  const getXOff = fn('get_particle_x_byte_offset');
+  const getFlagsOff = fn('get_particle_flags_byte_offset');
+  const cull = fn('cull_particles_outside_bounds');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+  const gid = createParticleGroupBox(-30, -30, 30, 30, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  const n = getParticleCount();
+  assert.ok(n > 4);
+  const xs = new Float32Array(memory.buffer, getXOff(), n);
+  const flags = new Uint32Array(memory.buffer, getFlagsOff(), n);
+  xs[0] = -20000;
+  xs[1] = 20000;
+  cull(-10000, -10000, 10000, 10000);
+  assert.equal(flags[0] & LF_ZOMBIE, LF_ZOMBIE);
+  assert.equal(flags[1] & LF_ZOMBIE, LF_ZOMBIE);
+  let stillInside = 0;
+  for (let i = 2; i < n; i++) {
+    if ((flags[i] & LF_ZOMBIE) === 0) stillInside++;
+  }
+  assert.ok(stillInside > 0, 'in-bounds particles stay alive');
+});
+
+test('WASM copy_particle_pos_xy_interleaved matches SoA x/y', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getParticleCount = fn('get_particle_count');
+  const getXOff = fn('get_particle_x_byte_offset');
+  const getYOff = fn('get_particle_y_byte_offset');
+  const copyPos = fn('copy_particle_pos_xy_interleaved');
+  const scratchOff = fn('get_particle_xy_scratch_byte_offset');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 200));
+  const gid = createParticleGroupBox(-20, -20, 20, 20, 0, 0, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  const n = getParticleCount();
+  assert.ok(n > 0);
+  const copied = copyPos();
+  assert.equal(copied, n);
+  const xs = new Float32Array(memory.buffer, getXOff(), n);
+  const ys = new Float32Array(memory.buffer, getYOff(), n);
+  const xy = new Float32Array(memory.buffer, scratchOff(), n * 2);
+  for (let i = 0; i < n; i++) {
+    assert.equal(xy[i * 2], xs[i]);
+    assert.equal(xy[i * 2 + 1], ys[i]);
+  }
+});
+
+

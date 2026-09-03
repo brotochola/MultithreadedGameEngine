@@ -573,7 +573,34 @@ function createPhysicsApi(Module) {
     "number",
     "number",
   ]);
-  const getParticleQueryHit = wrap("get_particle_query_hit", "number", ["number"]);
+  const getParticleQueryHitsByteOffset = wrap(
+    "get_particle_query_hits_byte_offset",
+    "number",
+    [],
+  );
+  const particleQueryHitsI32 = getParticleQueryHitsByteOffset() >> 2;
+  const syncActiveParticleGroupsFn = wrap("sync_active_particle_groups", "number", [
+    "number",
+  ]);
+  const getSyncParticleGroupsByteOffset = wrap(
+    "get_sync_particle_groups_byte_offset",
+    "number",
+    [],
+  );
+  const getSyncParticleGroupsMax = wrap("get_sync_particle_groups_max", "number", []);
+  const cullParticlesOutsideBoundsFn = wrap("cull_particles_outside_bounds", null, [
+    "number",
+    "number",
+    "number",
+    "number",
+  ]);
+  const copyParticlePosXyInterleaved = wrap("copy_particle_pos_xy_interleaved", "number", []);
+  const copyParticleVelXyInterleaved = wrap("copy_particle_vel_xy_interleaved", "number", []);
+  const getParticleXyScratchByteOffset = wrap(
+    "get_particle_xy_scratch_byte_offset",
+    "number",
+    [],
+  );
   const getParticleWeightByteOffset = wrap("get_particle_weight_byte_offset", "number", []);
   const getParticleCount = wrap("get_particle_count", "number", []);
   const restoreParticlesFn = wrap("restore_particles", "number", ["number", "number", "number", "number"]);
@@ -1653,30 +1680,32 @@ function createPhysicsApi(Module) {
 
     particleQueryAabb(x0, y0, x1, y1) {
       const n = particleQueryAabb(x0, y0, x1, y1) | 0;
-      const out = [];
-      for (let i = 0; i < n; i++) out.push(getParticleQueryHit(i) | 0);
-      return out;
+      if (n <= 0) return [];
+      return Array.from(Module.HEAP32.subarray(particleQueryHitsI32, particleQueryHitsI32 + n));
     }
 
     particleRayCast(x1, y1, x2, y2) {
       const n = particleRayCast(x1, y1, x2, y2) | 0;
-      const out = [];
-      for (let i = 0; i < n; i++) out.push(getParticleQueryHit(i) | 0);
-      return out;
+      if (n <= 0) return [];
+      return Array.from(Module.HEAP32.subarray(particleQueryHitsI32, particleQueryHitsI32 + n));
     }
 
     /** Fill Int32Array results without allocating; returns full hit count. */
     fillParticleQueryAabb(x0, y0, x1, y1, results, cap) {
       const n = particleQueryAabb(x0, y0, x1, y1) | 0;
       const write = n < cap ? n : cap | 0;
-      for (let i = 0; i < write; i++) results[i] = getParticleQueryHit(i) | 0;
+      if (write > 0) {
+        results.set(Module.HEAP32.subarray(particleQueryHitsI32, particleQueryHitsI32 + write));
+      }
       return n;
     }
 
     fillParticleRayCast(x1, y1, x2, y2, results, cap) {
       const n = particleRayCast(x1, y1, x2, y2) | 0;
       const write = n < cap ? n : cap | 0;
-      for (let i = 0; i < write; i++) results[i] = getParticleQueryHit(i) | 0;
+      if (write > 0) {
+        results.set(Module.HEAP32.subarray(particleQueryHitsI32, particleQueryHitsI32 + write));
+      }
       return n;
     }
 
@@ -1744,26 +1773,21 @@ function createPhysicsApi(Module) {
           pairs: null,
         };
       }
-      const xOff = getParticleXByteOffset() | 0;
-      const yOff = getParticleYByteOffset() | 0;
-      const vxOff = getParticleVxByteOffset() | 0;
-      const vyOff = getParticleVyByteOffset() | 0;
       const flagsOff = getParticleFlagsByteOffset() | 0;
-      if (!xOff || !yOff || !vxOff || !vyOff || !flagsOff) return null;
+      if (!flagsOff) return null;
       const buf = heapBuf();
-      const xs = new Float32Array(buf, xOff, count);
-      const ys = new Float32Array(buf, yOff, count);
-      const vxs = new Float32Array(buf, vxOff, count);
-      const vys = new Float32Array(buf, vyOff, count);
       const flagsSrc = new Uint32Array(buf, flagsOff, count);
-      const posSrc = new Float32Array(count * 2);
-      const velSrc = new Float32Array(count * 2);
-      for (let i = 0; i < count; i++) {
-        posSrc[i * 2] = xs[i];
-        posSrc[i * 2 + 1] = ys[i];
-        velSrc[i * 2] = vxs[i];
-        velSrc[i * 2 + 1] = vys[i];
-      }
+      const nPos = copyParticlePosXyInterleaved() | 0;
+      const scratchOff = getParticleXyScratchByteOffset() | 0;
+      if (!scratchOff || nPos !== count) return null;
+      const posSrc = new Float32Array(
+        Module.HEAPF32.subarray(scratchOff >> 2, (scratchOff >> 2) + count * 2),
+      );
+      const nVel = copyParticleVelXyInterleaved() | 0;
+      if (nVel !== count) return null;
+      const velSrc = new Float32Array(
+        Module.HEAPF32.subarray(scratchOff >> 2, (scratchOff >> 2) + count * 2),
+      );
 
       let groupIndex = new Int32Array(count);
       let restOffset = new Float32Array(count * 2);
@@ -2009,6 +2033,22 @@ function createPhysicsApi(Module) {
 
     getParticleAlphaByteOffset() {
       return getParticleAlphaByteOffset();
+    }
+
+    syncActiveParticleGroups(maxGroups) {
+      return syncActiveParticleGroupsFn(maxGroups | 0) | 0;
+    }
+
+    getSyncParticleGroupsByteOffset() {
+      return getSyncParticleGroupsByteOffset();
+    }
+
+    getSyncParticleGroupsMax() {
+      return getSyncParticleGroupsMax();
+    }
+
+    cullParticlesOutsideBounds(xMin, yMin, xMax, yMax) {
+      cullParticlesOutsideBoundsFn(xMin, yMin, xMax, yMax);
     }
 
   }

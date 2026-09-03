@@ -1535,37 +1535,42 @@
     resolveLiquidFunHeapPoseOffsets();
   }
 
+  let lfSyncGroupsI32 = 0;
+  let lfSyncStride = 0;
+
   function syncLiquidFunGroupsToSharedBuffers() {
-    if (!world || !liquidFunGroupsViews || typeof world.getParticleGroupSlotCount !== 'function') {
+    if (!world || !liquidFunGroupsViews || typeof world.syncActiveParticleGroups !== 'function') {
       return;
     }
-    const slots = world.getParticleGroupSlotCount() | 0;
     const maxG = liquidFunGroupsViews.maxGroups | 0;
-    let w = 0;
-    for (let gid = 0; gid < slots && w < maxG; gid++) {
-      if (!(world.getParticleGroupAlive(gid) | 0)) continue;
-      liquidFunGroupsViews.id[w] = gid;
-      liquidFunGroupsViews.particleCount[w] = world.getParticleGroupParticleCount(gid) | 0;
-      if (liquidFunGroupsViews.firstIndex) {
-        liquidFunGroupsViews.firstIndex[w] = world.getParticleGroupFirstIndex
-          ? world.getParticleGroupFirstIndex(gid) | 0
-          : 0;
-      }
-      if (liquidFunGroupsViews.lastIndex) {
-        liquidFunGroupsViews.lastIndex[w] = world.getParticleGroupLastIndex
-          ? world.getParticleGroupLastIndex(gid) | 0
-          : 0;
-      }
-      liquidFunGroupsViews.viscousScale[w] = world.getParticleGroupViscousScale(gid);
-      liquidFunGroupsViews.x[w] = world.getParticleGroupCenterX(gid);
-      liquidFunGroupsViews.y[w] = world.getParticleGroupCenterY(gid);
-      liquidFunGroupsViews.vx[w] = world.getParticleGroupVx(gid);
-      liquidFunGroupsViews.vy[w] = world.getParticleGroupVy(gid);
-      liquidFunGroupsViews.angularVelocity[w] = world.getParticleGroupAngularVelocity(gid);
-      liquidFunGroupsViews.angle[w] = world.getParticleGroupAngle(gid);
-      w++;
+    const n = world.syncActiveParticleGroups(maxG) | 0;
+    liquidFunGroupsViews.count[0] = n;
+    if (n <= 0) return;
+    if (!lfSyncGroupsI32) {
+      const off = world.getSyncParticleGroupsByteOffset() | 0;
+      if (!off) return;
+      lfSyncGroupsI32 = off >> 2;
+      lfSyncStride = world.getSyncParticleGroupsMax() | 0;
     }
-    liquidFunGroupsViews.count[0] = w;
+    const base = lfSyncGroupsI32;
+    const stride = lfSyncStride;
+    const heap32 = Module.HEAP32;
+    const heapF32 = Module.HEAPF32;
+    liquidFunGroupsViews.id.set(heap32.subarray(base, base + n));
+    liquidFunGroupsViews.particleCount.set(heap32.subarray(base + stride, base + stride + n));
+    if (liquidFunGroupsViews.firstIndex) {
+      liquidFunGroupsViews.firstIndex.set(heap32.subarray(base + stride * 2, base + stride * 2 + n));
+    }
+    if (liquidFunGroupsViews.lastIndex) {
+      liquidFunGroupsViews.lastIndex.set(heap32.subarray(base + stride * 3, base + stride * 3 + n));
+    }
+    liquidFunGroupsViews.viscousScale.set(heapF32.subarray(base + stride * 4, base + stride * 4 + n));
+    liquidFunGroupsViews.x.set(heapF32.subarray(base + stride * 5, base + stride * 5 + n));
+    liquidFunGroupsViews.y.set(heapF32.subarray(base + stride * 6, base + stride * 6 + n));
+    liquidFunGroupsViews.vx.set(heapF32.subarray(base + stride * 7, base + stride * 7 + n));
+    liquidFunGroupsViews.vy.set(heapF32.subarray(base + stride * 8, base + stride * 8 + n));
+    liquidFunGroupsViews.angularVelocity.set(heapF32.subarray(base + stride * 9, base + stride * 9 + n));
+    liquidFunGroupsViews.angle.set(heapF32.subarray(base + stride * 10, base + stride * 10 + n));
   }
 
   function applyLiquidFunTuningFromConfig(lf) {
@@ -1601,30 +1606,8 @@
     const w = liquidFunWorldW;
     const h = liquidFunWorldH;
     if (!(w > 0) || !(h > 0) || !Number.isFinite(w) || !Number.isFinite(h)) return;
-    if (!world || typeof world.getParticleCount !== 'function') return;
-    const count = world.getParticleCount() | 0;
-    if (count <= 0) return;
-    if (!resolveLiquidFunHeapPoseOffsets()) return;
-    if (
-      typeof world.getParticleFlagsByteOffset !== 'function' ||
-      typeof Module === 'undefined' ||
-      !Module.HEAPF32
-    ) {
-      return;
-    }
-    const flagsOff = world.getParticleFlagsByteOffset() | 0;
-    if (!(flagsOff > 0)) return;
-    const heap = Module.HEAPF32;
-    const xBase = liquidFunXFloatOffset;
-    const yBase = liquidFunYFloatOffset;
-    const flags = new Uint32Array(heap.buffer, flagsOff, count);
-    for (let i = 0; i < count; i++) {
-      const x = heap[xBase + i];
-      const y = heap[yBase + i];
-      if (x < 0 || y < 0 || x > w || y > h) {
-        flags[i] = (flags[i] | LF_ZOMBIE) >>> 0;
-      }
-    }
+    if (!world || typeof world.cullParticlesOutsideBounds !== 'function') return;
+    world.cullParticlesOutsideBounds(0, 0, w, h);
   }
 
   function afterStep() {

@@ -1,6 +1,8 @@
 /**
  * Procedural LiquidFun density splat: instanced unit quads with soft falloff.
  * Drawn ADD into a layer density RT (no atlas). Look pass stays on the layer frag.
+ *
+ * Instance layout (16 bytes): float32 x, y, radius + packed unorm8x4 RGBA.
  */
 
 import {
@@ -13,7 +15,7 @@ import {
   State,
 } from '../lib/pixi_8.16_.min.js';
 
-export const LF_SPLAT_FLOATS = 7;
+export const LF_SPLAT_FLOATS = 4;
 export const LF_SPLAT_STRIDE = LF_SPLAT_FLOATS * 4;
 
 const VERTEX_SRC = `
@@ -62,6 +64,7 @@ export class LiquidFunDensitySplat {
   constructor({ capacity, label, blendMode = 'add' }) {
     this.capacity = Math.max(1, capacity | 0);
     this.data = new Float32Array(this.capacity * LF_SPLAT_FLOATS);
+    this.dataU32 = new Uint32Array(this.data.buffer);
     this.buffer = new Buffer({
       data: this.data,
       usage: BufferUsage.VERTEX | BufferUsage.COPY_DST,
@@ -78,7 +81,7 @@ export class LiquidFunDensitySplat {
         aQuad: { buffer: quad, format: 'float32x2' },
         aInstXY: { buffer: buf, format: 'float32x2', stride, offset: 0, instance: true },
         aInstRadius: { buffer: buf, format: 'float32', stride, offset: 8, instance: true },
-        aInstColor: { buffer: buf, format: 'float32x4', stride, offset: 12, instance: true },
+        aInstColor: { buffer: buf, format: 'unorm8x4', stride, offset: 12, instance: true },
       },
       indexBuffer: [0, 1, 2, 0, 2, 3],
     });
@@ -159,9 +162,9 @@ export class LiquidFunDensitySplat {
     const cull = canvasW > 0 && canvasH > 0;
     const pad = screenRadius;
     const data = this.data;
+    const dataU32 = this.dataU32;
 
     let out = 0;
-    let base = 0;
     const maxOut = this.capacity;
     const n = count > views.maxCount ? views.maxCount : count;
 
@@ -177,30 +180,30 @@ export class LiquidFunDensitySplat {
       }
       if (out >= maxOut) break;
 
-      let r = 1;
-      let g = 1;
-      let b = 1;
+      let r = 255;
+      let g = 255;
+      let b = 255;
       if (useTint && tintArr) {
         const tint = tintArr[i] >>> 0;
         if (tint) {
-          r = ((tint >> 16) & 0xff) / 255;
-          g = ((tint >> 8) & 0xff) / 255;
-          b = (tint & 0xff) / 255;
+          r = (tint >> 16) & 0xff;
+          g = (tint >> 8) & 0xff;
+          b = tint & 0xff;
         }
       }
 
       let a = intensity;
       if (baseAlpha) a *= baseAlpha[i];
       if (alphaArr) a *= alphaArr[i];
+      let ai = (a * 255 + 0.5) | 0;
+      if (ai < 0) ai = 0;
+      else if (ai > 255) ai = 255;
 
+      const base = out * LF_SPLAT_FLOATS;
       data[base] = sx;
       data[base + 1] = sy;
       data[base + 2] = screenRadius;
-      data[base + 3] = r;
-      data[base + 4] = g;
-      data[base + 5] = b;
-      data[base + 6] = a;
-      base += LF_SPLAT_FLOATS;
+      dataU32[base + 3] = r | (g << 8) | (b << 16) | (ai << 24);
       out++;
     }
 
@@ -223,5 +226,6 @@ export class LiquidFunDensitySplat {
     this.mesh = null;
     this.buffer = null;
     this.data = null;
+    this.dataU32 = null;
   }
 }
