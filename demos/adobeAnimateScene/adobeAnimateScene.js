@@ -29,7 +29,7 @@ export class AdobeAnimateScene extends Scene {
     renderer: {
       noLimitFPS: false,
       ySorting: true,
-      maxVisibleRenderables: 150000,
+      maxVisibleRenderables: 250000,
     },
     lighting: {
       enabled: false,
@@ -61,7 +61,7 @@ export class AdobeAnimateScene extends Scene {
   create() {
     const cx = this.config.worldWidth * 0.5;
     const cy = this.config.worldHeight * 0.5;
-    Camera.setFree(true, { panSpeed: 18, zoomSensitivity: 0.08, smoothing: 0.18 });
+    Camera.setFree(true, { panSpeed: 18, zoomSensitivity: 0.001, smoothing: 0.18 });
     Camera.setFreeTarget(cx, cy);
     Camera.centerOn(cx, cy);
     Camera.setZoom(1.4);
@@ -69,7 +69,7 @@ export class AdobeAnimateScene extends Scene {
 
   }
 
-  
+
 
   createNewGame() {
     const cx = this.config.worldWidth * 0.5;

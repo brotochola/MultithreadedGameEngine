@@ -59,7 +59,7 @@ export class Camera {
   // Free-cam (WASD/arrows pan + wheel zoom). Ticked by Scene via updateFree().
   static _free = false;
   static _freePanSpeed = 10;
-  static _freeZoomSensitivity = 0.1;
+  static _freeZoomSensitivity = 0.001;
   static _freeSmoothing = 0.15;
   static _freeArrows = true;
   static _freeMaxZoom = null;
@@ -549,8 +549,9 @@ export class Camera {
     }
 
     // Wheel updates targetZoom only; follow() lerps display zoom (no setZoom snap).
+    // exp: log-symmetric in/out for raw deltaY (~±100/notch); linear 1-w*s is not invertible.
     if (!this._freeZoomPaused && Mouse.wheel) {
-      let z = this.targetZoom * (1 - Mouse.wheel * this._freeZoomSensitivity);
+      let z = this.targetZoom * Math.exp(-Mouse.wheel * this._freeZoomSensitivity);
       const maxZ = this._freeMaxZoom != null ? this._freeMaxZoom : this._maxZoom;
       z = Math.max(this.minZoom, Math.min(maxZ, z));
       this._data[this.IDX_TARGET_ZOOM] = z;

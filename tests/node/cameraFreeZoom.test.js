@@ -60,3 +60,39 @@ test('updateFree wheel writes targetZoom and lets follow lerp (no setZoom snap)'
   Camera.setFree(false);
   Mouse.wheel = 0;
 });
+
+test('updateFree one notch zoom-in stays ~1.1x (not near maxZoom)', () => {
+  setupCamera({ zoom: 1, cx: 400, cy: 300 });
+  Mouse.initialize(new Float32Array(13));
+  Mouse.wheel = -100;
+
+  Camera.setFree(true, { zoomSensitivity: 0.001, smoothing: 0.15 });
+  Camera.setFreeTarget(400, 300);
+  Camera.updateFree(1);
+
+  // exp(0.1) ≈ 1.105; must not race toward maxZoom (50)
+  assert.ok(Camera.targetZoom > 1.05 && Camera.targetZoom < 1.2);
+  assert.ok(Camera.targetZoom < Camera.maxZoom * 0.5);
+
+  Camera.setFree(false);
+  Mouse.wheel = 0;
+});
+
+test('updateFree equal in then out restores targetZoom (log-symmetric)', () => {
+  setupCamera({ zoom: 1, cx: 400, cy: 300 });
+  Mouse.initialize(new Float32Array(13));
+
+  Camera.setFree(true, { zoomSensitivity: 0.001, smoothing: 0.15 });
+  Camera.setFreeTarget(400, 300);
+  const start = Camera.targetZoom;
+
+  Mouse.wheel = -100;
+  Camera.updateFree(1);
+  Mouse.wheel = 100;
+  Camera.updateFree(1);
+
+  assert.ok(Math.abs(Camera.targetZoom - start) < 1e-5);
+
+  Camera.setFree(false);
+  Mouse.wheel = 0;
+});
