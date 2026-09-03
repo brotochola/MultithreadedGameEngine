@@ -810,6 +810,7 @@ test('WASM particle lifespan alpha fades toward 0 only when fadeToAlpha0=1; untr
 // ----------------------------------------------------------------------
 
 const LF_ZOMBIE = 1 << 0;
+const LF_ELASTIC = 1 << 4;
 const LF_SOLID_GROUP = 1 << 0;
 const LF_RIGID_GROUP = 1 << 1;
 
@@ -1346,6 +1347,130 @@ test('WASM cull_particles_outside_bounds marks OOB centers zombie', () => {
     if ((flags[i] & LF_ZOMBIE) === 0) stillInside++;
   }
   assert.ok(stillInside > 0, 'in-bounds particles stay alive');
+});
+
+test('WASM elastic restOffset rebuilds around survivor COM after partial zombie', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupBox = fn('create_particle_group_box');
+  const getParticleCount = fn('get_particle_count');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getAlive = fn('get_particle_group_alive');
+  const getYOff = fn('get_particle_y_byte_offset');
+  const getFlagsOff = fn('get_particle_flags_byte_offset');
+  const getRestOff = fn('get_particle_rest_offset_byte_offset');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 0, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+  const gid = createParticleGroupBox(-40, -40, 40, 40, 0, LF_ELASTIC, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+
+  const n0 = getParticleCount();
+  const first0 = getFirst(gid);
+  const last0 = getLast(gid);
+  assert.ok(last0 - first0 >= 8, `need a slab to split, got ${last0 - first0}`);
+
+  const ys = new Float32Array(memory.buffer, getYOff(), n0);
+  const flags = new Uint32Array(memory.buffer, getFlagsOff(), n0);
+  let killed = 0;
+  for (let i = first0; i < last0; i++) {
+    if (ys[i] > 0) {
+      flags[i] = flags[i] | LF_ZOMBIE;
+      killed++;
+    }
+  }
+  assert.ok(killed > 0 && killed < n0, `need a partial kill, killed ${killed}/${n0}`);
+
+  stepWorld(worldId, 1 / 60, 1);
+
+  assert.ok(getAlive(gid), 'group stays alive');
+  const n1 = getParticleCount();
+  assert.equal(n1, n0 - killed);
+  const first1 = getFirst(gid);
+  const last1 = getLast(gid);
+  assert.equal(last1 - first1, n1);
+
+  const rest = new Float32Array(memory.buffer, getRestOff());
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = first1; i < last1; i++) {
+    sumX += rest[i * 2];
+    sumY += rest[i * 2 + 1];
+  }
+  const inv = 1 / n1;
+  assert.ok(Math.abs(sumX * inv) < 1e-4, `mean rest.x should be 0 after rebuild, got ${sumX * inv}`);
+  assert.ok(Math.abs(sumY * inv) < 1e-4, `mean rest.y should be 0 after rebuild, got ${sumY * inv}`);
+});
+
+test('WASM elastic group falls through cull plane to count 0 without COM rebound', () => {
+  const { memory, fn } = instantiateBox2dWasm();
+  const createWorld = fn('create_world');
+  const bindGameBuffers = fn('bind_game_buffers');
+  const createParticleSystem = fn('create_particle_system');
+  const createParticleGroupCircle = fn('create_particle_group_circle');
+  const getParticleCount = fn('get_particle_count');
+  const getFirst = fn('get_particle_group_first_index');
+  const getLast = fn('get_particle_group_last_index');
+  const getYOff = fn('get_particle_y_byte_offset');
+  const getVyOff = fn('get_particle_vy_byte_offset');
+  const cull = fn('cull_particles_outside_bounds');
+  const stepWorld = fn('step_world');
+
+  const worldId = createWorld(0, 980, 100, 30, 0.7, 3, 4000, 1);
+  assert.ok(worldId);
+  assert.ok(bindGameBuffers(16));
+  assert.ok(createParticleSystem(worldId, 10, 1.0, 500));
+
+  const gid = createParticleGroupCircle(0, 0, 40, 0, LF_ELASTIC, 0.5, 0, 0, 0, 1, 1, 0);
+  assert.ok(gid >= 0);
+  const n0 = getParticleCount();
+  assert.ok(n0 > 4);
+
+  const yMax = 80;
+  const dt = 1 / 60;
+  let prevCount = n0;
+  let maxComYSameCount = -Infinity;
+  let reachedZero = false;
+  for (let s = 0; s < 240; s++) {
+    cull(-1000, -1000, 1000, yMax);
+    stepWorld(worldId, dt, 1);
+    const n = getParticleCount();
+    if (n <= 0) {
+      reachedZero = true;
+      break;
+    }
+    const first = getFirst(gid);
+    const last = getLast(gid);
+    const ys = new Float32Array(memory.buffer, getYOff());
+    const vys = new Float32Array(memory.buffer, getVyOff());
+    let comY = 0;
+    let meanVy = 0;
+    for (let i = first; i < last; i++) {
+      comY += ys[i];
+      meanVy += vys[i];
+    }
+    const inv = 1 / (last - first);
+    comY *= inv;
+    meanVy *= inv;
+    if (n === prevCount) {
+      assert.ok(
+        comY + 1e-2 >= maxComYSameCount,
+        `COM y rebound at step ${s}: ${comY} < ${maxComYSameCount}`,
+      );
+      maxComYSameCount = Math.max(maxComYSameCount, comY);
+    } else {
+      maxComYSameCount = comY;
+    }
+    assert.ok(meanVy > -200, `elastic fight launched blob up, mean vy=${meanVy} at step ${s}`);
+    prevCount = n;
+  }
+  assert.ok(reachedZero, `elastic blob must leave through yMax, leftover ${getParticleCount()}/${n0}`);
 });
 
 test('WASM restore_particles SoA roundtrip matches x/y/vx/vy', () => {
