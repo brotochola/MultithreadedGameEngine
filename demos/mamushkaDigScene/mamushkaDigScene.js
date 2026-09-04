@@ -1,28 +1,35 @@
 // MamushkaDigScene — Noise2D-packed static mamushka; jetpack digger; LMB laser.
 
 import { Digger } from './gameObjects/digger.js';
+import { Lamp } from './gameObjects/lamp.js';
 import { MamushkaBox, ORDER1_CELL } from './gameObjects/mamushkaBox.js';
 import { buildOccupancy, packMamushkaRoots } from './mamushkaPack.js';
 import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
-import { BLEND_MODES } from '/src/core/ConfigDefaults.js';
+import {
+  BLEND_MODES,
+  LAYER_DENSITY_SOURCE,
+  LAYER_SPLAT_FALLOFF,
+  LAYER_SCALE_MODE,
+} from '/src/core/ConfigDefaults.js';
 import WEED from '/src/index.js';
 
-const { Transform } = WEED;
+const { Transform, LiquidFun } = WEED;
 
-/** Prototype pack order cap; max square = 8 order-1 cells = 512px. */
-const MAX_PACK_ORDER = 4;
-const GRID_COLS = 40;
-const GRID_ROWS = 20;
+const MAX_PACK_ORDER = 6;
+const GRID_COLS = 120;
+const GRID_ROWS = 48;
+const BOX_POOL = 16384;
+const LAMP_STASH = 8;
 
 export class MamushkaDigScene extends WEED.Scene {
   static config = {
-    worldWidth: 4000,
-    worldHeight: 2400,
+    worldWidth: 10000,
+    worldHeight: 5000,
 
     spatial: {
       cellSize: 128,
-      maxNeighbors: 512,
+      maxNeighbors: 1024,
       noLimitFPS: false,
     },
 
@@ -39,24 +46,81 @@ export class MamushkaDigScene extends WEED.Scene {
     physics: {
       subStepCount: 4,
       noLimitFPS: false,
-      maxJoints: 8192,
+      maxJoints: 32768,
       gravity: { x: 0, y: 1800 },
       sleeping: true,
+      liquidFun: {
+        enabled: true,
+        radius: 4,
+        maxCount: 32767,
+        subSteps: 1,
+        powderStrength: 0.7,
+      },
     },
 
     renderer: {
       noLimitFPS: false,
-      maxVisibleRenderables: 20000,
+      maxVisibleRenderables: 40000,
     },
 
     lighting: {
-      enabled: false,
+      enabled: true,
+      raycasted: true,
+      shadowsEnabled: false,
+      baseAmbient: 0.12,
+      maxLights: 40,
+      maxPolygonVertices: 5000,
+      maxOccluderSelfLit: 1024,
+      sun: { enabled: false },
     },
 
     layers: {
-      dust: {
-        zIndex: 3.5,
+      terrain: {
+        zIndex: 2.5,
         blendMode: BLEND_MODES.NORMAL,
+        resolution: 1,
+        maxItems: BOX_POOL,
+        ySorting: false,
+        shader: {
+          fragment: 'rockContour',
+          containerBlend: BLEND_MODES.NORMAL,
+          uniforms: {
+            uCutoff: { value: 0.08, type: 'f32' },
+            uRimWidth: { value: 0.0018, type: 'f32' },
+            uRimColor: { value: [1, 1, 1], type: 'vec3<f32>' },
+            uRimAlpha: { value: 0.85, type: 'f32' },
+          },
+        },
+      },
+      sand: {
+        zIndex: 3.4,
+        blendMode: BLEND_MODES.NORMAL,
+        resolution: 1,
+        scaleMode: LAYER_SCALE_MODE.LINEAR,
+        maxItems: 0,
+        ySorting: false,
+        shader: {
+          fragment: 'dulceDeLeche',
+          containerBlend: BLEND_MODES.ADD,
+          densitySource: LAYER_DENSITY_SOURCE.LIQUID_FUN,
+          splat: {
+            radius: 14,
+            falloff: LAYER_SPLAT_FALLOFF.QUADRATIC,
+            useParticleTint: true,
+            intensity: 0.35,
+          },
+          uniforms: {
+            uCutoff: { value: 0.42, type: 'f32' },
+            uRim: { value: 0.55, type: 'f32' },
+            uDepth: { value: 0.28, type: 'f32' },
+            uBodyAlpha: { value: 0.95, type: 'f32' },
+            uEdgeAlpha: { value: 0.8, type: 'f32' },
+          },
+        },
+      },
+      fx: {
+        zIndex: 4.5,
+        blendMode: BLEND_MODES.ADD,
         maxItems: 4000,
         ySorting: false,
       },
@@ -66,6 +130,10 @@ export class MamushkaDigScene extends WEED.Scene {
   static assets = {
     textures: {
       rocky: '/demos/img/rocky.jpg',
+    },
+    shaders: {
+      rockContour: '/demos/shaders/rockContour.frag',
+      dulceDeLeche: '/demos/shaders/dulceDeLeche.frag',
     },
     AdobeAnimateAnimations: {
       blue_character: {
@@ -77,9 +145,10 @@ export class MamushkaDigScene extends WEED.Scene {
   };
 
   static entities = [
-    [MamushkaBox, 4096],
+    [MamushkaBox, BOX_POOL],
     [Floor, 16],
     [Digger, 1],
+    [Lamp, 32],
   ];
 
   create() {
@@ -90,40 +159,73 @@ export class MamushkaDigScene extends WEED.Scene {
   }
 
   createNewGame() {
+    LiquidFun.clear();
     MamushkaBox.despawnAll();
+    Lamp.despawnAll();
     Digger.despawnAll();
     this._spawnTerrain();
     this._spawnDigger();
+    this._spawnLampStash();
+    this._refreshHud();
   }
 
   update() {
     const i = this.playerIndex;
-    if (i < 0 || !Transform.active[i]) return;
-    Camera.follow(Transform.x[i], Transform.y[i], 0.15);
+    if (i >= 0 && Transform.active[i]) {
+      Camera.follow(Transform.x[i], Transform.y[i], 0.15);
+    }
+    this._refreshHud();
   }
 
   _spawnDigger() {
     const cols = GRID_COLS;
     const gridOriginX = (this.config.worldWidth - cols * ORDER1_CELL) * 0.5;
     const gridOriginY = this.config.worldHeight * 0.22;
-    const x = Math.max(180, gridOriginX - 80);
-    const y = Math.max(160, gridOriginY - 40);
+    const x = gridOriginX + ORDER1_CELL * 3;
+    const y = gridOriginY + ORDER1_CELL * 2;
     const spawned = Digger.spawn({ x, y });
     this.playerIndex = spawned ? spawned.index : -1;
     if (this.playerIndex >= 0) Camera.centerOn(x, y);
   }
 
+  _spawnLampStash() {
+    const i = this.playerIndex;
+    const px = i >= 0 ? Transform.x[i] : 200;
+    const py = i >= 0 ? Transform.y[i] : 200;
+    for (let n = 0; n < LAMP_STASH; n++) {
+      Lamp.spawn({
+        x: px + 70 + n * 36,
+        y: py + 24,
+      });
+    }
+  }
+
   _createHud() {
     if (typeof document === 'undefined') return;
-    if (document.getElementById('mamushka-dig-hud')) return;
+    if (this._hud) return;
     const el = document.createElement('div');
     el.id = 'mamushka-dig-hud';
     el.style.cssText =
       'position:fixed;left:12px;bottom:12px;z-index:900;color:#fff;font:13px/1.4 sans-serif;' +
-      'background:rgba(0,0,0,0.65);padding:10px 12px;border-radius:6px;pointer-events:none;';
-    el.textContent =
-      'Mamushka Dig — A/D move  |  W/up jetpack  |  hold LMB laser';
+      'background:rgba(0,0,0,0.65);padding:10px 12px;border-radius:6px;pointer-events:none;white-space:pre;';
     document.body.appendChild(el);
+    this._hud = el;
+    this._refreshHud();
+  }
+
+  _refreshHud() {
+    if (!this._hud) return;
+    const start = Lamp.startIndex | 0;
+    const end = start + (Lamp.poolSize | 0);
+    const active = Transform.active;
+    let worldLamps = 0;
+    for (let i = start; i < end; i++) {
+      if (active[i]) worldLamps++;
+    }
+    const carried = LAMP_STASH - worldLamps;
+    this._hud.textContent =
+      'Mamushka Dig — A/D move  |  W/up jetpack  |  hold LMB laser  |  F place lamp\n' +
+      `lamps: ${carried < 0 ? 0 : carried}  |  walk over lamp to pick`;
   }
 
   _spawnTerrain() {

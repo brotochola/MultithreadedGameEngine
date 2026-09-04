@@ -46,6 +46,7 @@ uniform mat3 uProjectionMatrix;
 uniform mat3 uWorldTransformMatrix;
 uniform mat3 uTransformMatrix;
 uniform sampler2D uTexLut;
+uniform vec4 uTileWorld;
 
 out vec2 vLocal;
 out vec4 vColor;
@@ -87,7 +88,7 @@ void main() {
   gl_Position = vec4(clip.xy, aInstDepth, 1.0);
   vLocal = aQuad;
   vColor = vec4(rgb, instA);
-  vWorld = world;
+  vWorld = uTileWorld.w > 0.5 ? world * uTileWorld.z + uTileWorld.xy : world;
   vAtlasUV = aInstUV;
   vTileInv = aInstTileInv;
 }
@@ -329,11 +330,16 @@ export class InstancedSpriteBatch {
       name: label || 'instanced-sprites',
     });
 
+    this._tileWorld = new Float32Array(4);
+    this._tileWorld[2] = 1;
     this.shader = new Shader({
       glProgram,
       resources: {
         uTexture: atlasSource || Texture.WHITE.source,
         uTexLut: lutSource || dummyLutSource(),
+        uniforms: {
+          uTileWorld: { value: this._tileWorld, type: 'vec4<f32>' },
+        },
       },
     });
 
@@ -402,6 +408,22 @@ export class InstancedSpriteBatch {
     const cameraX = opts.cameraX ?? 0;
     const cameraY = opts.cameraY ?? 0;
     const resolution = opts.resolution ?? 1;
+    const useScreen = space === 'screen';
+    const screenScale = zoom * resolution;
+    const tw = this._tileWorld;
+    if (tw) {
+      if (useScreen) {
+        tw[0] = cameraX;
+        tw[1] = cameraY;
+        tw[2] = screenScale > 0 ? 1 / screenScale : 1;
+        tw[3] = 1;
+      } else {
+        tw[0] = 0;
+        tw[1] = 0;
+        tw[2] = 1;
+        tw[3] = 0;
+      }
+    }
     const depthMode = opts.depthMode || 'index';
     const worldHeight = opts.worldHeight > 0 ? opts.worldHeight : 1;
     const typeArr = opts.type || null;
@@ -428,8 +450,6 @@ export class InstancedSpriteBatch {
     const rqRepeatX = q.repeatX;
     const rqRepeatY = q.repeatY;
 
-    const screenScale = zoom * resolution;
-    const useScreen = space === 'screen';
     const useSortKey = depthMode === 'sortKey' && sortKeyArr;
     if (!useIndices && includeType !== undefined && !typeArr) {
       this.geometry.instanceCount = 0;

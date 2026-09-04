@@ -1,4 +1,4 @@
-// MamushkaBox — packed roots static; split kids may go dynamic; leaf → dust (no LiquidFun).
+// MamushkaBox — packed roots static; split kids may go dynamic; leaf → LiquidFun sand.
 
 import WEED from '/src/index.js';
 import {
@@ -16,8 +16,10 @@ const {
   JointBreakListener,
   Joint,
   Transform,
-  ParticleEmitter,
+  LightOccluder,
   Layer,
+  LiquidFun,
+  LIQUIDFUN_FLAGS,
   enums,
 } = WEED;
 const { ShapeType } = enums;
@@ -30,10 +32,16 @@ export const ORDER1_CELL = LEAF_SIZE * 2;
 export const DYNAMIC_MAX_LEVEL = 2;
 /** Prototype MATERIALS[*].tileScale — world px per full rocky tile. */
 export const ROCK_TILE_SCALE = 0.25;
-const ROCK_TEX = 554;
+/** Outset sprite vs collider so packed faces bleed (hides AABB seams in contour RT). */
+export const ROCK_FILL_OVERLAP_PX = 2;
+const ROCK_TEX_FALLBACK = 512;
 
 const WELD_FORCE = 20e8;
 const WELD_TORQUE = 10e9;
+
+const AWAKE_R = 2200;
+const AWAKE_R2 = AWAKE_R * AWAKE_R;
+const WAKE_R2 = (AWAKE_R * 0.85) * (AWAKE_R * 0.85);
 
 const _kids = [];
 const _weldQ = new Int32Array(256);
@@ -41,6 +49,21 @@ let _weldN = 0;
 
 function sizeForLevel(level) {
   return LEAF_SIZE << (level | 0);
+}
+
+function sandLayerId() {
+  const id = Layer.getId('sand');
+  return id >= 0 ? id : 0;
+}
+
+function emitSand(opts) {
+  LiquidFun.emit({
+    flags: LIQUIDFUN_FLAGS.POWDER,
+    lifespan: 1000,
+    fadeToAlpha0: true,
+    layerId: sandLayerId(),
+    ...opts,
+  });
 }
 
 function weldPair(aIdx, bIdx, ax, ay) {
@@ -84,26 +107,6 @@ function queueWeldGroup(kids) {
   _weldQ[_weldN++] = kids[3].index;
 }
 
-function emitDust(x, y, tint) {
-  ParticleEmitter.emit({
-    count: 8,
-    x,
-    y,
-    z: -20,
-    angleXY: { min: 0, max: 360 },
-    speed: { min: 0.5, max: 3 },
-    vz: 0,
-    gravity: 0.25,
-    lifespan: { min: 200, max: 450 },
-    scale: { min: 1, max: 2.5 },
-    texture: '_whiteCircle',
-    tint: { min: tint, max: tint },
-    alpha: { from: { min: 0.4, max: 0.8 }, to: 0 },
-    despawnOnGroundContact: false,
-    layerId: Layer.getId('dust'),
-  });
-}
-
 /** Sibling welds queued last frame. Call from Digger.tick. */
 export function flushMamushkaDeferred() {
   if (!_weldN) return;
@@ -121,6 +124,34 @@ export function flushMamushkaDeferred() {
   _weldN = 0;
 }
 
+/** Sleep dynamic boxes far from the player. Statics stay cheap without this. */
+export function sleepFarMamushkaBoxes(px, py) {
+  const start = MamushkaBox.startIndex | 0;
+  const end = start + (MamushkaBox.poolSize | 0);
+  const active = Transform.active;
+  const xs = Transform.x;
+  const ys = Transform.y;
+  const isStatic = RigidBody.static;
+  const sleeping = RigidBody.sleeping;
+  for (let i = start; i < end; i++) {
+    if (!active[i] || isStatic[i]) continue;
+    const dx = xs[i] - px;
+    const dy = ys[i] - py;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > AWAKE_R2) {
+      if (!sleeping[i]) {
+        const go = GameObject.get(i);
+        if (go) go.setAwake(false);
+      }
+    } else if (d2 < WAKE_R2) {
+      if (sleeping[i]) {
+        const go = GameObject.get(i);
+        if (go) go.setAwake(true);
+      }
+    }
+  }
+}
+
 export class MamushkaBox extends GameObject {
   static scriptUrl = import.meta.url;
 
@@ -129,6 +160,7 @@ export class MamushkaBox extends GameObject {
     Collider,
     SpriteRenderer,
     JointBreakListener,
+    LightOccluder,
     MamushkaComponent,
   ];
 
@@ -169,19 +201,16 @@ export class MamushkaBox extends GameObject {
 
     this.rotation = spawnConfig.rotation ?? 0;
     this.setAnchor(0.5, 0.5);
+    this.setLayer('terrain');
 
     this.setSprite(spawnConfig.sprite || 'rocky');
-    const texW = this.spriteRenderer.originalWidth || ROCK_TEX;
-    const texH = this.spriteRenderer.originalHeight || ROCK_TEX;
-    this.setScale(size / texW, size / texH);
-    if (isDynamic) {
-      this.spriteRenderer.repeatX = 0;
-      this.spriteRenderer.repeatY = 0;
-    } else {
-      const period = Math.max(1, (texW * ROCK_TILE_SCALE) | 0);
-      this.spriteRenderer.repeatX = period;
-      this.spriteRenderer.repeatY = period;
-    }
+    const texW = this.spriteRenderer.originalWidth || ROCK_TEX_FALLBACK;
+    const texH = this.spriteRenderer.originalHeight || ROCK_TEX_FALLBACK;
+    const vis = size + ROCK_FILL_OVERLAP_PX;
+    this.setScale(vis / texW, vis / texH);
+    const period = Math.max(1, (texW * ROCK_TILE_SCALE) | 0);
+    this.spriteRenderer.repeatX = period;
+    this.spriteRenderer.repeatY = period;
     this.setTint(MATERIAL_TINT[material] ?? 0xffffff);
   }
 
@@ -213,10 +242,18 @@ export class MamushkaBox extends GameObject {
   _shatterToSand() {
     const x = this.x;
     const y = this.y;
+    const size = this.mamushkaComponent.size || LEAF_SIZE;
     const material = this.mamushkaComponent.material | 0;
     const tint = MATERIAL_TINT[material] ?? 0xc4a574;
     Joint.removeAllForEntity(this.index);
-    emitDust(x, y, tint);
+    emitSand({
+      shape: 'box',
+      posX: x,
+      posY: y,
+      halfWidth: size * 0.5,
+      halfHeight: size * 0.5,
+      tint,
+    });
     this.despawn();
   }
 
@@ -244,7 +281,6 @@ export class MamushkaBox extends GameObject {
     ];
 
     Joint.removeAllForEntity(this.index);
-    this.despawn();
 
     const wantWeld = childLevel <= DYNAMIC_MAX_LEVEL;
     const childDynamic = childLevel <= DYNAMIC_MAX_LEVEL;
@@ -270,6 +306,7 @@ export class MamushkaBox extends GameObject {
       else console.warn('[MamushkaBox] pool exhausted during split');
     }
 
+    this.despawn();
     if (wantWeld) queueWeldGroup(_kids);
   }
 
@@ -277,22 +314,13 @@ export class MamushkaBox extends GameObject {
     if (this.index !== entityA) return;
     const x = (Transform.x[entityA] + Transform.x[entityB]) * 0.5;
     const y = (Transform.y[entityA] + Transform.y[entityB]) * 0.5;
-    ParticleEmitter.emit({
-      count: 10 + ((Math.random() * 8) | 0),
-      x,
-      y,
-      z: -30,
-      angleXY: { min: 0, max: 360 },
-      speed: { min: 0.8, max: 4 },
-      vz: 0,
-      gravity: 0.3,
-      lifespan: { min: 180, max: 400 },
-      scale: { min: 1, max: 2.5 },
-      texture: '_whiteCircle',
-      tint: { min: 0xbba888, max: 0xddd0b0 },
-      alpha: { from: { min: 0.45, max: 0.9 }, to: 0 },
-      despawnOnGroundContact: false,
-      layerId: Layer.getId('dust'),
+    const material = this.mamushkaComponent.material | 0;
+    emitSand({
+      shape: 'circle',
+      posX: x,
+      posY: y,
+      radius: 10,
+      tint: MATERIAL_TINT[material] ?? 0xbba888,
     });
   }
 }

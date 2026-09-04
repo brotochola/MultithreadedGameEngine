@@ -4,6 +4,7 @@ import {
   createCommandRingSab,
   bindCommandRing,
   drainCommandRing,
+  enqueueSetAwake,
   BOX2D_CMD,
 } from '../../src/box2d/box2dCommandRing.js';
 import { LiquidFun, LIQUIDFUN_FLAGS } from '../../src/core/LiquidFun.js';
@@ -470,7 +471,30 @@ test('LiquidFun.clear enqueues CLEAR_LIQUIDFUN_PARTICLES', () => {
   });
 
   assert.equal(BOX2D_CMD.CLEAR_LIQUIDFUN_PARTICLES, 24);
+  assert.equal(BOX2D_CMD.SET_AWAKE, 25);
   assert.deepEqual(received, [{ type: 'clearLiquidFunParticles', systemId: 0 }]);
+});
+
+test('enqueueSetAwake drains SET_AWAKE to setAwake(entity, flag)', () => {
+  const sab = createCommandRingSab(64);
+  bindCommandRing(sab);
+  const i32 = new Int32Array(sab);
+  const f32 = new Float32Array(sab);
+
+  enqueueSetAwake(42, 0);
+  enqueueSetAwake(7, 1);
+
+  const received = [];
+  drainCommandRing(i32, f32, {
+    setAwake(entity, flag) {
+      received.push({ entity, flag });
+    },
+  });
+
+  assert.deepEqual(received, [
+    { entity: 42, flag: 0 },
+    { entity: 7, flag: 1 },
+  ]);
 });
 
 test('liquidFun render SAB is not ParticleComponent', () => {

@@ -858,6 +858,10 @@ class PreRenderWorker extends AbstractWorker {
         this.buildCustomLayerQueues(deltaTime);
         if (detail) this.customLayerTimeThisFrame = performance.now() - t0;
 
+        // Visible lights SAB feeds lighting shader + vis-poly. Must run even when
+        // cookie shadows are off (shadowsEnabled: false, raycasted: true).
+        this._collectVisibleLights();
+
         // Build shadow render queue (sun shadows already done in collectVisibleEntities)
         if (detail) t0 = performance.now();
         this.buildShadowRenderQueue();
@@ -2628,6 +2632,86 @@ class PreRenderWorker extends AbstractWorker {
     }
 
     /**
+     * LightEmitter list → visibleLightsData SAB (cookie shadows not required).
+     * Independent of cookie ShadowCaster queue (raycasted lighting still needs this).
+     */
+    _collectVisibleLights() {
+        const lightEntities = this._sortedLightEntities;
+        lightEntities.length = 0;
+
+        const lightEnabled = LightEmitter.active;
+        if (lightEnabled && this._queryLightEmitter) {
+            const worldX = Transform.x;
+            const worldY = Transform.y;
+            const lightIntensity = LightEmitter.lightIntensity;
+            const sqrtLightIntensity = LightEmitter.sqrtLightIntensity;
+            const flashActive = FlashComponent.active;
+            const zoom = this.cameraData ? this._frameCameraZoom : 1;
+            const camX = this.cameraData ? this._frameCameraX : 0;
+            const camY = this.cameraData ? this._frameCameraY : 0;
+            const screenBounds = calculateCameraScreenBounds(
+                zoom, camX, camY, this.canvasWidth, this.canvasHeight, this.cullingRatio, this._cameraBounds
+            );
+            const worldBounds = screenBoundsToWorldBounds(screenBounds, 0, 0, this._worldBounds);
+            const viewMinX = worldBounds.minX;
+            const viewMaxX = worldBounds.maxX;
+            const viewMinY = worldBounds.minY;
+            const viewMaxY = worldBounds.maxY;
+
+            const persistScratch = this._lightPersistScratch;
+            const flashScratch = this._lightFlashScratch;
+            persistScratch.length = 0;
+            flashScratch.length = 0;
+
+            const lightEntitiesRaw = this.queryActiveEntities(this._queryLightEmitter);
+            for (let i = 0; i < lightEntitiesRaw.length; i++) {
+                const lightIdx = lightEntitiesRaw[i];
+                if (!lightEnabled[lightIdx]) continue;
+
+                const intensity = lightIntensity[lightIdx];
+                if (!(intensity > 0)) continue;
+
+                const lightX = worldX[lightIdx];
+                const lightY = worldY[lightIdx];
+                const lightInfluenceR = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
+                if (lightX + lightInfluenceR < viewMinX || lightX - lightInfluenceR > viewMaxX ||
+                    lightY + lightInfluenceR < viewMinY || lightY - lightInfluenceR > viewMaxY) {
+                    continue;
+                }
+
+                const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
+                if (isFlash) flashScratch.push(lightIdx);
+                else persistScratch.push(lightIdx);
+            }
+
+            const maxWrite = this.visibleLightsData
+                ? this.visibleLightsData.length - 1
+                : persistScratch.length + flashScratch.length;
+
+            if (persistScratch.length + flashScratch.length > maxWrite) {
+                this._warnOnce(
+                    '_warnedVisibleLightsCap',
+                    `[PRE_RENDER] visible light list full (${maxWrite}). Increase lighting.maxLights or reduce visible lights.`
+                );
+            }
+
+            persistScratch.sort(this._lightYComparator);
+            flashScratch.sort(this._lightYComparator);
+            const persistTake = Math.min(persistScratch.length, maxWrite);
+            for (let i = 0; i < persistTake; i++) lightEntities.push(persistScratch[i]);
+            const flashTake = Math.min(flashScratch.length, maxWrite - lightEntities.length);
+            for (let i = 0; i < flashTake; i++) lightEntities.push(flashScratch[i]);
+            lightEntities.sort(this._lightYComparator);
+        }
+
+        if (this.visibleLightsData) {
+            const n = lightEntities.length;
+            this.visibleLightsData[0] = n;
+            for (let w = 0; w < n; w++) this.visibleLightsData[1 + w] = lightEntities[w];
+        }
+    }
+
+    /**
      * Build shadow render queue
      */
     buildShadowRenderQueue() {
@@ -2671,62 +2755,7 @@ class PreRenderWorker extends AbstractWorker {
         const viewMinY = worldBounds.minY;
         const viewMaxY = worldBounds.maxY;
 
-        // Compute visible lights FIRST -- needed by both shadow system and buildVisibilityPolygons
         const lightEntities = this._sortedLightEntities;
-        lightEntities.length = 0;
-        if (lightEnabled) {
-            const persistScratch = this._lightPersistScratch;
-            const flashScratch = this._lightFlashScratch;
-            persistScratch.length = 0;
-            flashScratch.length = 0;
-
-            const lightEntitiesRaw = this.queryActiveEntities(this._queryLightEmitter);
-            for (let i = 0; i < lightEntitiesRaw.length; i++) {
-                const lightIdx = lightEntitiesRaw[i];
-                if (!lightEnabled[lightIdx]) continue;
-
-                const intensity = lightIntensity[lightIdx];
-                if (intensity <= 0) continue;
-
-                const lightX = worldX[lightIdx];
-                const lightY = worldY[lightIdx];
-                const lightInfluenceR = lightInfluenceRadius(sqrtLightIntensity[lightIdx]);
-                if (lightX + lightInfluenceR < viewMinX || lightX - lightInfluenceR > viewMaxX ||
-                    lightY + lightInfluenceR < viewMinY || lightY - lightInfluenceR > viewMaxY) {
-                    continue;
-                }
-
-                const isFlash = flashActive ? flashActive[lightIdx] === 1 : false;
-                if (isFlash) flashScratch.push(lightIdx);
-                else persistScratch.push(lightIdx);
-            }
-
-            const maxWrite = this.visibleLightsData
-                ? this.visibleLightsData.length - 1
-                : persistScratch.length + flashScratch.length;
-
-            if (persistScratch.length + flashScratch.length > maxWrite) {
-                this._warnOnce(
-                    '_warnedVisibleLightsCap',
-                    `[PRE_RENDER] visible light list full (${maxWrite}). Increase lighting.maxLights or reduce visible lights.`
-                );
-            }
-
-            // Prefer persistent LightEmitters; fill remaining budget with flashes
-            persistScratch.sort(this._lightYComparator);
-            flashScratch.sort(this._lightYComparator);
-            const persistTake = Math.min(persistScratch.length, maxWrite);
-            for (let i = 0; i < persistTake; i++) lightEntities.push(persistScratch[i]);
-            const flashTake = Math.min(flashScratch.length, maxWrite - lightEntities.length);
-            for (let i = 0; i < flashTake; i++) lightEntities.push(flashScratch[i]);
-            lightEntities.sort(this._lightYComparator);
-        }
-
-        if (this.visibleLightsData) {
-            const n = lightEntities.length;
-            this.visibleLightsData[0] = n;
-            for (let w = 0; w < n; w++) this.visibleLightsData[1 + w] = lightEntities[w];
-        }
 
         // Point shadows suppressed when sun owns the look — before caster/neighbor work.
         // intensity=1 still left scale≈0.033 (> old MIN 0.003) and burned light×neighbor; gate on sun too.

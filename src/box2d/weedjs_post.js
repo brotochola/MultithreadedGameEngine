@@ -1006,6 +1006,10 @@
       if (!hasBody[entity]) return;
       bodySetSleepThresholdFn(entity, threshold);
     },
+    setAwake(entity, flag) {
+      if (!hasBody[entity] || !bodySetAwakeFn) return;
+      bodySetAwakeFn(entity, flag ? 1 : 0);
+    },
     setLiquidFunEmit(packed, spacing, strength, tintBits, viscousScale) {
       pendingLiquidFunEmit.textureId = packed & 0xffff;
       pendingLiquidFunEmit.trackGroup = (packed >>> 16) & 1;

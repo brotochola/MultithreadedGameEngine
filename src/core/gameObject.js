@@ -44,6 +44,7 @@ import {
   enqueueSetRotCS,
   enqueueSetAngularVelocity,
   enqueueSetFixedRotation,
+  enqueueSetAwake,
   isCommandRingBound,
 } from '../box2d/box2dCommandRing.js';
 import { box2dQueryAABB as runBox2dQueryAABB } from '../box2d/box2dQueryAabb.js';
@@ -1112,6 +1113,21 @@ export class GameObject {
       RigidBody.ax[this.index] += x;
       RigidBody.ay[this.index] += y;
     }
+    return this;
+  }
+
+  /**
+   * Wake or sleep the Box2D body (command ring → body_set_awake).
+   * Writing RigidBody.sleeping alone does not change the solver.
+   * @param {boolean} [awake=true]
+   * @returns {this}
+   */
+  setAwake(awake = true) {
+    if (!this._hasComponents.RigidBody) return this;
+    const i = this.index;
+    const on = awake ? 1 : 0;
+    if (RigidBody.sleeping) RigidBody.sleeping[i] = on ? 0 : 1;
+    if (isCommandRingBound()) enqueueSetAwake(i, on);
     return this;
   }
 

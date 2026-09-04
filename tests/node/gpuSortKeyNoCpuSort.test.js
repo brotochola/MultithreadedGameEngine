@@ -30,3 +30,15 @@ test('pixi custom layers use sortKey depth when layer.ySorting', () => {
 test('instancedSprites config flag removed (always instanced)', () => {
   assert.doesNotMatch(defaults, /instancedSprites/);
 });
+
+test('visible lights SAB fills even when cookie shadows are off', () => {
+  assert.match(preRender, /_collectVisibleLights\(\)/);
+  const updateCall = preRender.indexOf('this._collectVisibleLights();');
+  const shadowFn = preRender.indexOf('buildShadowRenderQueue() {');
+  const earlyReturn = preRender.indexOf(
+    'if (!this.shadowsEnabled || !this.shadowRenderQueueCount)',
+    shadowFn,
+  );
+  assert.ok(updateCall >= 0 && updateCall < shadowFn);
+  assert.ok(earlyReturn > shadowFn);
+});

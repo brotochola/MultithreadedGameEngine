@@ -44,6 +44,11 @@ test('vertex shader uses aInstRotCS without cos/sin of angle', () => {
   assert.match(src, /this\.buffer\.update\(out \* INSTANCED_SPRITE_STRIDE\)/);
   assert.match(src, /aInstTileInv/);
   assert.match(src, /fract\(vWorld\.x \* vTileInv\.x\)/);
+  assert.match(src, /uniform vec4 uTileWorld/);
+  assert.match(src, /uTileWorld\.w > 0\.5 \? world \* uTileWorld\.z \+ uTileWorld\.xy : world/);
+  assert.match(src, /this\._tileWorld = new Float32Array\(4\)/);
+  assert.match(src, /tw\[3\] = 1/);
+  assert.match(src, /useScreen = space === 'screen'/);
   assert.match(src, /texelFetch\(uTexLut/);
   assert.match(src, /floatBitsToUint\(aInstTintBits\)/);
   assert.match(src, /#version 300 es/);

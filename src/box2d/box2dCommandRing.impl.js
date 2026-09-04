@@ -34,6 +34,7 @@
     GROUP_APPLY_FORCE: 22, // entity=groupId, a=fx, b=fy
     GROUP_APPLY_IMPULSE: 23, // entity=groupId, a=ix, b=iy
     CLEAR_LIQUIDFUN_PARTICLES: 24, // systemId — destroy groups + zombie rest; keep system
+    SET_AWAKE: 25, // entity, flag (0|1) — b2Body_SetAwake
   });
 
   var BOX2D_CMD_HEADER_I32 = 4;
@@ -167,6 +168,10 @@
 
   function enqueueSetSleepThreshold(entity, threshold) {
     return enqueue(BOX2D_CMD.SET_SLEEP_THRESHOLD, entity, threshold, 0, 0, 0);
+  }
+
+  function enqueueSetAwake(entity, flag) {
+    return enqueue(BOX2D_CMD.SET_AWAKE, entity, flag ? 1 : 0, 0, 0, 0);
   }
 
   function enqueueCreateParticleSystem(systemId, radius, maxCount, subSteps, strictContactCheck) {
@@ -334,6 +339,9 @@
         case BOX2D_CMD.SET_SLEEP_THRESHOLD:
           if (handlers.setSleepThreshold) handlers.setSleepThreshold(entity, a);
           break;
+        case BOX2D_CMD.SET_AWAKE:
+          if (handlers.setAwake) handlers.setAwake(entity, a);
+          break;
         case BOX2D_CMD.CREATE_PARTICLE_SYSTEM:
           if (handlers.createParticleSystem) handlers.createParticleSystem(entity, a, b, c, d);
           break;
@@ -411,6 +419,7 @@
     enqueueSetFixedRotation: enqueueSetFixedRotation,
     enqueueExplode: enqueueExplode,
     enqueueSetSleepThreshold: enqueueSetSleepThreshold,
+    enqueueSetAwake: enqueueSetAwake,
     enqueueCreateParticleSystem: enqueueCreateParticleSystem,
     enqueueSetLiquidFunEmit: enqueueSetLiquidFunEmit,
     enqueueSetLiquidFunLifespan: enqueueSetLiquidFunLifespan,
