@@ -417,6 +417,21 @@
     Atomics.notify(poseSync, 0, 1);
   }
 
+  /**
+   * Next pose write would overwrite the slot pre_render is still reading.
+   * Never skip world.step — only skip publish. HEAP keeps moving; next free
+   * slot gets the latest pose (forward skip, not rewind, no sim hitch).
+   */
+  function posePublishBlocked() {
+    if (!poseSync) return false;
+    return poseFrame > Atomics.load(poseSync, 1);
+  }
+
+  function maybePublishPose(entityCount) {
+    if (posePublishBlocked()) return;
+    publishPose(entityCount);
+  }
+
   function isFixedRotation(i) {
     return !!(views.fixedRotation && views.fixedRotation[i]);
   }
@@ -1792,7 +1807,7 @@
       applyForcesAndTorque();
       cullLiquidFunOutsideWorld();
       world.step(dt, solverSteps);
-      publishPose(entityCount);
+      maybePublishPose(entityCount);
       afterStep();
       return;
     }
@@ -1812,7 +1827,7 @@
     cullLiquidFunOutsideWorld();
     world.step(dt, solverSteps);
     const t5 = performance.now();
-    publishPose(entityCount);
+    maybePublishPose(entityCount);
     afterStep();
     const t6 = performance.now();
     writePhysicsStats(

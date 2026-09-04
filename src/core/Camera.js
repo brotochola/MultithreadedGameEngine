@@ -56,6 +56,15 @@ export class Camera {
   static _poseRotC = null;
   static _poseRotS = null;
 
+  // Look-ahead vel frozen to pose-xy publishes (live HEAP vx wanders between publishes).
+  static _lookHoldIdx = -1;
+  static _lookHoldX = 0;
+  static _lookHoldY = 0;
+  static _lookHoldVx = 0;
+  static _lookHoldVy = 0;
+  static _lookHoldHasVel = false;
+  static _LOOK_HOLD_EMA = 0.5;
+
   // Free-cam (WASD/arrows pan + wheel zoom). Ticked by Scene via updateFree().
   static _free = false;
   static _freePanSpeed = 10;
@@ -416,10 +425,47 @@ export class Camera {
     this._poseY = y || null;
     this._poseRotC = rotC || null;
     this._poseRotS = rotS || null;
+    if (!this._poseX) this._clearLookHold();
+  }
+
+  static _clearLookHold() {
+    this._lookHoldIdx = -1;
+    this._lookHoldX = 0;
+    this._lookHoldY = 0;
+    this._lookHoldVx = 0;
+    this._lookHoldVy = 0;
+    this._lookHoldHasVel = false;
+  }
+
+  /**
+   * Resample HEAP vx/vy only when this entity's published pose xy changes.
+   * First sample copies; later publishes EMA so one noisy step does not spike look-ahead.
+   * Writes Camera._lookHoldVx/Vy.
+   */
+  static _poseLookVelocity(i, x, y) {
+    const poseChanged =
+      i !== this._lookHoldIdx || x !== this._lookHoldX || y !== this._lookHoldY;
+    if (poseChanged) {
+      const liveVx = RigidBody.vx ? RigidBody.vx[i] : 0;
+      const liveVy = RigidBody.vy ? RigidBody.vy[i] : 0;
+      if (!this._lookHoldHasVel || this._lookHoldIdx !== i) {
+        this._lookHoldVx = liveVx;
+        this._lookHoldVy = liveVy;
+        this._lookHoldHasVel = true;
+      } else {
+        const a = this._LOOK_HOLD_EMA;
+        this._lookHoldVx += (liveVx - this._lookHoldVx) * a;
+        this._lookHoldVy += (liveVy - this._lookHoldVy) * a;
+      }
+      this._lookHoldIdx = i;
+      this._lookHoldX = x;
+      this._lookHoldY = y;
+    }
   }
 
   /**
    * Follow an entity using published pose xy when available, plus velocity look-ahead.
+   * Look-ahead vel is frozen to pose-xy publishes so it shares the sprite clock.
    * @param {number} index - Entity index
    * @param {number} [lookAheadSec=0]
    * @param {number} [smoothing]
@@ -429,18 +475,28 @@ export class Camera {
     if (index == null) return;
     const i = index | 0;
     const poseX = this._poseX;
+    const look = lookAheadSec || 0;
     let x;
     let y;
+    let vx;
+    let vy;
     if (poseX && RigidBody.active && RigidBody.active[i]) {
       x = poseX[i];
       y = this._poseY[i];
+      if (look !== 0) {
+        this._poseLookVelocity(i, x, y);
+        vx = this._lookHoldVx;
+        vy = this._lookHoldVy;
+      } else {
+        vx = 0;
+        vy = 0;
+      }
     } else {
       x = Transform.x[i];
       y = Transform.y[i];
+      vx = RigidBody.vx ? RigidBody.vx[i] : 0;
+      vy = RigidBody.vy ? RigidBody.vy[i] : 0;
     }
-    const look = lookAheadSec || 0;
-    const vx = RigidBody.vx ? RigidBody.vx[i] : 0;
-    const vy = RigidBody.vy ? RigidBody.vy[i] : 0;
     this.follow(x + vx * look, y + vy * look, smoothing, dtRatio);
   }
 

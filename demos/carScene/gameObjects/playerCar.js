@@ -40,14 +40,13 @@ export class PlayerCar extends Car {
         if (player === null) return;
         if (!Transform.active[player]) return;
 
-        Camera.followEntity(player, LOOK_AHEAD_SEC, CAMERA_FOLLOW_SMOOTH, dtRatio);
-
         const speed = RigidBody.speed[player];
         const speedT = Math.min(
             1,
             Math.max(0, (speed - SPEED_FOR_MIN_ZOOM) / (SPEED_FOR_MAX_ZOOM - SPEED_FOR_MIN_ZOOM))
         );
-        Camera.setZoom(ZOOM_AT_MIN_SPEED + speedT * (ZOOM_AT_MAX_SPEED - ZOOM_AT_MIN_SPEED));
+        Camera.targetZoom = ZOOM_AT_MIN_SPEED + speedT * (ZOOM_AT_MAX_SPEED - ZOOM_AT_MIN_SPEED);
+        Camera.followEntity(player, LOOK_AHEAD_SEC, CAMERA_FOLLOW_SMOOTH, dtRatio);
     }
 
     /** W/S → forwardInput; A/D → turn */

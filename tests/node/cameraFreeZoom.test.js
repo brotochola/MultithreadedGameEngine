@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { Camera } from '../../src/core/Camera.js';
 import { Mouse } from '../../src/core/Mouse.js';
+import { RigidBody } from '../../src/components/RigidBody.js';
 
 function setupCamera({ zoom = 1, cx = 400, cy = 300, canvasW = 800, canvasH = 600 } = {}) {
   const data = new Float32Array(6);
@@ -95,4 +96,54 @@ test('updateFree equal in then out restores targetZoom (log-symmetric)', () => {
 
   Camera.setFree(false);
   Mouse.wheel = 0;
+});
+
+function stubPoseBody({ x = 10, y = 20, vx = 100, vy = 0 } = {}) {
+  const prevActive = RigidBody.active;
+  const prevVx = RigidBody.vx;
+  const prevVy = RigidBody.vy;
+  RigidBody.active = new Uint8Array([1]);
+  RigidBody.vx = new Float32Array([vx]);
+  RigidBody.vy = new Float32Array([vy]);
+  const poseX = new Float32Array([x]);
+  const poseY = new Float32Array([y]);
+  Camera.bindDisplayPose(poseX, poseY, new Float32Array([1]), new Float32Array([0]));
+  return {
+    poseX,
+    poseY,
+    restore() {
+      Camera.bindDisplayPose(null, null, null, null);
+      RigidBody.active = prevActive;
+      RigidBody.vx = prevVx;
+      RigidBody.vy = prevVy;
+    },
+  };
+}
+
+test('followEntity look-ahead ignores live vx until pose xy publishes', () => {
+  setupCamera({ zoom: 1, cx: 10, cy: 20 });
+  const stub = stubPoseBody({ x: 10, y: 20, vx: 100, vy: 0 });
+  const look = 0.33;
+
+  Camera.followEntity(0, look, 1, 1);
+  const first = Camera.getFollowTarget();
+  assert.ok(first);
+  assert.equal(first.x, 10 + 100 * look);
+  assert.equal(first.y, 20);
+
+  RigidBody.vx[0] = 999;
+  Camera.followEntity(0, look, 1, 1);
+  const frozen = Camera.getFollowTarget();
+  assert.equal(frozen.x, first.x);
+  assert.equal(frozen.y, first.y);
+
+  stub.poseX[0] = 12;
+  RigidBody.vx[0] = 200;
+  Camera.followEntity(0, look, 1, 1);
+  const emaVx = 100 + (200 - 100) * Camera._LOOK_HOLD_EMA;
+  const moved = Camera.getFollowTarget();
+  assert.ok(Math.abs(moved.x - (12 + emaVx * look)) < 1e-6);
+  assert.equal(moved.y, 20);
+
+  stub.restore();
 });
