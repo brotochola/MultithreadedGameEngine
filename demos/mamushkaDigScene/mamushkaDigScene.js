@@ -2,7 +2,7 @@
 
 import { Digger } from './gameObjects/digger.js';
 import { Lamp } from './gameObjects/lamp.js';
-import { MamushkaBox, ORDER1_CELL } from './gameObjects/mamushkaBox.js';
+import { MamushkaBox, ORDER1_CELL, weldTouchingMamushkas } from './gameObjects/mamushkaBox.js';
 import { buildOccupancy, packMamushkaRoots } from './mamushkaPack.js';
 import { Floor } from '/demos/ballsScene/gameObjects/floor.js';
 import { Camera } from '/src/core/Camera.js';
@@ -51,7 +51,7 @@ export class MamushkaDigScene extends WEED.Scene {
       sleeping: true,
       liquidFun: {
         enabled: true,
-        radius: 4,
+        radius: 7,
         maxCount: 32767,
         subSteps: 1,
         powderStrength: 0.7,
@@ -99,24 +99,24 @@ export class MamushkaDigScene extends WEED.Scene {
         scaleMode: LAYER_SCALE_MODE.LINEAR,
         maxItems: 0,
         ySorting: false,
-        shader: {
-          fragment: 'dulceDeLeche',
-          containerBlend: BLEND_MODES.ADD,
-          densitySource: LAYER_DENSITY_SOURCE.LIQUID_FUN,
-          splat: {
-            radius: 14,
-            falloff: LAYER_SPLAT_FALLOFF.QUADRATIC,
-            useParticleTint: true,
-            intensity: 0.35,
-          },
-          uniforms: {
-            uCutoff: { value: 0.42, type: 'f32' },
-            uRim: { value: 0.55, type: 'f32' },
-            uDepth: { value: 0.28, type: 'f32' },
-            uBodyAlpha: { value: 0.95, type: 'f32' },
-            uEdgeAlpha: { value: 0.8, type: 'f32' },
-          },
-        },
+        // shader: {
+        //   fragment: 'dulceDeLeche',
+        //   containerBlend: BLEND_MODES.ADD,
+        //   densitySource: LAYER_DENSITY_SOURCE.LIQUID_FUN,
+        //   splat: {
+        //     radius: 14,
+        //     falloff: LAYER_SPLAT_FALLOFF.QUADRATIC,
+        //     useParticleTint: true,
+        //     intensity: 0.35,
+        //   },
+        //   uniforms: {
+        //     uCutoff: { value: 0.42, type: 'f32' },
+        //     uRim: { value: 0.55, type: 'f32' },
+        //     uDepth: { value: 0.28, type: 'f32' },
+        //     uBodyAlpha: { value: 0.95, type: 'f32' },
+        //     uEdgeAlpha: { value: 0.8, type: 'f32' },
+        //   },
+        // },
       },
       fx: {
         zIndex: 4.5,
@@ -266,6 +266,7 @@ export class MamushkaDigScene extends WEED.Scene {
     console.log(
       `[MamushkaDigScene] packed ${roots.length} roots, spawned ${spawned}`,
     );
+    weldTouchingMamushkas();
   }
 
   spawnFloorAndWalls() {
@@ -273,6 +274,13 @@ export class MamushkaDigScene extends WEED.Scene {
     const w = this.config.worldWidth;
     const h = this.config.worldHeight;
 
+    Floor.spawn({
+      x: w / 2,
+      y: t / 2,
+      width: w + t * 2,
+      height: t,
+      tint: 0x445566,
+    });
     Floor.spawn({
       x: w / 2,
       y: h - t / 2,

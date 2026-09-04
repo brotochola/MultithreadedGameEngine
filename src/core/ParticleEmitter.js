@@ -116,6 +116,40 @@ export class ParticleEmitter extends SharedAtomicPool {
     return this._spawn(config, o);
   }
 
+  /**
+   * Flat particles sampled uniformly along segment (x0,y0)→(x1,y1).
+   * Remaining fields match emitFlat(); each sample uses count: 1 at the lerped position.
+   * @param {Object} config
+   * @param {number} config.x0
+   * @param {number} config.y0
+   * @param {number} config.x1
+   * @param {number} config.y1
+   * @param {number|{min:number,max:number}} [config.count=8] - sample count along line
+   * @returns {number}
+   */
+  static emitAlongLine(config) {
+    const { x0, y0, x1, y1, count = 8, ...rest } = config;
+    const n = Math.max(1, Math.round(randomRange(count, 8)));
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const o = this._flatOverrides;
+    o.gravity = rest.gravity ?? 0;
+    let spawned = 0;
+    for (let i = 1; i <= n; i++) {
+      const t = i / (n + 1);
+      spawned += this._spawn(
+        {
+          ...rest,
+          count: 1,
+          x: x0 + dx * t,
+          y: y0 + dy * t,
+        },
+        o
+      );
+    }
+    return spawned;
+  }
+
   /** Merge config + overrides into reusable scratch (clears stale keys). */
   static _mergeCfg(config, modeOverrides) {
     const s = this._cfgScratch;

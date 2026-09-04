@@ -852,6 +852,9 @@ export declare class GameObject {
   set height(value: number);
   get layerName(): string;
   get neighborCount(): number;
+  getJointCount(): number;
+  getJoint(i: number): number;
+  getJoints(): number[];
   markDirty(): void;
   setAlpha(value: number): this;
   setTint(value: number): this;
@@ -2975,9 +2978,16 @@ export declare class Joint extends SharedAtomicPool {
   static activeCount: Int32Array | null;
   static activeListLock: Int32Array | null;
   static revision: Uint32Array | null;
+  static nextA: Uint16Array | null;
+  static nextB: Uint16Array | null;
+  static head: Uint16Array | null;
   static bumpRevision(idx: number): void;
-  static getBufferSize(maxJoints: number): number;
-  static initializeArrays(buffer: SharedArrayBuffer, maxJoints: number): void;
+  static getBufferSize(maxJoints: number, entityCount?: number): number;
+  static initializeArrays(
+    buffer: SharedArrayBuffer,
+    maxJoints: number,
+    entityCount?: number
+  ): void;
   static addDistance(opts?: JointDistanceOpts): number;
   static addRevolute(opts?: JointRevoluteOpts): number;
   static addWeld(opts?: JointWeldOpts): number;
@@ -2986,6 +2996,13 @@ export declare class Joint extends SharedAtomicPool {
   static update(idx: number, props: Record<string, number | boolean>): void;
   static isActive(idx: number): boolean;
   static removeAllForEntity(entityIdx: number): void;
+  static hasBetween(entityA: number, entityB: number): boolean;
+  static getJointCount(entityIdx: number): number;
+  static getJoint(entityIdx: number, i: number): number;
+  static forEachOnEntity(
+    entityIdx: number,
+    fn: (jointIdx: number, otherEntity: number) => void
+  ): void;
   static getDenseActiveCount(): number;
   static getAllActive(): JointActiveEntry[];
   static reset(): void;

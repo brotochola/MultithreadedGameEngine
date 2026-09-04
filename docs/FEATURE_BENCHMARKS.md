@@ -77,7 +77,7 @@ Ray: [`RAY_HYPOTHESES.md`](./RAY_HYPOTHESES.md). Decals: [`DECAL_HYPOTHESES.md`]
 | AngularSweep visibility | `AngularSweep.js` | (todo) | (todo) | Predator | ms/polygon |
 | TileMap SAB queries | `TileMap.js` | (todo) | low value | tile demos | ns/`getTileId` |
 | QuerySystem publish | `QuerySystem.js` | (todo) | `stressScenes/QueryChurnScene` | — | publish / churn |
-| Pre-render cull + queue | `pre_render_worker` | partial | `stressScenes/RenderQueueStressScene` | Predator | `VISIBILITY_MS`, `VISIBLE_*` |
+| Pre-render cull + queue | `pre_render_worker` | `sr-flags-microbench.mjs` (7 Uint8 vs packed — **kill** L1+L3: cull kernel wins, queue noise, dirty RMW loses; Predator `preRender.STEP_MS` in noise vs 7 columns) | `stressScenes/RenderQueueStressScene` | Predator | L1 packed/strided; L3 `COLLECT_MS`/`EMIT_MS`/`STEP_MS` |
 | DecorationsSpatial | `DecorationSpatial.js` | (todo) | (todo) | zenithal | `queryCircle` ms |
 | Bullet tick + Ray | `BulletPool`, particle_worker | (todo) | can share RayStress | Predator | particle `STEP_MS` |
 | Treiber free list / rings | `atomicFreeList`, rings | (todo) | (todo) spawn-storm | Balls spawn | pop/push/s |

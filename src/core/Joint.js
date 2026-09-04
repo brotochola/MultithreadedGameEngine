@@ -57,11 +57,16 @@ export class Joint extends SharedAtomicPool {
   static activeCount = null; // Int32Array[1]
   static activeListLock = null; // Int32Array[1]
   static revision = null; // Uint32Array — bump on add/update/remove
+  static nextA = null; // Uint16Array maxJoints — intrusive list
+  static nextB = null;
+  static head = null; // Uint16Array entityCount
+  static _entityCount = 0;
 
-  static getBufferSize(maxJoints) {
+  static getBufferSize(maxJoints, entityCount = 0) {
     // Mirror initializeArrays offsets
     let offset = 0;
     const n = maxJoints;
+    const e = entityCount | 0;
     const align4 = (o) => Math.ceil(o / 4) * 4;
     offset = align4(offset + n); // type
     offset += n * 4; // pairs
@@ -84,10 +89,16 @@ export class Joint extends SharedAtomicPool {
     offset += n * 2; // activeIndexPositions
     offset += 8; // activeMeta
     offset += n * 4; // revision
+    offset = align4(offset);
+    offset += n * 2; // nextA
+    offset += n * 2; // nextB
+    offset = align4(offset);
+    offset += e * 2; // head
+    offset = align4(offset);
     return offset;
   }
 
-  static initializeArrays(buffer, maxJoints) {
+  static initializeArrays(buffer, maxJoints, entityCount = 0) {
     let offset = 0;
     const n = maxJoints;
     const align4 = (o) => Math.ceil(o / 4) * 4;
@@ -158,6 +169,21 @@ export class Joint extends SharedAtomicPool {
 
     this.revision = new Uint32Array(buffer, offset, n);
     offset += n * 4;
+    offset = align4(offset);
+
+    this.nextA = new Uint16Array(buffer, offset, n);
+    offset += n * 2;
+    this.nextB = new Uint16Array(buffer, offset, n);
+    offset += n * 2;
+    offset = align4(offset);
+
+    this._entityCount = entityCount | 0;
+    this.head =
+      this._entityCount > 0
+        ? new Uint16Array(buffer, offset, this._entityCount)
+        : null;
+    offset += this._entityCount * 2;
+    offset = align4(offset);
 
     this.active.fill(0);
     this.type.fill(0);
@@ -166,6 +192,9 @@ export class Joint extends SharedAtomicPool {
     this.revision.fill(0);
     this.activeIndices.fill(this.INVALID_INDEX);
     this.activeIndexPositions.fill(this.INVALID_INDEX);
+    this.nextA.fill(this.INVALID_INDEX);
+    this.nextB.fill(this.INVALID_INDEX);
+    if (this.head) this.head.fill(this.INVALID_INDEX);
     this.activeMeta[0] = 0;
     this.activeMeta[1] = 0;
   }
@@ -198,6 +227,61 @@ export class Joint extends SharedAtomicPool {
     };
   }
 
+  static _nextOnEntity(jointIdx, entity) {
+    const a = this.pairs[jointIdx] >>> 16;
+    return a === entity ? this.nextA[jointIdx] : this.nextB[jointIdx];
+  }
+
+  static _setNextOnEntity(jointIdx, entity, next) {
+    const a = this.pairs[jointIdx] >>> 16;
+    if (a === entity) this.nextA[jointIdx] = next;
+    else this.nextB[jointIdx] = next;
+  }
+
+  static _linkPair(idx) {
+    if (!this.head) return;
+    const packed = this.pairs[idx];
+    const a = packed >>> 16;
+    const b = packed & 0xffff;
+    const inv = this.INVALID_INDEX;
+    if (a < this._entityCount) {
+      this.nextA[idx] = this.head[a];
+      this.head[a] = idx;
+    } else {
+      this.nextA[idx] = inv;
+    }
+    if (b < this._entityCount) {
+      this.nextB[idx] = this.head[b];
+      this.head[b] = idx;
+    } else {
+      this.nextB[idx] = inv;
+    }
+  }
+
+  static _unlinkEntity(entity, jointIdx) {
+    if (!this.head || entity < 0 || entity >= this._entityCount) return;
+    const inv = this.INVALID_INDEX;
+    let prev = inv;
+    let cur = this.head[entity];
+    while (cur !== inv) {
+      const nxt = this._nextOnEntity(cur, entity);
+      if (cur === jointIdx) {
+        if (prev === inv) this.head[entity] = nxt;
+        else this._setNextOnEntity(prev, entity, nxt);
+        return;
+      }
+      prev = cur;
+      cur = nxt;
+    }
+  }
+
+  static _unlinkPair(idx) {
+    if (!this.head) return;
+    const packed = this.pairs[idx];
+    this._unlinkEntity(packed >>> 16, idx);
+    this._unlinkEntity(packed & 0xffff, idx);
+  }
+
   static _activate(idx) {
     this.bumpRevision(idx);
     this.acquireSpinLock(this.activeListLock);
@@ -206,6 +290,7 @@ export class Joint extends SharedAtomicPool {
       this.activeIndices[slot] = idx;
       this.activeIndexPositions[idx] = slot;
       this.active[idx] = 1;
+      this._linkPair(idx);
       if (this.activeCount) {
         Atomics.store(this.activeCount, 0, slot + 1);
       }
@@ -301,6 +386,7 @@ export class Joint extends SharedAtomicPool {
       const slot = this.activeIndexPositions[idx];
       const lastSlot = count - 1;
 
+      this._unlinkPair(idx);
       this.active[idx] = 0;
 
       if (slot !== this.INVALID_INDEX && lastSlot >= 0) {
@@ -421,6 +507,18 @@ export class Joint extends SharedAtomicPool {
   }
 
   static removeAllForEntity(entityIdx) {
+    if (this.head && entityIdx >= 0 && entityIdx < this._entityCount) {
+      const inv = this.INVALID_INDEX;
+      let cur = this.head[entityIdx];
+      while (cur !== inv) {
+        const packed = this.pairs[cur];
+        const a = packed >>> 16;
+        const nxt = a === entityIdx ? this.nextA[cur] : this.nextB[cur];
+        this.remove(cur);
+        cur = nxt;
+      }
+      return;
+    }
     const activeCount = this.getDenseActiveCount();
     for (let slot = activeCount - 1; slot >= 0; slot--) {
       const idx = this.activeIndices[slot];
@@ -431,6 +529,66 @@ export class Joint extends SharedAtomicPool {
       if (a === entityIdx || b === entityIdx) {
         this.remove(idx);
       }
+    }
+  }
+
+  static hasBetween(entityA, entityB) {
+    const a = entityA | 0;
+    const b = entityB | 0;
+    if (a === b || !this.head || a < 0 || a >= this._entityCount) return false;
+    const inv = this.INVALID_INDEX;
+    let cur = this.head[a];
+    while (cur !== inv) {
+      const packed = this.pairs[cur];
+      const ea = packed >>> 16;
+      const eb = packed & 0xffff;
+      if ((ea === a && eb === b) || (ea === b && eb === a)) return true;
+      cur = ea === a ? this.nextA[cur] : this.nextB[cur];
+    }
+    return false;
+  }
+
+  static getJointCount(entityIdx) {
+    if (!this.head || entityIdx < 0 || entityIdx >= this._entityCount) return 0;
+    const inv = this.INVALID_INDEX;
+    let n = 0;
+    let cur = this.head[entityIdx];
+    while (cur !== inv) {
+      n++;
+      const a = this.pairs[cur] >>> 16;
+      cur = a === entityIdx ? this.nextA[cur] : this.nextB[cur];
+    }
+    return n;
+  }
+
+  static getJoint(entityIdx, i) {
+    if (!this.head || i < 0 || entityIdx < 0 || entityIdx >= this._entityCount) {
+      return -1;
+    }
+    const inv = this.INVALID_INDEX;
+    let cur = this.head[entityIdx];
+    let k = 0;
+    while (cur !== inv) {
+      if (k === i) return cur;
+      k++;
+      const a = this.pairs[cur] >>> 16;
+      cur = a === entityIdx ? this.nextA[cur] : this.nextB[cur];
+    }
+    return -1;
+  }
+
+  static forEachOnEntity(entityIdx, fn) {
+    if (!this.head || entityIdx < 0 || entityIdx >= this._entityCount) return;
+    const inv = this.INVALID_INDEX;
+    let cur = this.head[entityIdx];
+    while (cur !== inv) {
+      const packed = this.pairs[cur];
+      const ea = packed >>> 16;
+      const eb = packed & 0xffff;
+      const other = ea === entityIdx ? eb : ea;
+      const nxt = ea === entityIdx ? this.nextA[cur] : this.nextB[cur];
+      fn(cur, other);
+      cur = nxt;
     }
   }
 
@@ -460,7 +618,6 @@ export class Joint extends SharedAtomicPool {
     }
     return result;
   }
-
 
   /**
    * Full SoA dump of every dense-active joint for save games.
@@ -620,5 +777,9 @@ export class Joint extends SharedAtomicPool {
     this.activeCount = null;
     this.activeListLock = null;
     this.revision = null;
+    this.nextA = null;
+    this.nextB = null;
+    this.head = null;
+    this._entityCount = 0;
   }
 }

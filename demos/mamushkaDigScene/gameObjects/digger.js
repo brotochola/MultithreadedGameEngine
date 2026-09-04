@@ -25,10 +25,9 @@ const AIR_CONTROL = 0.35;
 const JETPACK_ACCEL = -3600;
 const SCALE = 0.35;
 const BODY_RADIUS = 30;
-const LASER_COOLDOWN_MS = 50;
-const LASER_RANGE = 2500;
-const LASER_DAMAGE = 1;
-const LASER_SAMPLES = 8;
+const LASER_COOLDOWN_MS = 30;
+const LASER_RANGE = 10000;
+const LASER_DAMAGE = 0.5;
 const HELMET_INTENSITY = 3000;
 const ASSET = 'blue_character';
 const CLIPS = Object.freeze({
@@ -212,66 +211,69 @@ export class Digger extends GameObject {
     if (now - this._lastFireAt < LASER_COOLDOWN_MS) return;
     this._lastFireAt = now;
 
-    const px = this.x;
-    const py = this.y;
-    const tx = Mouse.x;
-    const ty = Mouse.y;
-    const dx = tx - px;
-    const dy = ty - py;
-    const len = Math.hypot(dx, dy);
-    if (len < 1) return;
-    const nx = dx / len;
-    const ny = dy / len;
-    const ox = px + nx * (BODY_RADIUS + 2);
-    const oy = py + ny * (BODY_RADIUS + 2);
+    const mouseX = Mouse.x;
+    const mouseY = Mouse.y;
+    const aimDx = mouseX - this.x;
+    const aimDy = mouseY - this.y;
+    const aimLenSq = aimDx * aimDx + aimDy * aimDy;
+    if (aimLenSq < 1) return;
+    const invAimLen = 1 / Math.sqrt(aimLenSq);
+    const dirX = aimDx * invAimLen;
+    const dirY = aimDy * invAimLen;
+    const muzzleX = this.x + dirX * (BODY_RADIUS + 2);
+    const muzzleY = this.y + dirY * (BODY_RADIUS + 2);
 
-    const info = Ray.castWithInfo(ox, oy, tx, ty, LASER_RANGE);
-    const endX = info.hit ? info.hitX : ox + nx * LASER_RANGE;
-    const endY = info.hit ? info.hitY : oy + ny * LASER_RANGE;
-    this._emitBeam(ox, oy, endX, endY);
-
-    if (!info.hit || info.entityIndex < 0) return;
-    if (Transform.entityType[info.entityIndex] !== MamushkaBox.entityType) return;
-    const box = GameObject.get(info.entityIndex);
-    if (box && box.active) box.takeHit(LASER_DAMAGE);
-  }
-
-  _emitBeam(x0, y0, x1, y1) {
+    const hit = Ray.castWithInfo(
+      muzzleX,
+      muzzleY,
+      muzzleX + dirX * LASER_RANGE,
+      muzzleY + dirY * LASER_RANGE,
+      LASER_RANGE
+    );
+    const hitX = hit.hit ? hit.hitX : muzzleX + dirX * LASER_RANGE;
+    const hitY = hit.hit ? hit.hitY : muzzleY + dirY * LASER_RANGE;
     const layerId = fxLayerId();
-    const dx = x1 - x0;
-    const dy = y1 - y0;
-    const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-    for (let i = 1; i <= LASER_SAMPLES; i++) {
-      const t = i / (LASER_SAMPLES + 1);
+    const beamDist = hit.hit ? hit.distance : LASER_RANGE;
+    const numberOfParticles = beamDist > 150 ? 150 : beamDist / 10;
+
+    ParticleEmitter.emitAlongLine({
+      x0: muzzleX,
+      y0: muzzleY,
+      x1: hitX,
+      y1: hitY,
+      vx: { min: -0.5, max: 0.5 },
+      vy: { min: -0.5, max: 0.5 },
+      count: numberOfParticles,
+      texture: '_whiteCircle',
+      gravity: -0.1,
+      lifespan: { min: 150, max: 320 },
+      scale: { from: { min: 1.0, max: 1.4 }, to: { min: 1.5, max: 2 } },
+      tint: { min: 0x7ef9ff, max: 0xddffff },
+      alpha: { from: { min: 0.55, max: 0.95 }, to: 0 },
+      layerId,
+    });
+
+    if (hit.hit) {
       ParticleEmitter.emitFlat({
-        count: { min: 1, max: 2 },
-        x: x0 + dx * t,
-        y: y0 + dy * t,
-        angleXY: { min: ang - 12, max: ang + 12 },
-        speed: { min: 3, max: 14 },
-        gravity: 0,
-        lifespan: { min: 50, max: 120 },
-        scale: { min: 1.2, max: 2.4 },
+        count: { min: 4, max: 8 },
+        x: hitX,
+        y: hitY,
+        angleXY: { min: 0, max: 360 },
+        speed: { min: 2, max: 8 },
+        gravity: 0.15,
+        lifespan: { min: 70, max: 160 },
+        scale: { min: 1, max: 2.2 },
         texture: '_whiteCircle',
-        tint: { min: 0x7ef9ff, max: 0xddffff },
-        alpha: { from: { min: 0.55, max: 0.95 }, to: 0 },
+        tint: { min: 0xaaffff, max: 0xffffff },
+        alpha: { from: { min: 0.5, max: 0.95 }, to: 0 },
         layerId,
       });
     }
-    ParticleEmitter.emitFlat({
-      count: { min: 8, max: 12 },
-      x: x1,
-      y: y1,
-      angleXY: { min: 0, max: 360 },
-      speed: { min: 2, max: 8 },
-      gravity: 0.15,
-      lifespan: { min: 70, max: 160 },
-      scale: { min: 1, max: 2.2 },
-      texture: '_whiteCircle',
-      tint: { min: 0xaaffff, max: 0xffffff },
-      alpha: { from: { min: 0.5, max: 0.95 }, to: 0 },
-      layerId,
-    });
+
+    if (!hit.hit || hit.entityIndex < 0) return;
+    if (Transform.entityType[hit.entityIndex] !== MamushkaBox.entityType) return;
+    const box = GameObject.get(hit.entityIndex);
+    if (box && box.active) box.takeHit(LASER_DAMAGE);
   }
 
   tick(_dtRatio, _deltaTime, accumulatedTime) {

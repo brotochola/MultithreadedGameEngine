@@ -308,6 +308,7 @@ function buildSceneWorkerInitData(scene, sharedBuffers, scriptsToLoad) {
       ? {
           enabled: true,
           maxJoints: scene.config.physics.maxJoints,
+          entityCount: scene.totalEntityCount,
           data: scene.buffers.jointData,
           freeList: scene.buffers.jointFreeList,
           freeListTop: scene.buffers.jointFreeListTop,

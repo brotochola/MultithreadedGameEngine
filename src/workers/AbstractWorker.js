@@ -529,7 +529,11 @@ export class AbstractWorker {
 
     // Initialize Joint system (Box2D-mapped distance/revolute/weld)
     if (data.joints && data.joints.enabled) {
-      Joint.initializeArrays(data.joints.data, data.joints.maxJoints);
+      Joint.initializeArrays(
+        data.joints.data,
+        data.joints.maxJoints,
+        data.joints.entityCount || 0
+      );
       Joint.initialize(data.joints.maxJoints);
       Joint.initializeFreeList(data.joints.freeList, data.joints.freeListTop);
       this.reportLog(`initialized Joint system for ${data.joints.maxJoints} joints`);

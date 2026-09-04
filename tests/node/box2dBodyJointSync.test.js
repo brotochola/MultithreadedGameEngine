@@ -51,8 +51,8 @@ test('body generation: bump increments and marks lifecycle dirty', () => {
 test('joint revision: bumps on add, update, remove; slot reuse gets new rev', () => {
   const maxJoints = 8;
   Joint.reset();
-  const sab = new SharedArrayBuffer(Joint.getBufferSize(maxJoints));
-  Joint.initializeArrays(sab, maxJoints);
+  const sab = new SharedArrayBuffer(Joint.getBufferSize(maxJoints, 8));
+  Joint.initializeArrays(sab, maxJoints, 8);
 
   const freeListSab = new SharedArrayBuffer(maxJoints * 2);
   const freeListTopSab = new SharedArrayBuffer(8);
@@ -68,6 +68,10 @@ test('joint revision: bumps on add, update, remove; slot reuse gets new rev', ()
     length: 10,
   });
   assert.ok(idx >= 0);
+  assert.equal(Joint.hasBetween(1, 2), true);
+  assert.equal(Joint.hasBetween(2, 1), true);
+  assert.equal(Joint.getJointCount(1), 1);
+  assert.equal(Joint.getJoint(1, 0), idx);
   const rev1 = Atomics.load(Joint.revision, idx);
   assert.ok(rev1 > 0);
 
@@ -78,6 +82,8 @@ test('joint revision: bumps on add, update, remove; slot reuse gets new rev', ()
   Joint.remove(idx);
   const revAfterRemove = Atomics.load(Joint.revision, idx);
   assert.ok(revAfterRemove > rev2);
+  assert.equal(Joint.hasBetween(1, 2), false);
+  assert.equal(Joint.getJointCount(1), 0);
 
   const idx2 = Joint.addDistance({
     entityA: 3,

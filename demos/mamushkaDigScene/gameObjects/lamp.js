@@ -2,7 +2,7 @@
 
 import WEED from '/src/index.js';
 
-const { GameObject, Collider, SpriteRenderer, LightEmitter, enums } = WEED;
+const { GameObject, Collider, SpriteRenderer, LightEmitter, enums, RigidBody } = WEED;
 const { ShapeType } = enums;
 
 const LAMP_RADIUS = 14;
@@ -10,12 +10,12 @@ const LAMP_RANGE = 750;
 
 export class Lamp extends GameObject {
   static scriptUrl = import.meta.url;
-  static components = [Collider, SpriteRenderer, LightEmitter];
+  static components = [Collider, SpriteRenderer, LightEmitter, RigidBody];
 
   setup() {
     this.collider.shapeType = ShapeType.Circle;
     this.collider.radius = LAMP_RADIUS;
-    this.collider.isTrigger = 1;
+    // this.collider.isTrigger = 1;
     this.collider.visualRange = LAMP_RANGE;
     this.setSprite('_whiteCircle');
     this.setScale(2.8, 2.8);

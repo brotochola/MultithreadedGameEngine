@@ -8,7 +8,7 @@ export const MATERIAL_DIRT = 0;
 export const MATERIAL_STONE = 1;
 
 export const MATERIAL_TINT = Object.freeze({
-  [MATERIAL_DIRT]: 0xc4a574,
+  [MATERIAL_DIRT]: 0x72411a,
   [MATERIAL_STONE]: 0x9a9aa0,
 });
 

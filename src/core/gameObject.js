@@ -14,6 +14,7 @@ import { LightOccluder } from '../components/LightOccluder.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { Layer } from './Layer.js';
 import { Grid } from './Grid.js';
+import { Joint } from './Joint.js';
 import { ShapeType, SPRITE_TILE_MODE } from './ConfigDefaults.js';
 import { collectComponents, cantorPair, distanceSq2D } from './utils.js';
 import {
@@ -1821,6 +1822,21 @@ export class GameObject {
       out[i] = entities[neighbors[i]];
     }
     out.length = count;
+    return out;
+  }
+
+  getJointCount() {
+    return Joint.getJointCount(this.index);
+  }
+
+  getJoint(i) {
+    return Joint.getJoint(this.index, i);
+  }
+
+  getJoints() {
+    const n = this.getJointCount();
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) out[i] = this.getJoint(i);
     return out;
   }
 

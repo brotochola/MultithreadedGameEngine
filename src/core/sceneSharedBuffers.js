@@ -570,9 +570,9 @@ function initializeCollisionConstraintSunAndTrackingBuffers(scene) {
   Joint.reset();
   const maxJoints = config.physics.maxJoints || 0;
   if (maxJoints > 0) {
-    const jointBufferSize = Joint.getBufferSize(maxJoints);
+    const jointBufferSize = Joint.getBufferSize(maxJoints, totalEntityCount);
     buffers.jointData = new SharedArrayBuffer(jointBufferSize);
-    Joint.initializeArrays(buffers.jointData, maxJoints);
+    Joint.initializeArrays(buffers.jointData, maxJoints, totalEntityCount);
 
     const { freeList, freeListTop } = createUint16FreeListBuffers(
       buffers,
