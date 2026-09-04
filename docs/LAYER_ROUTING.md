@@ -100,7 +100,10 @@ BulletPool.spawn({
 ```javascript
 // Inside entity tick() or onSpawned()
 this.setLayer('water');
+this.setTileWorld(128); // optional: world-lock atlas tiling on this sprite
 ```
+
+World vs local tiling (`setTileWorld` / `setTileLocal` / `bakeWorldTileToLocal`) is a **sprite** property, not a layer property. Shader layers with a viewport density RT still tile in world space — do not set `space` on the layer (internal). See the bible **Sprite tiling** section.
 
 **Light Glows:**
 ```javascript
@@ -207,3 +210,4 @@ layers: {
 - `layerId` values must correspond to registered custom layers that have render queues. Built-in layer IDs (BACKGROUND, DECALS, CASTED_SHADOWS, LIGHTING) won't work as routing targets because they don't have generic render queues.
 - Exception: `LAYER_DENSITY_SOURCE.LIQUID_FUN` layers intentionally have **no** sprite render queue; route LiquidFun there via `layerId` for buffer density only (v1 = LF-only density layer).
 - `Layer.MAX_LAYERS = 16`, so valid IDs are 0-15.
+- Shader-layer density RTs are viewport-sized. The worker may convert instance XY to screen pixels for that pass; tiling still uses world coordinates (`uTileWorld`). There is no public `space` / `uploadSpace` layer config.

@@ -24,8 +24,10 @@ import {
 
 import { DECORATION_Y_SORT_SCALE, ENTITY_GLOW_SORT_BIAS } from '../core/ConfigDefaults.js';
 
-/** Compact instance floats: xy, scale, anchor, rotCS, depth, packedARGB, texId, tileInv. */
-export const INSTANCED_SPRITE_FLOATS = 13;
+/** Compact instance floats: xy, scale, anchor, rotCS, depth, packedARGB, texId, tileInv, tileOff.
+ *  tileInv sign: + WORLD (1/period), - LOCAL (worldVis/period), 0 stretch. tileOff is UV 0..1.
+ *  Two extra floats vs pre-tile-offset stride — per visible instance, not per pool entity. */
+export const INSTANCED_SPRITE_FLOATS = 15;
 export const INSTANCED_SPRITE_STRIDE = INSTANCED_SPRITE_FLOATS * 4;
 
 const Y_SORT_K = DECORATION_Y_SORT_SCALE;
@@ -41,6 +43,7 @@ in float aInstDepth;
 in float aInstTintBits;
 in float aInstTexId;
 in vec2 aInstTileInv;
+in vec2 aInstTileOff;
 
 uniform mat3 uProjectionMatrix;
 uniform mat3 uWorldTransformMatrix;
@@ -53,6 +56,7 @@ out vec4 vColor;
 out vec2 vWorld;
 out vec4 vAtlasUV;
 out vec2 vTileInv;
+out vec2 vTileOff;
 
 void main() {
   int tid = int(aInstTexId + 0.5);
@@ -91,16 +95,19 @@ void main() {
   vWorld = uTileWorld.w > 0.5 ? world * uTileWorld.z + uTileWorld.xy : world;
   vAtlasUV = aInstUV;
   vTileInv = aInstTileInv;
+  vTileOff = aInstTileOff;
 }
 `;
 
-/** Sample atlas rect; optional world-space fract tile (repeatX/Y). */
+/** Sample atlas rect; WORLD (+tileInv) vs LOCAL (-tileInv) vs stretch (0). */
 function tiledSamplePrelude() {
   return `
 vec2 weedUv() {
   vec2 t = vLocal;
-  if (vTileInv.x > 0.0) t.x = fract(vWorld.x * vTileInv.x);
-  if (vTileInv.y > 0.0) t.y = fract(vWorld.y * vTileInv.y);
+  if (vTileInv.x > 0.0) t.x = fract(vWorld.x * vTileInv.x + vTileOff.x);
+  else if (vTileInv.x < 0.0) t.x = fract(vLocal.x * (-vTileInv.x) + vTileOff.x);
+  if (vTileInv.y > 0.0) t.y = fract(vWorld.y * vTileInv.y + vTileOff.y);
+  else if (vTileInv.y < 0.0) t.y = fract(vLocal.y * (-vTileInv.y) + vTileOff.y);
   return mix(vAtlasUV.xy, vAtlasUV.zw, t);
 }
 `;
@@ -118,6 +125,7 @@ in vec4 vColor;
 in vec2 vWorld;
 in vec4 vAtlasUV;
 in vec2 vTileInv;
+in vec2 vTileOff;
 uniform sampler2D uTexture;
 out vec4 finalColor;
 
@@ -140,6 +148,7 @@ in vec4 vColor;
 in vec2 vWorld;
 in vec4 vAtlasUV;
 in vec2 vTileInv;
+in vec2 vTileOff;
 uniform sampler2D uTexture;
 out vec4 finalColor;
 
@@ -161,6 +170,7 @@ in vec4 vColor;
 in vec2 vWorld;
 in vec4 vAtlasUV;
 in vec2 vTileInv;
+in vec2 vTileOff;
 uniform sampler2D uTexture;
 out vec4 finalColor;
 
@@ -315,6 +325,7 @@ export class InstancedSpriteBatch {
         aInstTintBits: { buffer: buf, format: 'float32', stride, offset: 36, instance: true },
         aInstTexId: { buffer: buf, format: 'float32', stride, offset: 40, instance: true },
         aInstTileInv: { buffer: buf, format: 'float32x2', stride, offset: 44, instance: true },
+        aInstTileOff: { buffer: buf, format: 'float32x2', stride, offset: 52, instance: true },
       },
       indexBuffer: [0, 1, 2, 0, 2, 3],
     });
@@ -449,6 +460,10 @@ export class InstancedSpriteBatch {
     const rqAnchorY = q.anchorY;
     const rqRepeatX = q.repeatX;
     const rqRepeatY = q.repeatY;
+    const rqTileMulX = q.tileMulX;
+    const rqTileMulY = q.tileMulY;
+    const rqTileOffU = q.tileOffsetU;
+    const rqTileOffV = q.tileOffsetV;
 
     const useSortKey = depthMode === 'sortKey' && sortKeyArr;
     if (!useIndices && includeType !== undefined && !typeArr) {
@@ -509,6 +524,8 @@ export class InstancedSpriteBatch {
 
       const rx = rqRepeatX ? rqRepeatX[i] : 0;
       const ry = rqRepeatY ? rqRepeatY[i] : 0;
+      const invX = rqTileMulX ? rqTileMulX[i] : (rx > 0 ? 1 / rx : 0);
+      const invY = rqTileMulY ? rqTileMulY[i] : (ry > 0 ? 1 / ry : 0);
       data[base] = x;
       data[base + 1] = y;
       data[base + 2] = sx;
@@ -520,8 +537,10 @@ export class InstancedSpriteBatch {
       data[base + 8] = depth;
       dataU32[base + 9] = packed >>> 0;
       data[base + 10] = rqTextureId[i];
-      data[base + 11] = rx > 0 ? 1 / rx : 0;
-      data[base + 12] = ry > 0 ? 1 / ry : 0;
+      data[base + 11] = invX;
+      data[base + 12] = invY;
+      data[base + 13] = rqTileOffU ? rqTileOffU[i] * (1 / 65535) : 0;
+      data[base + 14] = rqTileOffV ? rqTileOffV[i] * (1 / 65535) : 0;
       base += INSTANCED_SPRITE_FLOATS;
       out++;
     }

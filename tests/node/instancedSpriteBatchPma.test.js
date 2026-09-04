@@ -40,10 +40,12 @@ test('vertex shader uses aInstRotCS without cos/sin of angle', () => {
   assert.match(src, /in vec2 aInstRotCS/);
   assert.match(src, /float c = aInstRotCS\.x/);
   assert.doesNotMatch(src, /cos\(aInstRot\)/);
-  assert.match(src, /INSTANCED_SPRITE_FLOATS = 13/);
+  assert.match(src, /INSTANCED_SPRITE_FLOATS = 15/);
   assert.match(src, /this\.buffer\.update\(out \* INSTANCED_SPRITE_STRIDE\)/);
   assert.match(src, /aInstTileInv/);
-  assert.match(src, /fract\(vWorld\.x \* vTileInv\.x\)/);
+  assert.match(src, /aInstTileOff/);
+  assert.match(src, /fract\(vWorld\.x \* vTileInv\.x \+ vTileOff\.x\)/);
+  assert.match(src, /fract\(vLocal\.x \* \(-vTileInv\.x\) \+ vTileOff\.x\)/);
   assert.match(src, /uniform vec4 uTileWorld/);
   assert.match(src, /uTileWorld\.w > 0\.5 \? world \* uTileWorld\.z \+ uTileWorld\.xy : world/);
   assert.match(src, /this\._tileWorld = new Float32Array\(4\)/);
@@ -89,12 +91,16 @@ test('render-queue partition idx buffers are Uint32 (no Uint16 wrap past 65535)'
   assert.doesNotMatch(pixiSrc, /_rqIdxGlow = new Uint16Array\(maxItems\)/);
 });
 
-test('entity and custom-layer uploads pass queue repeatX/Y', () => {
+test('entity and custom-layer uploads pass queue repeatX/Y and tile fields', () => {
   assert.match(pixiSrc, /this\.renderQueueRepeatX = buffer\.repeatX/);
   assert.match(pixiSrc, /repeatX: this\.renderQueueRepeatX/);
   assert.match(pixiSrc, /repeatY: this\.renderQueueRepeatY/);
+  assert.match(pixiSrc, /tileMulX: this\.renderQueueTileMulX/);
+  assert.match(pixiSrc, /tileOffsetU: this\.renderQueueTileOffsetU/);
   assert.match(pixiSrc, /repeatX: ref\.repeatX/);
   assert.match(pixiSrc, /repeatY: ref\.repeatY/);
+  assert.match(pixiSrc, /tileMulX: ref\.tileMulX/);
+  assert.match(pixiSrc, /tileOffsetU: ref\.tileOffsetU/);
 });
 
 test('pixi binds packed LUT as rgba32float TextureSource', () => {

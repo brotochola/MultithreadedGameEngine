@@ -30,6 +30,13 @@ export const LAYER_SCALE_MODE: Readonly<{
   NEAREST: 'nearest';
 }>;
 
+/** Sprite atlas tiling. repeatX/Y is world-px period; 0 = stretch. */
+export const SPRITE_TILE_MODE: Readonly<{
+  STRETCH: 0;
+  WORLD: 1;
+  LOCAL: 2;
+}>;
+
 export type LayerDensitySource =
   | typeof LAYER_DENSITY_SOURCE[keyof typeof LAYER_DENSITY_SOURCE]
   | 'sprites'
@@ -848,6 +855,10 @@ export declare class GameObject {
   markDirty(): void;
   setAlpha(value: number): this;
   setTint(value: number): this;
+  setTileWorld(periodX: number, periodY?: number, u0?: number, v0?: number): this;
+  setTileLocal(periodX: number, periodY?: number, u0?: number, v0?: number): this;
+  clearTile(): this;
+  bakeWorldTileToLocal(): this;
   static spawn(
     EntityClassOrConfig: typeof GameObject | SpawnConfig,
     spawnConfig?: SpawnConfig,
@@ -2320,6 +2331,9 @@ export declare class SpriteRenderer extends Component {
     spriteRotS: typeof Float32Array;
     repeatX: typeof Uint16Array;
     repeatY: typeof Uint16Array;
+    tileMode: typeof Uint8Array;
+    tileOffsetU: typeof Uint16Array;
+    tileOffsetV: typeof Uint16Array;
   };
   static active: Uint8Array;
   static isAnimated: Uint8Array;
@@ -2348,12 +2362,21 @@ export declare class SpriteRenderer extends Component {
   static spriteRotS: Float32Array;
   static repeatX: Uint16Array;
   static repeatY: Uint16Array;
+  static tileMode: Uint8Array;
+  static tileOffsetU: Uint16Array;
+  static tileOffsetV: Uint16Array;
   get spriteRotation(): number;
   set spriteRotation(v: number);
   get repeatX(): number;
   set repeatX(value: number);
   get repeatY(): number;
   set repeatY(value: number);
+  get tileMode(): number;
+  set tileMode(value: number);
+  get tileOffsetU(): number;
+  set tileOffsetU(value: number);
+  get tileOffsetV(): number;
+  set tileOffsetV(value: number);
   static getOriginalWidth(entityIndex: number): number;
   static getOriginalHeight(entityIndex: number): number;
   static updateBounds(entityIndex: number): void;
@@ -3049,6 +3072,7 @@ export interface WeedEnums {
   LAYER_DENSITY_SOURCE: typeof LAYER_DENSITY_SOURCE;
   LAYER_SPLAT_FALLOFF: typeof LAYER_SPLAT_FALLOFF;
   LAYER_SCALE_MODE: typeof LAYER_SCALE_MODE;
+  SPRITE_TILE_MODE: typeof SPRITE_TILE_MODE;
   DEFAULT_LAYERS: typeof DEFAULT_LAYERS;
   CAMERA_TYPES: typeof CAMERA_TYPES;
   DECAL_STAMPS_BLEND_MODE: typeof DECAL_STAMPS_BLEND_MODE;
@@ -3118,6 +3142,7 @@ export interface WeedNamespace {
   mixTint: typeof import('./utils').mixTint;
   randomColor: typeof import('./utils').randomColor;
   rng: typeof import('./utils').rng;
+  SPRITE_TILE_MODE: typeof SPRITE_TILE_MODE;
   enums: WeedEnums;
   VERSION: typeof VERSION;
 }

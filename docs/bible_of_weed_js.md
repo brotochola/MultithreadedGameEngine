@@ -547,6 +547,30 @@ LightEmitter.layerIdOfGlowSprite[this.index] = Layer.getId('GLOW_LAYER');
 
 When `layerId` is 0 (default), everything goes to the main ENTITIES queue. Zero overhead for the common case. See `docs/LAYER_ROUTING.md` for the full architecture.
 
+### Sprite tiling (`setTileWorld` / `setTileLocal`)
+
+`SpriteRenderer.repeatX/Y` is the **world-px period** of one full texture repeat (`0` = stretch the atlas rect across the quad). Three modes:
+
+```javascript
+import { SPRITE_TILE_MODE } from '/src/core/ConfigDefaults.js';
+// or WEED.SPRITE_TILE_MODE / WEED.enums.SPRITE_TILE_MODE
+
+this.setTileWorld(128);                    // wallpaper locked to the world (caves, walls)
+this.setTileLocal(128, 128, 0.25, 0.0);    // crop locked to the quad (rotating crates / debris)
+this.clearTile();                          // stretch (default)
+
+// After a world-tiled block becomes dynamic:
+this.bakeWorldTileToLocal();               // freeze current crop so UVs rotate with the sprite
+```
+
+- **STRETCH (0)** — UV = sprite local 0..1. Default.
+- **WORLD (1)** — `fract(worldXY / period + offset)`. Neighbors share the same wallpaper. Packed terrain.
+- **LOCAL (2)** — `fract(localUV * (spriteWorldSize / period) + offset)`. Pattern travels and **rotates with the quad**.
+
+Shader layers (`setLayer('terrain')` + `shader.fragment`) still world-tile correctly. The renderer may upload screen-space verts into a viewport-sized density RT; that is internal (`space` is **not** a scene config). World XY is reconstructed for tiling.
+
+Do not keep WORLD mode on a sprite that spins — the texture will swim. Bake to LOCAL (or `setTileLocal` with an inherited offset) when you release it to physics.
+
 ### Shader Uniforms
 
 Uniforms are stored in SharedArrayBuffers and can be updated from **any thread**:

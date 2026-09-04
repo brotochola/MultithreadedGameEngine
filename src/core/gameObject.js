@@ -14,7 +14,7 @@ import { LightOccluder } from '../components/LightOccluder.js';
 import { SpriteSheetRegistry } from './SpriteSheetRegistry.js';
 import { Layer } from './Layer.js';
 import { Grid } from './Grid.js';
-import { ShapeType } from './ConfigDefaults.js';
+import { ShapeType, SPRITE_TILE_MODE } from './ConfigDefaults.js';
 import { collectComponents, cantorPair, distanceSq2D } from './utils.js';
 import {
   resetFreeList,
@@ -909,6 +909,93 @@ export class GameObject {
     if (this._hasComponents.adobeAnimComponent && AdobeAnimComponent.layerId[this.index] !== id) {
       AdobeAnimComponent.layerId[this.index] = id;
     }
+    return this;
+  }
+
+  /**
+   * World-lock atlas tiling. `period` is world px per full texture repeat.
+   * Optional `u0/v0` phase in 0..1 (parallax). Shader layers still tile in world
+   * (internal screen upload reconstructs world XY).
+   * @param {number} periodX
+   * @param {number} [periodY]
+   * @param {number} [u0=0]
+   * @param {number} [v0=0]
+   * @returns {this}
+   */
+  setTileWorld(periodX, periodY, u0 = 0, v0 = 0) {
+    if (!this._hasComponents.SpriteRenderer) return this;
+    const i = this.index;
+    const px = periodX | 0;
+    const py = (periodY == null ? periodX : periodY) | 0;
+    SpriteRenderer.repeatX[i] = px < 0 ? 0 : px > 65535 ? 65535 : px;
+    SpriteRenderer.repeatY[i] = py < 0 ? 0 : py > 65535 ? 65535 : py;
+    SpriteRenderer.tileMode[i] = SPRITE_TILE_MODE.WORLD;
+    SpriteRenderer.tileOffsetU[i] = SpriteRenderer.packTileOffset01(u0);
+    SpriteRenderer.tileOffsetV[i] = SpriteRenderer.packTileOffset01(v0);
+    SpriteRenderer.renderDirty[i] = 1;
+    return this;
+  }
+
+  /**
+   * Local-lock atlas tiling. Crop travels and rotates with the quad.
+   * @param {number} periodX - world px per full texture repeat along the sprite
+   * @param {number} [periodY]
+   * @param {number} [u0=0] - UV offset 0..1
+   * @param {number} [v0=0]
+   * @returns {this}
+   */
+  setTileLocal(periodX, periodY, u0 = 0, v0 = 0) {
+    if (!this._hasComponents.SpriteRenderer) return this;
+    const i = this.index;
+    const px = periodX | 0;
+    const py = (periodY == null ? periodX : periodY) | 0;
+    SpriteRenderer.repeatX[i] = px < 0 ? 0 : px > 65535 ? 65535 : px;
+    SpriteRenderer.repeatY[i] = py < 0 ? 0 : py > 65535 ? 65535 : py;
+    SpriteRenderer.tileMode[i] = SPRITE_TILE_MODE.LOCAL;
+    SpriteRenderer.tileOffsetU[i] = SpriteRenderer.packTileOffset01(u0);
+    SpriteRenderer.tileOffsetV[i] = SpriteRenderer.packTileOffset01(v0);
+    SpriteRenderer.renderDirty[i] = 1;
+    return this;
+  }
+
+  /** Stretch UV across the quad (default). */
+  clearTile() {
+    if (!this._hasComponents.SpriteRenderer) return this;
+    const i = this.index;
+    SpriteRenderer.repeatX[i] = 0;
+    SpriteRenderer.repeatY[i] = 0;
+    SpriteRenderer.tileMode[i] = SPRITE_TILE_MODE.STRETCH;
+    SpriteRenderer.tileOffsetU[i] = 0;
+    SpriteRenderer.tileOffsetV[i] = 0;
+    SpriteRenderer.renderDirty[i] = 1;
+    return this;
+  }
+
+  /**
+   * Freeze current world-locked crop onto the quad (LOCAL). Use when a
+   * world-tiled sprite becomes dynamic so rotation does not swim UVs.
+   * @returns {this}
+   */
+  bakeWorldTileToLocal() {
+    if (!this._hasComponents.SpriteRenderer) return this;
+    const i = this.index;
+    const px = SpriteRenderer.repeatX[i];
+    const py = SpriteRenderer.repeatY[i];
+    if (px <= 0 && py <= 0) return this;
+    const visX = SpriteRenderer.boundsHalfW[i] * 2;
+    const visY = SpriteRenderer.boundsHalfH[i] * 2;
+    SpriteRenderer.tileMode[i] = SPRITE_TILE_MODE.LOCAL;
+    if (px > 0) {
+      SpriteRenderer.tileOffsetU[i] = SpriteRenderer.packTileOffset01(
+        SpriteRenderer.bakeLocalOffsetFromWorld(this.x, px, visX)
+      );
+    }
+    if (py > 0) {
+      SpriteRenderer.tileOffsetV[i] = SpriteRenderer.packTileOffset01(
+        SpriteRenderer.bakeLocalOffsetFromWorld(this.y, py, visY)
+      );
+    }
+    SpriteRenderer.renderDirty[i] = 1;
     return this;
   }
 
@@ -2075,6 +2162,9 @@ export class GameObject {
       SpriteRenderer.spriteRotS[i] = 0;
       SpriteRenderer.repeatX[i] = 0;
       SpriteRenderer.repeatY[i] = 0;
+      SpriteRenderer.tileMode[i] = 0;
+      SpriteRenderer.tileOffsetU[i] = 0;
+      SpriteRenderer.tileOffsetV[i] = 0;
       SpriteRenderer.renderVisible[i] = 1;
       SpriteRenderer.isItOnScreen[i] = 0;
       SpriteRenderer.animationState[i] = -1;

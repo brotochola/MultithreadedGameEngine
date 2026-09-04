@@ -35,6 +35,12 @@ const FIELDS = [
     // World-space tile period in px; 0 = stretch. Packed u16 pair, then align4.
     ['repeatX',     Uint16Array,            2,   0],
     ['repeatY',     Uint16Array,            2,   0],
+    // SPRITE_TILE_MODE; offset 0..65535 = UV 0..1; signed mul written by pre_render.
+    ['tileMode',    Uint8Array,             1,   0],
+    ['tileOffsetU', Uint16Array,            2,   0],
+    ['tileOffsetV', Uint16Array,            2,   0],
+    ['tileMulX',    Float32Array,           4,   0],
+    ['tileMulY',    Float32Array,           4,   0],
 ];
 
 function align4(n) { return (n + 3) & ~3; }

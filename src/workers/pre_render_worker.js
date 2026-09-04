@@ -41,6 +41,7 @@ import {
     ENTITY_GLOW_SORT_BIAS,
     ShapeType,
     MAX_POLYGON_VERTICES,
+    SPRITE_TILE_MODE,
 } from '../core/ConfigDefaults.js';
 import { Layer } from '../core/Layer.js';
 import { createViews as createRenderQueueViews } from '../core/RenderQueueLayout.js';
@@ -49,6 +50,40 @@ import { LiquidFun } from '../core/LiquidFun.js';
 import { DECORATION_NO_PARENT } from '../core/DecorationPool.js';
 import { AdobeAnimRegistry } from '../core/AdobeAnimRegistry.js';
 const INVALID_TEXTURE_ID = 0xFFFF;
+const TILE_MODE_LOCAL = SPRITE_TILE_MODE.LOCAL;
+
+/** Stretch / skip tiling on non-entity queue rows (particles, adobe pieces, …). */
+function clearTileFields(ref, out) {
+    if (ref.tileMode) ref.tileMode[out] = 0;
+    if (ref.tileOffsetU) ref.tileOffsetU[out] = 0;
+    if (ref.tileOffsetV) ref.tileOffsetV[out] = 0;
+    if (ref.tileMulX) ref.tileMulX[out] = 0;
+    if (ref.tileMulY) ref.tileMulY[out] = 0;
+}
+
+/**
+ * Copy SoA tile fields and resolve signed GPU mul:
+ * WORLD (or legacy repeatX with mode 0): +1/period
+ * LOCAL: -(2 * boundsHalf) / period
+ */
+function writeEntityTileFields(
+    ref, out, idx,
+    srTileMode, srTileOffU, srTileOffV,
+    srRepeatX, srRepeatY, srBHW, srBHH
+) {
+    const mode = srTileMode[idx];
+    if (ref.tileMode) ref.tileMode[out] = mode;
+    if (ref.tileOffsetU) ref.tileOffsetU[out] = srTileOffU[idx];
+    if (ref.tileOffsetV) ref.tileOffsetV[out] = srTileOffV[idx];
+    const rx = srRepeatX[idx];
+    const ry = srRepeatY[idx];
+    let mx = 0;
+    let my = 0;
+    if (rx > 0) mx = mode === TILE_MODE_LOCAL ? -(srBHW[idx] * 2) / rx : 1 / rx;
+    if (ry > 0) my = mode === TILE_MODE_LOCAL ? -(srBHH[idx] * 2) / ry : 1 / ry;
+    if (ref.tileMulX) ref.tileMulX[out] = mx;
+    if (ref.tileMulY) ref.tileMulY[out] = my;
+}
 /** Composite depth sort: worldY * scale + innerZ (entities, decorations, bullets) */
 const Y_SORT_K = DECORATION_Y_SORT_SCALE;
 /**
@@ -212,6 +247,8 @@ class PreRenderWorker extends AbstractWorker {
             rotC: null, rotS: null, alpha: null, tint: null, textureId: null,
             anchorX: null, anchorY: null, type: null, entityIndex: null,
             repeatX: null, repeatY: null,
+            tileMode: null, tileOffsetU: null, tileOffsetV: null,
+            tileMulX: null, tileMulY: null,
         };
 
         // Flash grid-query: scratch buffer for candidate shadow casters + dedup marker
@@ -693,6 +730,11 @@ class PreRenderWorker extends AbstractWorker {
         this.renderQueueSortKey = buffer.sortKey;
         this.renderQueueRepeatX = buffer.repeatX;
         this.renderQueueRepeatY = buffer.repeatY;
+        this.renderQueueTileMode = buffer.tileMode;
+        this.renderQueueTileOffsetU = buffer.tileOffsetU;
+        this.renderQueueTileOffsetV = buffer.tileOffsetV;
+        this.renderQueueTileMulX = buffer.tileMulX;
+        this.renderQueueTileMulY = buffer.tileMulY;
         this.renderQueueCamera = this.renderQueueCameraBuffers[bufferIdx];
 
         // Swap custom layer write buffers in sync
@@ -1768,6 +1810,7 @@ class PreRenderWorker extends AbstractWorker {
             ref.entityIndex[writeIndex] = entityIndex;
             if (ref.repeatX) ref.repeatX[writeIndex] = 0;
             if (ref.repeatY) ref.repeatY[writeIndex] = 0;
+            clearTileFields(ref, writeIndex);
             if (ref.sortKey) ref.sortKey[writeIndex] = sortKey;
             writeIndex++;
         }
@@ -1817,6 +1860,11 @@ class PreRenderWorker extends AbstractWorker {
         const rqSortKey = this.renderQueueSortKey;
         const rqRepeatX = this.renderQueueRepeatX;
         const rqRepeatY = this.renderQueueRepeatY;
+        const rqTileMode = this.renderQueueTileMode;
+        const rqTileOffsetU = this.renderQueueTileOffsetU;
+        const rqTileOffsetV = this.renderQueueTileOffsetV;
+        const rqTileMulX = this.renderQueueTileMulX;
+        const rqTileMulY = this.renderQueueTileMulY;
         const entityLastTextureId = this.entityLastTextureId;
 
         // Cache component arrays
@@ -1839,6 +1887,11 @@ class PreRenderWorker extends AbstractWorker {
         const srSpriteRotS = SpriteRenderer.spriteRotS;
         const srRepeatX = SpriteRenderer.repeatX;
         const srRepeatY = SpriteRenderer.repeatY;
+        const srTileMode = SpriteRenderer.tileMode;
+        const srTileOffsetU = SpriteRenderer.tileOffsetU;
+        const srTileOffsetV = SpriteRenderer.tileOffsetV;
+        const srBoundsHalfW = SpriteRenderer.boundsHalfW;
+        const srBoundsHalfH = SpriteRenderer.boundsHalfH;
 
         const particleX = ParticleComponent.x;
         const particleY = ParticleComponent.y;
@@ -1910,6 +1963,8 @@ class PreRenderWorker extends AbstractWorker {
         ref.type = rqType; ref.entityIndex = rqEntityIndex;
         ref.sortKey = rqSortKey;
         ref.repeatX = rqRepeatX; ref.repeatY = rqRepeatY;
+        ref.tileMode = rqTileMode; ref.tileOffsetU = rqTileOffsetU; ref.tileOffsetV = rqTileOffsetV;
+        ref.tileMulX = rqTileMulX; ref.tileMulY = rqTileMulY;
 
         let writeCount = 0;
         const stashPx = this._renderablePx;
@@ -1936,6 +1991,7 @@ class PreRenderWorker extends AbstractWorker {
             if (rqSortKey) rqSortKey[out] = sk;
             if (rqRepeatX) rqRepeatX[out] = 0;
             if (rqRepeatY) rqRepeatY[out] = 0;
+            clearTileFields(ref, out);
 
             if (type === 0) {
                 // === ENTITY === (pose stashed at collect)
@@ -1959,6 +2015,11 @@ class PreRenderWorker extends AbstractWorker {
                 rqAnchorY[out] = srAnchorY[idx];
                 if (rqRepeatX) rqRepeatX[out] = srRepeatX[idx];
                 if (rqRepeatY) rqRepeatY[out] = srRepeatY[idx];
+                writeEntityTileFields(
+                    ref, out, idx,
+                    srTileMode, srTileOffsetU, srTileOffsetV,
+                    srRepeatX, srRepeatY, srBoundsHalfW, srBoundsHalfH
+                );
 
                 rqType[out] = 0;
                 rqEntityIndex[out] = idx;
@@ -2235,6 +2296,11 @@ class PreRenderWorker extends AbstractWorker {
         const srSpriteRotS = SpriteRenderer.spriteRotS;
         const srRepeatX = SpriteRenderer.repeatX;
         const srRepeatY = SpriteRenderer.repeatY;
+        const srTileMode = SpriteRenderer.tileMode;
+        const srTileOffsetU = SpriteRenderer.tileOffsetU;
+        const srTileOffsetV = SpriteRenderer.tileOffsetV;
+        const srBoundsHalfW = SpriteRenderer.boundsHalfW;
+        const srBoundsHalfH = SpriteRenderer.boundsHalfH;
 
         const frameIndex = this.entityFrameIndex;
         const frameAccum = this.entityFrameAccumulator;
@@ -2338,6 +2404,11 @@ class PreRenderWorker extends AbstractWorker {
             const rqSortKey = ref.sortKey;
             const rqRepeatX = ref.repeatX;
             const rqRepeatY = ref.repeatY;
+            const rqTileMode = ref.tileMode;
+            const rqTileOffsetU = ref.tileOffsetU;
+            const rqTileOffsetV = ref.tileOffsetV;
+            const rqTileMulX = ref.tileMulX;
+            const rqTileMulY = ref.tileMulY;
             const layerRef = this._emitRef;
             layerRef.x = rqX; layerRef.y = rqY; layerRef.scaleX = rqScaleX; layerRef.scaleY = rqScaleY;
             layerRef.rotC = rqRotC; layerRef.rotS = rqRotS; layerRef.alpha = rqAlpha; layerRef.tint = rqTint;
@@ -2345,6 +2416,8 @@ class PreRenderWorker extends AbstractWorker {
             layerRef.type = rqType; layerRef.entityIndex = rqEntityIndex;
             layerRef.sortKey = rqSortKey;
             layerRef.repeatX = rqRepeatX; layerRef.repeatY = rqRepeatY;
+            layerRef.tileMode = rqTileMode; layerRef.tileOffsetU = rqTileOffsetU; layerRef.tileOffsetV = rqTileOffsetV;
+            layerRef.tileMulX = rqTileMulX; layerRef.tileMulY = rqTileMulY;
 
             let writeCount = 0;
 
@@ -2362,6 +2435,7 @@ class PreRenderWorker extends AbstractWorker {
                 if (rqSortKey) rqSortKey[out] = sk;
                 if (rqRepeatX) rqRepeatX[out] = 0;
                 if (rqRepeatY) rqRepeatY[out] = 0;
+                clearTileFields(layerRef, out);
 
                 if (type === 0) {
                     // === ENTITY ===
@@ -2384,6 +2458,11 @@ class PreRenderWorker extends AbstractWorker {
                     rqAnchorY[out] = srAnchorY[idx];
                     if (rqRepeatX) rqRepeatX[out] = srRepeatX[idx];
                     if (rqRepeatY) rqRepeatY[out] = srRepeatY[idx];
+                    writeEntityTileFields(
+                        layerRef, out, idx,
+                        srTileMode, srTileOffsetU, srTileOffsetV,
+                        srRepeatX, srRepeatY, srBoundsHalfW, srBoundsHalfH
+                    );
                     rqType[out] = 0;
                     rqEntityIndex[out] = idx;
 

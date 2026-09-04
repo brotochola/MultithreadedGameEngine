@@ -20,6 +20,7 @@ const {
   Layer,
   LiquidFun,
   LIQUIDFUN_FLAGS,
+  SPRITE_TILE_MODE,
   enums
 } = WEED;
 const { ShapeType } = enums;
@@ -208,8 +209,19 @@ export class MamushkaBox extends GameObject {
     const vis = size + ROCK_FILL_OVERLAP_PX;
     this.setScale(vis / texW, vis / texH);
     const period = Math.max(1, (texW * ROCK_TILE_SCALE) | 0);
-    this.spriteRenderer.repeatX = period;
-    this.spriteRenderer.repeatY = period;
+    this.setTileWorld(period);
+    if (isDynamic) {
+      if (spawnConfig.tileMode === SPRITE_TILE_MODE.LOCAL) {
+        this.setTileLocal(
+          period,
+          period,
+          spawnConfig.tileOffsetU ?? 0,
+          spawnConfig.tileOffsetV ?? 0
+        );
+      } else {
+        this.bakeWorldTileToLocal();
+      }
+    }
     this.setTint(MATERIAL_TINT[material] ?? 0xffffff);
   }
 
@@ -283,12 +295,24 @@ export class MamushkaBox extends GameObject {
 
     const wantWeld = childLevel <= DYNAMIC_MAX_LEVEL;
     const childDynamic = childLevel <= DYNAMIC_MAX_LEVEL;
+    const parentMode = this.spriteRenderer.tileMode | 0;
+    const parentPeriod = this.spriteRenderer.repeatX | 0;
+    const parentRepeatsX =
+      parentPeriod > 0 ? (SpriteRenderer.boundsHalfW[this.index] * 2) / parentPeriod : 0;
+    const parentRepeatsY =
+      parentPeriod > 0 ? (SpriteRenderer.boundsHalfH[this.index] * 2) / parentPeriod : 0;
+    const parentOffU = this.spriteRenderer.tileOffsetU;
+    const parentOffV = this.spriteRenderer.tileOffsetV;
+    const inheritLocal = childDynamic && parentMode === SPRITE_TILE_MODE.LOCAL;
+
     _kids.length = 0;
     for (let i = 0; i < 4; i++) {
       const lx = locals[i][0];
       const ly = locals[i][1];
       const wx = cx + lx * cos - ly * sin;
       const wy = cy + lx * sin + ly * cos;
+      const qU = (i === 1 || i === 3) ? 0.5 : 0;
+      const qV = (i === 2 || i === 3) ? 0.5 : 0;
       const kid = MamushkaBox.spawn({
         x: wx,
         y: wy,
@@ -300,6 +324,9 @@ export class MamushkaBox extends GameObject {
         vy,
         angularVelocity: omega,
         dynamic: childDynamic,
+        tileMode: inheritLocal ? SPRITE_TILE_MODE.LOCAL : undefined,
+        tileOffsetU: inheritLocal ? parentOffU + qU * parentRepeatsX : undefined,
+        tileOffsetV: inheritLocal ? parentOffV + qV * parentRepeatsY : undefined,
       });
       if (kid) _kids.push(kid);
       else console.warn('[MamushkaBox] pool exhausted during split');

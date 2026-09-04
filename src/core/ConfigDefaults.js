@@ -101,6 +101,19 @@ export const LAYER_SCALE_MODE = Object.freeze({
 });
 
 /**
+ * Sprite atlas tiling. `repeatX/Y` is always the world-px period (0 = stretch).
+ * WORLD locks the wallpaper to the scene; LOCAL freezes a crop on the quad (rotates with it).
+ * GPU packs mode in the sign of `aInstTileInv` (positive WORLD, negative LOCAL, 0 stretch).
+ * @readonly
+ * @enum {number}
+ */
+export const SPRITE_TILE_MODE = Object.freeze({
+  STRETCH: 0,
+  WORLD: 1,
+  LOCAL: 2,
+});
+
+/**
  * Built-in layer definitions. Same shape as scene config.layers entries.
  * ySorting is false for all built-in layers; ENTITIES gets overridden
  * at runtime by the scene's renderer.ySorting config.

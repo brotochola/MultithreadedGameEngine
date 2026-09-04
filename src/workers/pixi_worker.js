@@ -451,6 +451,11 @@ class PixiRenderer extends AbstractWorker {
     this.renderQueueAnchorY = buffer.anchorY;
     this.renderQueueRepeatX = buffer.repeatX;
     this.renderQueueRepeatY = buffer.repeatY;
+    this.renderQueueTileMode = buffer.tileMode;
+    this.renderQueueTileOffsetU = buffer.tileOffsetU;
+    this.renderQueueTileOffsetV = buffer.tileOffsetV;
+    this.renderQueueTileMulX = buffer.tileMulX;
+    this.renderQueueTileMulY = buffer.tileMulY;
     this.renderQueueType = buffer.type;
     this.renderQueueEntityIndex = buffer.entityIndex;
     this.renderQueueSortKey = buffer.sortKey;
@@ -693,6 +698,11 @@ class PixiRenderer extends AbstractWorker {
       anchorY: this.renderQueueAnchorY,
       repeatX: this.renderQueueRepeatX,
       repeatY: this.renderQueueRepeatY,
+      tileMode: this.renderQueueTileMode,
+      tileOffsetU: this.renderQueueTileOffsetU,
+      tileOffsetV: this.renderQueueTileOffsetV,
+      tileMulX: this.renderQueueTileMulX,
+      tileMulY: this.renderQueueTileMulY,
     };
     const useSortKey = !!(this.ySorting && this.renderQueueSortKey);
     const baseOpts = {
@@ -3828,6 +3838,11 @@ UPDATE LIGHTING (NO ZOOM SCALING)
             anchorY: ref.anchorY,
             repeatX: ref.repeatX,
             repeatY: ref.repeatY,
+            tileMode: ref.tileMode,
+            tileOffsetU: ref.tileOffsetU,
+            tileOffsetV: ref.tileOffsetV,
+            tileMulX: ref.tileMulX,
+            tileMulY: ref.tileMulY,
           },
           renderToRT
             ? {

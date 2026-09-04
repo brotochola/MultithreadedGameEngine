@@ -12,7 +12,7 @@ import { mulberry32, parseArgs, timeIt, writeReport } from './microbench-helpers
 
 const TEX_LUT_FLOATS = 10;
 const PACK25 = 25;
-const PACK13 = 13; // xy, scale, anchor, rotCS, depth, tintBits, texId, tileInv
+const PACK15 = 15; // xy, scale, anchor, rotCS, depth, tintBits, texId, tileInv, tileOff
 const Y_SORT_K = 128;
 const GLOW_BIAS = 127;
 
@@ -108,7 +108,7 @@ export function runInstancedPackMicrobench(cliArgs = parseArgs()) {
   const cap = COUNT;
 
   const out25 = new Float32Array(COUNT * PACK25);
-  const out13 = new Float32Array(COUNT * PACK13);
+  const out13 = new Float32Array(COUNT * PACK15);
   const idxE = new Uint16Array(COUNT);
   const idxP = new Uint16Array(COUNT);
   const idxG = new Uint16Array(COUNT);
@@ -192,7 +192,7 @@ export function runInstancedPackMicrobench(cliArgs = parseArgs()) {
       void lut[lutBase];
       void lut[lutBase + 9];
     }
-    const base = out * PACK13;
+    const base = out * PACK15;
     data[base] = q.x[srcI];
     data[base + 1] = q.y[srcI];
     data[base + 2] = q.scaleX[srcI];
@@ -206,6 +206,8 @@ export function runInstancedPackMicrobench(cliArgs = parseArgs()) {
     data[base + 10] = q.textureId[srcI];
     data[base + 11] = rx > 0 ? 1 / rx : 0;
     data[base + 12] = ry > 0 ? 1 / ry : 0;
+    data[base + 13] = 0;
+    data[base + 14] = 0;
   }
 
   function scanFilter(includeType, excludeA, excludeB, packFn, data, useSortKey) {
@@ -286,7 +288,7 @@ export function runInstancedPackMicrobench(cliArgs = parseArgs()) {
   packFromIndex(out13, idxE, ne, pack13Shader, true);
   for (let k = 0; k < Math.min(ne, 64); k++) {
     const a = k * PACK25;
-    const b = k * PACK13;
+    const b = k * PACK15;
     if (out25[a] !== out13[b] || out25[a + 1] !== out13[b + 1]) {
       throw new Error(`xy mismatch at packed ${k}`);
     }

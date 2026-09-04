@@ -3,6 +3,32 @@
 
 import { Component } from '../core/Component.js';
 import { SpriteSheetRegistry } from '../core/SpriteSheetRegistry.js';
+import { SPRITE_TILE_MODE } from '../core/ConfigDefaults.js';
+
+/** GLSL-style fract (works for negatives). */
+export function fract01(x) {
+  return x - Math.floor(x);
+}
+
+/** Pack a 0..1 (or wrapped) UV offset into Uint16. */
+export function packTileOffset01(u) {
+  const f = fract01(u);
+  const v = (f * 65535 + 0.5) | 0;
+  return v < 0 ? 0 : v > 65535 ? 65535 : v;
+}
+
+export function unpackTileOffset01(u16) {
+  return (u16 & 65535) / 65535;
+}
+
+/**
+ * Local-tile offset so quad center keeps the world-locked texel at `world`.
+ * Pass through {@link packTileOffset01} before writing SoA.
+ */
+export function bakeLocalOffsetFromWorld(world, period, vis) {
+  if (!(period > 0)) return 0;
+  return world / period - 0.5 * (vis / period);
+}
 
 export class SpriteRenderer extends Component {
   // Array schema - defines all rendering properties
@@ -38,6 +64,10 @@ export class SpriteRenderer extends Component {
     // World-space texture repeat period in px. 0 = stretch (default). 1..65535 = tile size.
     repeatX: Uint16Array,
     repeatY: Uint16Array,
+    // SPRITE_TILE_MODE: 0 stretch, 1 world-lock, 2 local-lock. Offset u16 = UV 0..1.
+    tileMode: Uint8Array,
+    tileOffsetU: Uint16Array,
+    tileOffsetV: Uint16Array,
 
     // Layer assignment (0 = default ENTITIES layer, set via GameObject.setLayer())
     layerId: Uint8Array,
@@ -135,6 +165,41 @@ export class SpriteRenderer extends Component {
     SpriteRenderer.repeatY[this.index] = v < 0 ? 0 : v > 65535 ? 65535 : v;
     SpriteRenderer.renderDirty[this.index] = 1;
   }
+
+  get tileMode() {
+    return SpriteRenderer.tileMode[this.index];
+  }
+  set tileMode(value) {
+    const v = value | 0;
+    SpriteRenderer.tileMode[this.index] =
+      v <= SPRITE_TILE_MODE.STRETCH
+        ? SPRITE_TILE_MODE.STRETCH
+        : v >= SPRITE_TILE_MODE.LOCAL
+          ? SPRITE_TILE_MODE.LOCAL
+          : v;
+    SpriteRenderer.renderDirty[this.index] = 1;
+  }
+
+  get tileOffsetU() {
+    return unpackTileOffset01(SpriteRenderer.tileOffsetU[this.index]);
+  }
+  set tileOffsetU(value) {
+    SpriteRenderer.tileOffsetU[this.index] = packTileOffset01(value);
+    SpriteRenderer.renderDirty[this.index] = 1;
+  }
+
+  get tileOffsetV() {
+    return unpackTileOffset01(SpriteRenderer.tileOffsetV[this.index]);
+  }
+  set tileOffsetV(value) {
+    SpriteRenderer.tileOffsetV[this.index] = packTileOffset01(value);
+    SpriteRenderer.renderDirty[this.index] = 1;
+  }
+
+  static packTileOffset01 = packTileOffset01;
+  static unpackTileOffset01 = unpackTileOffset01;
+  static bakeLocalOffsetFromWorld = bakeLocalOffsetFromWorld;
+  static fract01 = fract01;
 
   static initializeArrays(buffer, count) {
     super.initializeArrays(buffer, count);
