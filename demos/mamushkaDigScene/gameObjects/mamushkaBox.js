@@ -20,7 +20,7 @@ const {
   Layer,
   LiquidFun,
   LIQUIDFUN_FLAGS,
-  enums,
+  enums
 } = WEED;
 const { ShapeType } = enums;
 
@@ -160,7 +160,6 @@ export class MamushkaBox extends GameObject {
     Collider,
     SpriteRenderer,
     JointBreakListener,
-    LightOccluder,
     MamushkaComponent,
   ];
 
