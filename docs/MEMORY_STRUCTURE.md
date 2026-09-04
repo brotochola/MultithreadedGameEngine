@@ -171,14 +171,14 @@ Post-step display snapshot so pre_render / particle parent-follow never sample l
 
 | Buffer | Size | Layout |
 |--------|------|--------|
-| `poseDataA` / `poseDataB` | `N * 3 * 4` bytes each (`N = totalEntityCount`) | SoA `Float32`: `x[N]`, `y[N]`, `rotation[N]` |
+| `poseDataA` / `poseDataB` | `N * 4 * 4` bytes each (`N = totalEntityCount`) | SoA `Float32`: `x[N]`, `y[N]`, `rotC[N]`, `rotS[N]` |
 | `poseSync` | 8 bytes | `[readyFrame: Int32, consumedFrame: Int32]` |
 
 **Protocol:**
 
-1. Physics writes dense bodies into buffer `poseFrame % 2`, then `Atomics.store(poseSync, 0, ++poseFrame)` (+ optional notify)
+1. Physics writes dense bodies into buffer `poseFrame % 2`, then `Atomics.store(poseSync, 0, ++poseFrame)` (+ optional notify) — **skip this write** when `poseFrame > consumedFrame` so the in-use slot is not overwritten (FPS-beat rewind). Still run `world.step`.
 2. Pre_render latches `(ready - 1) % 2` when `ready > 0`, then `Atomics.store(poseSync, 1, ready)` (consume)
-3. Particle parent-follow latches the same ready buffer **without** storing consumed (pre_render owns consume)
+3. Particle parent-follow latches the same ready buffer **without** storing consumed (pre_render owns consume). Logic latches without consume for `Camera.followEntity`.
 
 | Writer | Readers |
 |--------|---------|

@@ -748,9 +748,12 @@ const lt = WEED.Gamepad.getButton(0, WEED.Gamepad.LT); // analog trigger 0..1
 
 // Camera
 WEED.Camera.follow(this.x, this.y);
-WEED.Camera.setZoom(1.5);
+WEED.Camera.followEntity(index, lookAheadSec, smoothing, dtRatio); // pose xy + vel frozen to pose publishes
+WEED.Camera.targetZoom = 0.5; // then follow / followEntity — lerps zoom, keeps screen center
+WEED.Camera.setZoom(1.5);     // snap zoom (do not call every tick while following)
 // getViewportBounds(out?) — pass a stable object if you need to store bounds;
 // the no-arg form reuses an internal scratch object (consume immediately).
+// High-speed follow hitch: docs/PHYSICS.md “Display pose publish”.
 
 // Particles — pick mode at call site (see docs/PARTICLES.md)
 // emit: heighted, screenY = y + z

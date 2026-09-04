@@ -64,7 +64,7 @@ Owns the Box2D tick. Scene’s `workers.physics` **is** the classic `box2d_wasm.
 2. Drain the command ring (set pose/vel, fixedRotation, etc.)
 3. After the step, contact begin/end (+ sensors) land in the sequenced contact ring for logic workers
 4. Sync Weed `Joint` slots into Box2D joints
-5. Publish display pose into `poseDataA/B` + `poseSync` (dense bodies only; Atomics readyFrame)
+5. Publish display pose into `poseDataA/B` + `poseSync` (dense bodies only) **unless** `poseFrame > consumedFrame` — skip publish, never skip the step (see [PHYSICS.md display pose](./PHYSICS.md#display-pose-publish))
 
 Spatial `neighborData` is visual-range only — Box2D does narrowphase itself.
 

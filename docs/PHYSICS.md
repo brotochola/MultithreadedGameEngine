@@ -67,9 +67,31 @@ Live HEAP `Transform` mutates during solver substeps. Async readers must not sam
 | `poseSync` | `Int32[2]` `[readyFrame, consumedFrame]` | Writer stores ready; pre_render latches `(ready-1)%2` and stores consumed |
 
 - **Writer:** `weedjs_post.publishPose` after `world.step` (dense body list → typed views; no alloc).
-- **Readers:** `pre_render_worker` (entities / adobe / shadows / parented deco compose) consumes; `particle_worker` parent-follow latches without consume.
+- **Readers:** `pre_render_worker` (entities / adobe / shadows / parented deco compose) consumes; `particle_worker` parent-follow latches without consume. Logic binds the same latch for `Camera.followEntity`.
 - **Boot:** `readyFrame === 0` → fall back to live `Transform`.
 - **Not** soft interpolation / `averaged*` — one coherent post-step snapshot per publish.
+
+#### Do not overwrite the in-use pose slot (CarScene rewind)
+
+Two independent `requestAnimationFrame` loops (physics vs pre_render/pixi) drift. At ~60 vs ~59.3 FPS they **lap about once a second**. Double-buffer without a gate: the third publish writes `poseFrame & 1` onto the buffer pre_render is still reading → sprites jump to the other generation (looks like last frame / rewind).
+
+**Correct gate** (`maybePublishPose` in `weedjs_post.js`): after `world.step`, skip **publish only** when `poseFrame > consumedFrame`. The sim keeps running; the next free slot gets the latest HEAP pose (at most a 1-frame *forward* skip).
+
+**Wrong gate:** zero `dt` / skip `world.step` until consume. That couples physics to visual jitter → random freeze-then-catch-up. Worse than the rhythmic lap.
+
+`pre_render` queue backpressure (`renderQueueFrame > consumedFrame + 1`) is a *separate* pixi lock. Do not tighten it to `> consumed` as a substitute for pose gating — that stalls packing, delays consume, and reintroduces hitch storms.
+
+#### Camera look-ahead must share the sprite clock
+
+Sprites use latched pose xy. `Camera.followEntity` used to add **live HEAP** `RigidBody.vx/vy * lookAheadSec`. Velocity keeps changing between pose publishes → look-ahead target hunts while the car sprite sits still (world vibrates around the car). High speed × `0.33s` look-ahead makes ~10px jumps.
+
+**Correct:** resample HEAP vx/vy only when that entity's **pose xy** changes (first sample copy, later EMA). Hold until the next pose publish. Same clock as sprites.
+
+Speed zoom: write `Camera.targetZoom` **then** `followEntity`. `follow()` lerps zoom and keeps screen-center. `setZoom` every tick snaps zoom without that pan and fights the lerp.
+
+Debug colliders still draw live `Transform` through the render-queue camera — they can swim vs sprites by ~1 physics frame. Overlay clock, not the gameplay hitch above.
+
+Tests: `tests/node/pipelineBackpressure.test.js`, `tests/node/cameraFreeZoom.test.js` (`followEntity look-ahead ignores live vx…`).
 
 ### Soft contact knobs
 
