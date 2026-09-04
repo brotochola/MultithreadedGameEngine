@@ -2543,6 +2543,7 @@ UPDATE LIGHTING (NO ZOOM SCALING)
       LiquidFun.bindHeapPose(data.liquidFunHeap);
       return;
     }
+    if (msg === 'liquidFunCleared') return;
     console.log(`PIXI WORKER: handleCustomMessage called with msg: ${msg}`);
 
     if (msg === 'setBackground') {

@@ -627,6 +627,10 @@
       : 0;
 
     if (have && (!want || seenBodyGeneration[i] !== generation)) {
+      // Box2D 3 b2DestroyBody also destroys attached joints (body.c). Wrapper
+      // g_joints[] stays live → step_world export_all_joints uses stale
+      // b2JointId → b2Array_Get OOB. Drop WASM joints first.
+      destroyWasmJointsForEntity(i);
       try {
         world.destroyBody(i);
       } catch (_) {
@@ -709,6 +713,19 @@
     }
     jointHandle[idx] = -1;
     jointSeenRev[idx] = 0;
+  }
+
+  function destroyWasmJointsForEntity(entityIdx) {
+    if (!jointHandle || !jointViews || entityIdx < 0) return;
+    const pairs = jointViews.pairs;
+    const n = maxJoints;
+    for (let idx = 0; idx < n; idx++) {
+      if (jointHandle[idx] < 0) continue;
+      const packed = pairs[idx];
+      if ((packed >>> 16) === entityIdx || (packed & 0xffff) === entityIdx) {
+        destroyJointAt(idx);
+      }
+    }
   }
 
   function acquireJointSpinLock(lockView) {
